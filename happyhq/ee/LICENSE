@@ -1,0 +1,14 @@
+HappyHQ Enterprise License (placeholder)
+
+The contents of this `ee/` directory are NOT covered by the MIT license at the
+root of the repository. They are source-available under a license to be
+finalized before the first tagged release.
+
+Until that license is finalized, the following interim terms apply:
+
+- You may view and study this code.
+- You may NOT use, copy, modify, distribute, or deploy this code in any form,
+  commercial or non-commercial, without prior written permission.
+- These terms supersede any permission implied by the repository's visibility.
+
+Questions: contact the maintainers.

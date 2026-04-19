@@ -1,0 +1,48 @@
+{
+  "name": "happyhq",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "build": "./scripts/check-deps.sh && turbo run build",
+    "dev": "./scripts/check-deps.sh && turbo run dev",
+    "lint": "turbo run lint",
+    "test": "./scripts/check-deps.sh && turbo run test",
+    "test:watch": "turbo run test:watch",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,md}\"",
+    "check-types": "turbo run check-types",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@types/yargs": "^17.0.32",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.5",
+    "prettier": "^3.5.3",
+    "prettier-plugin-organize-imports": "^4.3.0",
+    "prettier-plugin-tailwindcss": "^0.7.1",
+    "tsx": "^4.20.6",
+    "turbo": "^2.5.8",
+    "typescript": "5.9.3",
+    "yargs": "^18.0.0"
+  },
+  "packageManager": "pnpm@10.2.1",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@tailwindcss/postcss": "4.1.15",
+    "tailwindcss": "4.1.15"
+  },
+  "pnpm": {
+    "overrides": {
+      "@types/react": "19.2.2",
+      "@types/react-dom": "19.2.2",
+      "vite": "^7.1.11"
+    }
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,json,md,css,yml,yaml}": [
+      "prettier --write"
+    ]
+  }
+}

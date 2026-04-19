@@ -1,0 +1,299 @@
+import path from 'path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+// Mock constants — must be before importing the module under test
+vi.mock('@/lib/constants.server', () => ({
+  HAPPYHQ_ROOT: '/mock/home/HappyHQ',
+}))
+
+const MOCK_ROOT = '/mock/home/HappyHQ'
+
+const { mockRename, mockRm, mockStat, mockMkdir } = vi.hoisted(() => ({
+  mockRename: vi.fn(),
+  mockRm: vi.fn(),
+  mockStat: vi.fn(),
+  mockMkdir: vi.fn(),
+}))
+
+vi.mock('node:fs/promises', () => ({
+  default: {
+    rename: mockRename,
+    rm: mockRm,
+    stat: mockStat,
+    mkdir: mockMkdir,
+  },
+  rename: mockRename,
+  rm: mockRm,
+  stat: mockStat,
+  mkdir: mockMkdir,
+}))
+
+const { mockCommitGitState } = vi.hoisted(() => ({
+  mockCommitGitState: vi.fn(),
+}))
+
+vi.mock('@/lib/git/sync.server', () => ({
+  commitGitState: mockCommitGitState,
+}))
+
+// Billing mocks — used by createStream limit checks
+const {
+  mockIsBillingEnabled,
+  mockVerifyToken,
+  mockIsEmailAllowed,
+  mockCanCreateStream,
+} = vi.hoisted(() => ({
+  mockIsBillingEnabled: vi.fn(() => false),
+  mockVerifyToken: vi.fn(
+    async (): Promise<{ id: string; email: string } | null> => null,
+  ),
+  mockIsEmailAllowed: vi.fn(() => true),
+  mockCanCreateStream: vi.fn(
+    async (): Promise<{ allowed: boolean; reason?: string }> => ({
+      allowed: true,
+    }),
+  ),
+}))
+
+vi.mock('@/ee/lib/billing/config', () => ({
+  isBillingEnabled: mockIsBillingEnabled,
+}))
+
+vi.mock('@/lib/accounts/auth.server', () => ({
+  verifyToken: mockVerifyToken,
+}))
+
+vi.mock('@/lib/accounts/config', () => ({
+  isEmailAllowed: mockIsEmailAllowed,
+}))
+
+vi.mock('@/ee/lib/billing/limits.server', () => ({
+  canCreateStream: mockCanCreateStream,
+}))
+
+const MOCK_TOKEN = 'test-refresh-token'
+
+import {
+  checkStreamExists,
+  createStream,
+  deleteStream,
+  renameStream,
+} from './streams'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+// --- createStream ---
+
+describe('createStream', () => {
+  it('creates root directory and two subdirectories (specs, samples)', async () => {
+    mockMkdir.mockResolvedValue(undefined)
+
+    await createStream('weekly-reports')
+
+    const root = path.join(MOCK_ROOT, 'weekly-reports')
+    expect(mockMkdir).toHaveBeenCalledWith(root, { recursive: true })
+    expect(mockMkdir).toHaveBeenCalledWith(path.join(root, 'specs'), {
+      recursive: true,
+    })
+    expect(mockMkdir).toHaveBeenCalledWith(path.join(root, 'samples'), {
+      recursive: true,
+    })
+    expect(mockMkdir).not.toHaveBeenCalledWith(path.join(root, 'tasks'), {
+      recursive: true,
+    })
+    expect(mockMkdir).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not create a stream-level uploads/ directory', async () => {
+    mockMkdir.mockResolvedValue(undefined)
+
+    await createStream('weekly-reports')
+
+    const root = path.join(MOCK_ROOT, 'weekly-reports')
+    expect(mockMkdir).not.toHaveBeenCalledWith(path.join(root, 'uploads'), {
+      recursive: true,
+    })
+  })
+
+  it('commits after creating directories', async () => {
+    mockMkdir.mockResolvedValue(undefined)
+
+    await createStream('weekly-reports')
+
+    expect(mockCommitGitState).toHaveBeenCalledWith(
+      '[weekly-reports] Create stream',
+    )
+  })
+
+  it('rejects reserved root directory names', async () => {
+    await expect(createStream('tasks')).rejects.toThrow('reserved name')
+    expect(mockMkdir).not.toHaveBeenCalled()
+  })
+
+  it('rejects paths outside ~/HappyHQ/', async () => {
+    await expect(createStream('../../etc/evil')).rejects.toThrow(
+      'outside ~/HappyHQ/',
+    )
+    expect(mockMkdir).not.toHaveBeenCalled()
+  })
+
+  it('throws when billing limit blocks stream creation', async () => {
+    mockIsBillingEnabled.mockReturnValue(true)
+    mockVerifyToken.mockResolvedValue({
+      id: 'user-123',
+      email: 'test@example.com',
+    })
+    mockCanCreateStream.mockResolvedValue({
+      allowed: false,
+      reason: 'Free plan allows 1 stream. Upgrade to create more.',
+    })
+
+    await expect(createStream('second-stream', MOCK_TOKEN)).rejects.toThrow(
+      'Free plan allows 1 stream. Upgrade to create more.',
+    )
+    expect(mockMkdir).not.toHaveBeenCalled()
+  })
+
+  it('creates stream when billing allows it', async () => {
+    mockMkdir.mockResolvedValue(undefined)
+    mockIsBillingEnabled.mockReturnValue(true)
+    mockVerifyToken.mockResolvedValue({
+      id: 'user-123',
+      email: 'test@example.com',
+    })
+    mockCanCreateStream.mockResolvedValue({ allowed: true })
+
+    await createStream('my-stream', MOCK_TOKEN)
+
+    expect(mockCanCreateStream).toHaveBeenCalledWith('user-123')
+    expect(mockMkdir).toHaveBeenCalled()
+  })
+
+  it('skips billing check when billing is disabled', async () => {
+    mockMkdir.mockResolvedValue(undefined)
+    mockIsBillingEnabled.mockReturnValue(false)
+
+    await createStream('my-stream')
+
+    expect(mockCanCreateStream).not.toHaveBeenCalled()
+    expect(mockMkdir).toHaveBeenCalled()
+  })
+
+  it('throws when billing is enabled but no token is provided', async () => {
+    mockIsBillingEnabled.mockReturnValue(true)
+
+    await expect(createStream('my-stream')).rejects.toThrow(
+      'Sign in required to create a stream.',
+    )
+    expect(mockMkdir).not.toHaveBeenCalled()
+  })
+
+  it('throws when billing is enabled but token is invalid', async () => {
+    mockIsBillingEnabled.mockReturnValue(true)
+    mockVerifyToken.mockResolvedValue(null)
+
+    await expect(createStream('my-stream', 'bad-token')).rejects.toThrow(
+      'Sign in required to create a stream.',
+    )
+    expect(mockMkdir).not.toHaveBeenCalled()
+  })
+})
+
+// --- deleteStream ---
+
+describe('deleteStream', () => {
+  it('commits after deleting stream', async () => {
+    mockRm.mockResolvedValue(undefined)
+
+    await deleteStream('old-stream')
+
+    expect(mockCommitGitState).toHaveBeenCalledWith(
+      '[old-stream] Delete stream',
+    )
+  })
+})
+
+// --- renameStream ---
+
+describe('renameStream', () => {
+  it('renames a stream directory atomically', async () => {
+    mockRename.mockResolvedValue(undefined)
+
+    await renameStream('abc12345', 'weekly-reports')
+
+    expect(mockRename).toHaveBeenCalledWith(
+      path.join(MOCK_ROOT, 'abc12345'),
+      path.join(MOCK_ROOT, 'weekly-reports'),
+    )
+  })
+
+  it('rejects source paths outside ~/HappyHQ/', async () => {
+    await expect(renameStream('../../etc/evil', 'good-name')).rejects.toThrow(
+      'outside ~/HappyHQ/',
+    )
+    expect(mockRename).not.toHaveBeenCalled()
+  })
+
+  it('rejects reserved root directory names as destination', async () => {
+    await expect(renameStream('good-name', 'tasks')).rejects.toThrow(
+      'reserved name',
+    )
+    expect(mockRename).not.toHaveBeenCalled()
+  })
+
+  it('rejects destination paths outside ~/HappyHQ/', async () => {
+    await expect(renameStream('good-name', '../../etc/evil')).rejects.toThrow(
+      'outside ~/HappyHQ/',
+    )
+    expect(mockRename).not.toHaveBeenCalled()
+  })
+
+  it('commits after renaming', async () => {
+    mockRename.mockResolvedValue(undefined)
+
+    await renameStream('abc12345', 'weekly-reports')
+
+    expect(mockCommitGitState).toHaveBeenCalledWith(
+      '[weekly-reports] Rename stream from abc12345',
+    )
+  })
+
+  it('propagates filesystem errors', async () => {
+    const err = new Error('ENOENT') as NodeJS.ErrnoException
+    err.code = 'ENOENT'
+    mockRename.mockRejectedValue(err)
+
+    await expect(renameStream('old', 'new')).rejects.toThrow('ENOENT')
+  })
+})
+
+// --- checkStreamExists ---
+
+describe('checkStreamExists', () => {
+  it('returns true for an existing stream directory', async () => {
+    mockStat.mockResolvedValue({ isDirectory: () => true })
+
+    const result = await checkStreamExists('my-stream')
+
+    expect(result).toBe(true)
+  })
+
+  it('returns false when the stream does not exist', async () => {
+    const enoent = new Error('ENOENT') as NodeJS.ErrnoException
+    enoent.code = 'ENOENT'
+    mockStat.mockRejectedValue(enoent)
+
+    const result = await checkStreamExists('missing-stream')
+
+    expect(result).toBe(false)
+  })
+
+  it('rejects paths outside ~/HappyHQ/', async () => {
+    await expect(checkStreamExists('../../etc/evil')).rejects.toThrow(
+      'outside ~/HappyHQ/',
+    )
+    expect(mockStat).not.toHaveBeenCalled()
+  })
+})

@@ -1,0 +1,34 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Build outputs
+.next
+.turbo
+dist
+build
+out
+coverage
+
+# Lock files
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# Generated files
+*.min.js
+*.min.css
+
+# Environment files
+.env*
+
+# Vercel
+.vercel
+
+# IDE
+.vscode
+.idea
+
+# Worker configuration
+workers/email-falls/wrangler.jsonc
