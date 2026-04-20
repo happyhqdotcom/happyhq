@@ -19,7 +19,7 @@ WORKDIR /build
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY happyhq/package.json ./happyhq/
 
-RUN pnpm install --frozen-lockfile --filter=app
+RUN pnpm install --frozen-lockfile --filter=happyhq
 
 # ---------------------------------------------------------------------------
 # Stage 3 — build: compile Next.js standalone output
