@@ -37,10 +37,12 @@ export const config = {
      * Match all request paths except:
      * - /login (the login page itself, to avoid redirect loops)
      * - /setup (API auth setup — reached after password auth, not a security bypass)
+     * - /api/health (unauthenticated liveness probe — used by platform health
+     *   checks and the run-loop self-ping, must not redirect)
      * - /_next/static (static file serving)
      * - /_next/image (image optimization)
      * - /favicon.ico (browser favicon request)
      */
-    '/((?!login|setup|_next/static|_next/image|favicon\\.ico|.*\\.png$).*)',
+    '/((?!login|setup|api/health|_next/static|_next/image|favicon\\.ico|.*\\.png$).*)',
   ],
 }
