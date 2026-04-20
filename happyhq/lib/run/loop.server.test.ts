@@ -596,6 +596,23 @@ describe('billing integration', () => {
     )
   })
 
+  it('finalizes with completed status when planning succeeds (plan_ready)', async () => {
+    // Planning's successful terminal state is 'plan_ready', not 'completed'.
+    // Without treating plan_ready as a success for billing purposes, every
+    // successful planning run would be misclassified as 'aborted'.
+    mockQuery.mockReturnValue(fakeQuery([]))
+
+    await startRun('s1', 't1', 'planning', TEST_USER_ID)
+    await _waitForLoop()
+
+    expect(mockFinalizeTaskRun).toHaveBeenCalledWith(
+      TEST_TASK_RUN_ID,
+      'completed',
+      expect.any(Number),
+      expect.any(Number),
+    )
+  })
+
   it('records usage after each working iteration', async () => {
     let callCount = 0
     mockQuery.mockImplementation(() => {

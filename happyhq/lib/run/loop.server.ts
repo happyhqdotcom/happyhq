@@ -395,10 +395,16 @@ async function runLoop(
       try {
         const { finalizeTaskRun } =
           await import('@/ee/lib/billing/usage.server')
-        const billingStatus =
-          finalStatus === 'completed'
-            ? ('completed' as const)
-            : ('aborted' as const)
+        // Successful terminal states differ by mode: working ends at
+        // 'completed' (agent emitted [done]), planning ends at 'plan_ready'.
+        // Everything else (user stop, error, budget, iteration limit) is an
+        // abort. Without this, every successful planning run was classified
+        // as 'aborted' in billing, skewing dashboards.
+        const successful =
+          finalStatus === 'completed' || finalStatus === 'plan_ready'
+        const billingStatus = successful
+          ? ('completed' as const)
+          : ('aborted' as const)
         // Read final cost from .run.json to get accurate total including planning
         const finalRun = await readRunInfo(taskName)
         const finalCostUsd = finalRun?.costUsd ?? 0
