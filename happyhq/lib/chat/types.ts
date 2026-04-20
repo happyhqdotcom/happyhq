@@ -14,6 +14,7 @@ export type ChatStreamEvent =
   | ChatStreamContentChangedEvent // Agent wrote a file (Write/Edit) — client should revalidate SWR
   | ChatTaskContentChangedEvent // Run agent wrote a file (Write/Edit) — client should revalidate task SWR
   | ChatModeChangedEvent // Chat mode transition (general ↔ learning)
+  | ChatHeartbeatEvent // Keepalive so fly-proxy doesn't reap the stream during silent phases
 
 export interface ChatPartialEvent {
   type: 'partial'
@@ -149,6 +150,13 @@ export interface ChatModeChangedEvent {
   type: 'mode_changed'
   mode: 'general' | 'learning'
   streamSlug?: string // present when entering learning mode
+}
+
+// Periodic keepalive so intermediaries (proxies, load balancers) don't close
+// the stream during silent phases. Clients can ignore.
+export interface ChatHeartbeatEvent {
+  type: 'heartbeat'
+  t: string // ISO timestamp
 }
 
 // Sent from canUseTool when an unapproved tool is invoked — the SDK query is

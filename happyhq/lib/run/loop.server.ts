@@ -49,6 +49,8 @@ interface RunLoopState {
   starting: boolean
   activeRunStream: string | null
   activeRunTask: string | null
+  heartbeatInterval: ReturnType<typeof setInterval> | null
+  selfPingInterval: ReturnType<typeof setInterval> | null
 }
 
 const STATE_KEY = Symbol.for('__happyhq_run_loop_state__')
@@ -64,6 +66,8 @@ function getState(): RunLoopState {
       starting: false,
       activeRunStream: null,
       activeRunTask: null,
+      heartbeatInterval: null,
+      selfPingInterval: null,
     }
   }
   return g[STATE_KEY]
@@ -124,6 +128,7 @@ export async function startRun(
     s.subscribers = new Set()
     s.activeRunStream = streamName
     s.activeRunTask = taskName
+    startKeepalives(s)
 
     // Defer heavy work (commitGitState uses execSync) with setImmediate so
     // the HTTP response is sent before we block the event loop.
@@ -198,6 +203,7 @@ export async function startRun(
             // If setup fails before runLoop(), clean up state so we don't
             // permanently block future runs.
             console.error('[Q:run] Setup error before loop:', err)
+            stopKeepalives(s)
             for (const writer of s.subscribers) {
               writer.close().catch(() => {})
             }
@@ -408,6 +414,7 @@ async function runLoop(
       }
     }
 
+    stopKeepalives(s)
     // Close all subscriber streams (fire-and-forget)
     for (const writer of s.subscribers) {
       writer.close().catch(() => {})
@@ -1004,6 +1011,40 @@ function broadcast(chunk: Uint8Array): void {
       writer.close().catch(() => {})
       s.subscribers.delete(writer)
     })
+  }
+}
+
+const HEARTBEAT_INTERVAL_MS = 20_000
+const SELF_PING_INTERVAL_MS = 30_000
+
+// Keeps bytes flowing to watching clients and traffic arriving at the machine
+// so the edge proxy's idle-timeout and autostop-idle timers don't fire during
+// long silent phases of a run (extended thinking, long tool calls). Without
+// these, a run in progress looks idle to the platform and the machine can be
+// stopped out from under it.
+function startKeepalives(s: RunLoopState): void {
+  s.heartbeatInterval = setInterval(() => {
+    if (s.subscribers.size === 0) return
+    broadcast(encodeEvent({ type: 'heartbeat', t: new Date().toISOString() }))
+  }, HEARTBEAT_INTERVAL_MS)
+
+  const appName = process.env.FLY_APP_NAME
+  if (appName) {
+    const pingUrl = `https://${appName}.fly.dev/api/health`
+    s.selfPingInterval = setInterval(() => {
+      fetch(pingUrl).catch(() => {})
+    }, SELF_PING_INTERVAL_MS)
+  }
+}
+
+function stopKeepalives(s: RunLoopState): void {
+  if (s.heartbeatInterval) {
+    clearInterval(s.heartbeatInterval)
+    s.heartbeatInterval = null
+  }
+  if (s.selfPingInterval) {
+    clearInterval(s.selfPingInterval)
+    s.selfPingInterval = null
   }
 }
 
