@@ -73,7 +73,7 @@ export function HeaderBar({ expanded, onExpandToggle }: HeaderBarProps) {
       >
         Chat with
         <Image
-          src="/brand/qutie.png"
+          src="/brand/q.svg"
           alt="Q"
           width={14}
           height={14}
