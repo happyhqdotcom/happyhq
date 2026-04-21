@@ -167,7 +167,7 @@ export function ChatListHome() {
                   className="absolute top-[68%] left-[5%] hidden sm:block"
                 />
                 <Sticker
-                  src="/brand/logo.png"
+                  src="/brand/logo.svg"
                   alt="HappyHQ logo"
                   size={500}
                   rotate={-5}
@@ -210,7 +210,7 @@ export function ChatListHome() {
       {/* Logo mode */}
       {branding === 'logo' && !isMobile && (
         <Sticker
-          src="/brand/logo.png"
+          src="/brand/logo.svg"
           alt="HappyHQ logo"
           size={500}
           rotate={-5}

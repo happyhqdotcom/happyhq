@@ -90,7 +90,7 @@ function OptionPreview({ value }: { value: HomeBranding }) {
     case 'logo':
       return (
         <MiniSticker
-          src="/brand/logo.png"
+          src="/brand/logo.svg"
           alt="HappyHQ logo"
           className="w-12"
         />

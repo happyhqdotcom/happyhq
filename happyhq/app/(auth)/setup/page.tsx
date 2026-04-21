@@ -112,7 +112,7 @@ export default function SetupPage() {
     <div className="bg-background flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-[320px]">
         <div className="mb-8 flex justify-center">
-          <img src="/brand/logo.png" alt="HappyHQ" className="h-12" />
+          <img src="/brand/logo.svg" alt="HappyHQ" className="h-12" />
         </div>
 
         {mode === 'choice' && (

@@ -54,7 +54,7 @@ export function HeaderBar({ expanded, onExpandToggle }: HeaderBarProps) {
       </ChromeButton>
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <Image
-          src="/brand/logo.png"
+          src="/brand/logo.svg"
           alt="HappyHQ"
           width={80}
           height={16}
