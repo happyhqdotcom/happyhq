@@ -77,7 +77,7 @@ export function GlobalSidebar({
             <div className="flex h-8 items-center justify-between pl-1">
               <Link href="/tasks">
                 <Image
-                  src="/brand/logo.png"
+                  src="/brand/logo.svg"
                   alt="HappyHQ"
                   width={128}
                   height={26}
