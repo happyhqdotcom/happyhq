@@ -9,10 +9,6 @@ Thanks for your interest in contributing. Participation in this project is gover
 - **Keep PRs focused.** One concern per PR. Unrelated cleanups in a feature PR make review harder and will usually be asked to split.
 - **Test your change.** Include what you did to verify it — not just "tests pass."
 
-## CLA
-
-Contributions to HappyHQ require agreeing to our [Contributor License Agreement](https://happyhq.com/legal/cla). Signing instructions will be wired up on PRs shortly; for now, please read the CLA and confirm in your PR description that you agree to its terms.
-
 ## Setup
 
 1. Install **Node.js 20+** and **pnpm 10.2.1+**.
@@ -56,6 +52,8 @@ Contributions to HappyHQ require agreeing to our [Contributor License Agreement]
 ## `ee/` directories
 
 Any directory named `ee/` (e.g. `happyhq/ee/`) contains source-available code
-that is NOT MIT-licensed — see the `LICENSE` inside that directory. If you
-are contributing a feature inside an `ee/` directory, you are agreeing to
-contribute under those terms.
+that is NOT MIT-licensed — see the `LICENSE` inside that directory.
+
+We don't accept public contributions to `ee/`. If you'd like to propose a
+change there, please open an issue first so we can discuss — we'll figure
+out a separate path if it makes sense.
