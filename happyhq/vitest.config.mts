@@ -11,11 +11,15 @@ export default defineConfig({
     globals: true,
     testTimeout: 10_000,
     exclude: [...configDefaults.exclude, 'tests/**/*.spec.ts'],
-    pool: 'threads',
+    pool: process.env.CI ? 'forks' : 'threads',
     poolOptions: {
       threads: {
         maxThreads: 2,
         minThreads: 1,
+      },
+      forks: {
+        maxForks: 2,
+        minForks: 1,
       },
     },
   },
