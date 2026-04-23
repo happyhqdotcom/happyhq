@@ -47,4 +47,4 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test -- --reporter=verbose
+      - run: pnpm --filter happyhq exec vitest run --reporter=verbose
