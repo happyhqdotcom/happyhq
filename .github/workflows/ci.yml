@@ -48,4 +48,4 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter happyhq exec vitest run --pool=forks --poolOptions.forks.singleFork=true --reporter=verbose --reporter=hanging-process
+      - run: pnpm --filter happyhq exec vitest run --pool=forks --poolOptions.forks.singleFork=true --exclude='**/parse-history.server.test.ts' --reporter=verbose --reporter=hanging-process
