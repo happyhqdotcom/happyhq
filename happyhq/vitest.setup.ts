@@ -1,20 +1,9 @@
-import { beforeAll, beforeEach, vi } from 'vitest'
+import { vi } from 'vitest'
 
 // Prevent tests from writing to the real log file (~/.HappyHQ/.logs/)
 vi.mock('@/lib/log.server', () => ({
   log: vi.fn(),
 }))
-
-// Diagnostic: emit file start so CI logs show which file is running
-// before completion (vitest reporters only emit on file *finish*).
-if (process.env.CI) {
-  beforeAll((suite) => {
-    process.stdout.write(`>>> START FILE: ${suite.file?.name ?? '?'}\n`)
-  })
-  beforeEach((ctx) => {
-    process.stdout.write(`>>> START TEST: ${ctx.task.name}\n`)
-  })
-}
 
 const localStorageMock = {
   store: {} as Record<string, string>,
