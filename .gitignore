@@ -32,6 +32,8 @@ dist
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+*.log
 happyhq/.debug/
 
 # Local experiments (SDK/model tests, diagnostics)
@@ -46,7 +48,15 @@ next-env.d.ts
 
 # Misc
 .DS_Store
+Thumbs.db
 *.pem
+*.swp
+*.swo
+
+# Editors
+.idea/
+.vscode/
+.history/
 
 # Claude Code user-local overrides
 .claude/settings.local.json
