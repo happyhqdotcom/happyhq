@@ -1,0 +1,67 @@
+name: Bug report
+description: Something isn't working. Let us take a look.
+title: 'bug: '
+labels: ['bug']
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, what you expected, and what you saw instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps — or a link to a repo / gist that shows the issue.
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: Output of `git rev-parse --short HEAD`, or the release tag you're on.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      description: Which build are you running?
+      options:
+        - CE (no accounts, local-only)
+        - EE (accounts / billing enabled)
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: OS + version, Node version, pnpm version (e.g. `macOS 14.5, Node 20.11, pnpm 9.1`).
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Runtime logs live at `~/HappyHQ/.logs/YYYY-MM-DD.jsonl`.
+        Paste any lines that look related, or the output of `npx tsx scripts/read-logs.ts --event=api.error --last=20`.
+      render: shell
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Screenshots, related issues, anything else that helps.

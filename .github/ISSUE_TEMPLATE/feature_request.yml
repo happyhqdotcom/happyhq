@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest an improvement or a new capability.
+title: 'feat: '
+labels: ['enhancement']
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What are you trying to do? What's getting in the way today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How would you like this to work? Rough sketches, API shapes, or UI ideas are all welcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you thought about and why you'd rule them out.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links to related discussions, prior art, or similar features in other tools.
