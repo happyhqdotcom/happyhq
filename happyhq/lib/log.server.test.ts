@@ -92,8 +92,14 @@ describe('log', () => {
   })
 
   it('does not throw when directory creation fails', () => {
-    mockLogsDir.mockReturnValue('/proc/nonexistent/impossible')
+    // Use a mock instead of a real "impossible" path: fs.mkdirSync on
+    // /proc/* paths hangs synchronously on Linux (CI), even though it
+    // returns an error on macOS. A direct mock is platform-independent.
+    const mkdirSpy = vi.spyOn(fs, 'mkdirSync').mockImplementation(() => {
+      throw new Error('mock mkdir failure')
+    })
     expect(() => log('task.created', { task: 'x' })).not.toThrow()
+    mkdirSpy.mockRestore()
   })
 
   it('does not throw when file write fails', () => {

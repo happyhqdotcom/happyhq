@@ -48,4 +48,4 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter happyhq exec vitest run lib/log.server.test.ts --bail=1 --testTimeout=5000 --hookTimeout=5000 --reporter=verbose --reporter=hanging-process
+      - run: pnpm --filter happyhq exec vitest run --reporter=verbose
