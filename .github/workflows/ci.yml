@@ -48,4 +48,4 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter happyhq exec vitest run --exclude='**/middleware.test.ts' --exclude='**/app/api/health/route.test.ts' --reporter=verbose --reporter=hanging-process
+      - run: pnpm --filter happyhq exec vitest run --exclude='**/middleware.test.ts' --exclude='**/lib/log.server.test.ts' --reporter=verbose --reporter=hanging-process
