@@ -97,16 +97,22 @@ describe('POST /api/fs/reveal', () => {
   it('calls open -R and returns ok for a valid file', async () => {
     mockStat.mockResolvedValue({ isFile: () => true })
     mockExecSync.mockReturnValue(undefined)
+    const originalPlatform = process.platform
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
 
-    const response = await POST(
-      makeRequest({ path: 'my-stream/outputs/report.md' }),
-    )
-    const body = await response.json()
+    try {
+      const response = await POST(
+        makeRequest({ path: 'my-stream/outputs/report.md' }),
+      )
+      const body = await response.json()
 
-    expect(response.status).toBe(200)
-    expect(body).toEqual({ ok: true })
-    expect(mockExecSync).toHaveBeenCalledWith(
-      'open -R "/mock/home/HappyHQ/my-stream/outputs/report.md"',
-    )
+      expect(response.status).toBe(200)
+      expect(body).toEqual({ ok: true })
+      expect(mockExecSync).toHaveBeenCalledWith(
+        'open -R "/mock/home/HappyHQ/my-stream/outputs/report.md"',
+      )
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform })
+    }
   })
 })
