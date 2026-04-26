@@ -1,4 +1,4 @@
-# HappyHQ
+# [HappyHQ](https://happpyhq.com)
 
 **The AI workspace for everyday work.**
 
