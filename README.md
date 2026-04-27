@@ -2,12 +2,7 @@
 
 **The AI workspace for everyday work.**
 
-Open-source monorepo for the HappyHQ product.
-
-## Structure
-
-- [`happyhq/`](./happyhq) — the main Next.js application
-  - [`happyhq/ee/`](./happyhq/ee) — enterprise/source-available code (see [`happyhq/ee/LICENSE`](./happyhq/ee/LICENSE))
+An AI teammate that learns how you work. Open-source and local-first.
 
 ## Requirements
 
@@ -19,22 +14,26 @@ Open-source monorepo for the HappyHQ product.
 ```sh
 pnpm install
 cp happyhq/.env.example happyhq/.env.local
-# edit happyhq/.env.local — at minimum set ANTHROPIC_API_KEY
 pnpm dev
 ```
 
+Set `ANTHROPIC_API_KEY` in `happyhq/.env.local` when you're ready to chat with Q, our agent — the app runs fine without it until then.
+
+## Optional features
+
+A few capabilities are off by default and enabled via env vars (see [`happyhq/.env.example`](./happyhq/.env.example)):
+
+- **User accounts** — sign-in via InstantDB + Google OAuth
+- **Billing** — Stripe-backed subscriptions (requires accounts; lives under `ee/`)
+
 ## Common commands
 
-- `pnpm dev` — start all dev servers
-- `pnpm turbo dev --filter=happyhq` — start just the main app
-- `pnpm turbo dev --filter=docs` — start just the docs site
+- `pnpm dev` — start the dev server
 - `pnpm lint` / `pnpm check-types` / `pnpm test` / `pnpm format`
-- `pnpm --filter=happyhq test` — run tests for a single workspace
 
 ## Licensing
 
-- Code outside `ee/` directories is MIT-licensed (see [`LICENSE`](./LICENSE))
-- Code inside any `ee/` directory (e.g. [`happyhq/ee/`](./happyhq/ee)) is source-available under separate terms (see that directory's `LICENSE`)
+This repo is MIT-licensed. See [`LICENSE`](./LICENSE). Any `ee/` directory (e.g. [`happyhq/ee/`](./happyhq/ee)) is source-available under its own `LICENSE`.
 
 ## Contributing
 
