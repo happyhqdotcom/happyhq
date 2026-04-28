@@ -37,6 +37,7 @@
     "overrides": {
       "@types/react": "19.2.2",
       "@types/react-dom": "19.2.2",
+      "postcss": "^8.5.10",
       "vite": "^7.1.11"
     }
   },
