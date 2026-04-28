@@ -1,0 +1,4 @@
+# GitHub uses this file to auto-request reviewers on PRs.
+# Docs: https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+* @jrphilo
