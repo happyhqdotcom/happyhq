@@ -9,6 +9,7 @@ import {
   Shell,
   Sidebar,
 } from '@/components/features/desktop/panels/atoms'
+import { useCurrentUser } from '@/lib/accounts/hooks'
 import {
   checkStreamExists,
   createStream,
@@ -21,6 +22,7 @@ import { useRouter } from 'next/navigation'
 export function DraftStreamPanel() {
   const router = useRouter()
   const mutateStreams = useStreamsMutate()
+  const { token } = useCurrentUser()
 
   const [name, setName] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -42,7 +44,7 @@ export function DraftStreamPanel() {
         setIsCreating(false)
         return
       }
-      await createStream(slug)
+      await createStream(slug, token)
       await writeStreamTitle(slug, trimmed)
       mutateStreams?.()
       router.replace(`/${encodeURIComponent(slug)}`)
