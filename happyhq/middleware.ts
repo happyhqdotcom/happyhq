@@ -45,6 +45,6 @@ export const config = {
      * - common image extensions in /public (so the unauthenticated login
      *   page can load its own logo and other static art)
      */
-    '/((?!login|setup|api/health|_next/static|_next/image|favicon\\.ico|.*\\.(png|svg|jpg|jpeg|webp|gif|ico)$).*)',
+    '/((?!login|setup|api/health|_next/static|_next/image|favicon\\.ico|.*\\.(?:png|svg|jpg|jpeg|webp|gif|ico)$).*)',
   ],
 }
