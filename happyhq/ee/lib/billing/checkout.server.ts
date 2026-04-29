@@ -44,8 +44,8 @@ export async function createCheckoutSession(
     customer: customerId,
     mode: 'subscription',
     line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'}/settings/billing?checkout=success`,
-    cancel_url: `${process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'}/settings/billing?checkout=canceled`,
+    success_url: `${process.env.APP_URL ?? 'http://localhost:3000'}/settings/billing?checkout=success`,
+    cancel_url: `${process.env.APP_URL ?? 'http://localhost:3000'}/settings/billing?checkout=canceled`,
     customer_update: { address: 'auto' },
     // Tier name stored in metadata so the webhook handler can read it
     // without reverse-mapping price IDs.

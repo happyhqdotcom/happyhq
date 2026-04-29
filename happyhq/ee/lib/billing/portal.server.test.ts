@@ -89,7 +89,7 @@ describe('portal.server', () => {
       mockPortalSessionsCreate.mockResolvedValue({
         url: 'https://billing.stripe.com/portal',
       })
-      process.env.NEXT_PUBLIC_APP_URL = 'https://app.example.com'
+      process.env.APP_URL = 'https://app.example.com'
 
       const { createPortalSession } = await import('./portal.server')
       await createPortalSession('user-1')
@@ -101,14 +101,14 @@ describe('portal.server', () => {
       )
     })
 
-    it('defaults return URL to localhost when NEXT_PUBLIC_APP_URL is not set', async () => {
+    it('defaults return URL to localhost when APP_URL is not set', async () => {
       mockQuery.mockResolvedValue({
         $users: [{ id: 'user-1', stripeCustomerId: 'cus_test' }],
       })
       mockPortalSessionsCreate.mockResolvedValue({
         url: 'https://billing.stripe.com/portal',
       })
-      delete process.env.NEXT_PUBLIC_APP_URL
+      delete process.env.APP_URL
 
       const { createPortalSession } = await import('./portal.server')
       await createPortalSession('user-1')

@@ -116,7 +116,7 @@ describe('checkout.server', () => {
       mockCheckoutSessionsCreate.mockResolvedValue({
         url: 'https://checkout.stripe.com/test',
       })
-      process.env.NEXT_PUBLIC_APP_URL = 'https://app.example.com'
+      process.env.APP_URL = 'https://app.example.com'
 
       const { createCheckoutSession } = await import('./checkout.server')
       await createCheckoutSession('user-1', 'a@b.com', 'starter')
@@ -131,12 +131,12 @@ describe('checkout.server', () => {
       )
     })
 
-    it('defaults to localhost when NEXT_PUBLIC_APP_URL is not set', async () => {
+    it('defaults to localhost when APP_URL is not set', async () => {
       mockGetOrCreateStripeCustomer.mockResolvedValue('cus_test')
       mockCheckoutSessionsCreate.mockResolvedValue({
         url: 'https://checkout.stripe.com/test',
       })
-      delete process.env.NEXT_PUBLIC_APP_URL
+      delete process.env.APP_URL
 
       const { createCheckoutSession } = await import('./checkout.server')
       await createCheckoutSession('user-1', 'a@b.com', 'starter')
