@@ -3,9 +3,11 @@
 import { SettingsRow } from '@/app/(settings)/settings/_components/settings-row'
 import { Button } from '@/components/common/catalyst/button'
 import { DeleteAlert } from '@/components/common/shared/delete-alert'
+import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
 export function DangerZone() {
+  const router = useRouter()
   const [showConfirm, setShowConfirm] = useState(false)
   const [resetting, setResetting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -25,6 +27,7 @@ export function DangerZone() {
         return
       }
 
+      router.refresh()
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
     } catch {
