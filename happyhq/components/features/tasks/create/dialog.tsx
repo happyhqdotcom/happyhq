@@ -6,6 +6,7 @@ import { useSidebarOptional } from '@/components/common/ui/sidebar'
 import { FileRow } from '@/components/features/desktop/windows/shared/file-row'
 import { useFileDrop } from '@/components/features/desktop/windows/shared/use-file-drop'
 import { StreamPicker } from '@/components/features/tasks/atoms/stream-picker'
+import { useCurrentUser } from '@/lib/accounts/hooks'
 import { createTask, ingestTaskInput } from '@/lib/actions'
 import { generateTaskSlug } from '@/lib/format'
 import { taskItemsKey } from '@/lib/swr-keys'
@@ -26,6 +27,7 @@ export function TaskCreateDialog({
   const sidebar = useSidebarOptional()
   const streams = useStreams()
   const { mutate } = useSWRConfig()
+  const { token } = useCurrentUser()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [selectedStream, setSelectedStream] = useState<string | null>(null)
@@ -74,7 +76,7 @@ export function TaskCreateDialog({
         const formData = new FormData()
         formData.append('file', file)
         try {
-          await ingestTaskInput(slug, formData)
+          await ingestTaskInput(slug, formData, token ?? undefined)
         } catch {
           toast.error(`Failed to attach ${file.name}`)
         }

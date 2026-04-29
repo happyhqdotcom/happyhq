@@ -6,6 +6,7 @@ import { toastError, toastWarning } from '@/components/common/ui/sonner'
 import { FileRow } from '@/components/features/desktop/windows/shared/file-row'
 import { useFileDrop } from '@/components/features/desktop/windows/shared/use-file-drop'
 import { StreamPicker } from '@/components/features/tasks/atoms/stream-picker'
+import { useCurrentUser } from '@/lib/accounts/hooks'
 import { createTask, ingestTaskInput } from '@/lib/actions'
 import { toSlug } from '@/lib/format'
 import { taskItemsKey } from '@/lib/swr-keys'
@@ -22,6 +23,7 @@ export function TaskQuickAdd({
 } = {}) {
   const streams = useStreams()
   const { mutate } = useSWRConfig()
+  const { token } = useCurrentUser()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [selectedStream, setSelectedStream] = useState<string | null>(
@@ -65,7 +67,11 @@ export function TaskQuickAdd({
         const formData = new FormData()
         formData.append('file', file)
         try {
-          const result = await ingestTaskInput(slug, formData)
+          const result = await ingestTaskInput(
+            slug,
+            formData,
+            token ?? undefined,
+          )
           if (result.quality === 'poor' || result.quality === 'empty') {
             toastWarning(
               `"${file.name.length > 20 ? file.name.slice(0, 20) + '…' : file.name}" not optimized for AI comprehension`,
