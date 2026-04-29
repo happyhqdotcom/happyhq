@@ -123,7 +123,6 @@ function InputRow({
         iconSlot={
           input.favicon ? (
             <>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={input.favicon}
                 alt=""
