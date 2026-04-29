@@ -42,7 +42,9 @@ export const config = {
      * - /_next/static (static file serving)
      * - /_next/image (image optimization)
      * - /favicon.ico (browser favicon request)
+     * - common image extensions in /public (so the unauthenticated login
+     *   page can load its own logo and other static art)
      */
-    '/((?!login|setup|api/health|_next/static|_next/image|favicon\\.ico|.*\\.png$).*)',
+    '/((?!login|setup|api/health|_next/static|_next/image|favicon\\.ico|.*\\.(png|svg|jpg|jpeg|webp|gif|ico)$).*)',
   ],
 }
