@@ -354,7 +354,7 @@ HappyHQ is the product. It's open source (MIT or similar) — streams, tasks, le
 | `STRIPE_PRICE_ID_PRO`         | When EE                  | Stripe price ID for Pro tier                                                        |
 | `STRIPE_PRICE_ID_MAX`         | When EE                  | Stripe price ID for Max tier                                                        |
 | `CLOUDFLARE_AI_GATEWAY_URL`   | When EE + local/Electron | AI Gateway endpoint for API key delivery                                            |
-| `NEXT_PUBLIC_APP_URL`         | Optional                 | App URL for Stripe Checkout redirect URLs (defaults to `http://localhost:3000`)     |
+| `APP_URL`                     | Optional                 | App URL for Stripe Checkout redirect URLs (defaults to `http://localhost:3000`)     |
 
 For local dev with billing, use Stripe test mode keys. Webhooks are handled by the separate private `billing` service repo (Cloudflare Worker) — clone that repo and run it locally with `pnpm dev`, then use `stripe listen --forward-to localhost:8787/webhook/stripe`.
 
