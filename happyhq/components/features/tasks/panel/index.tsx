@@ -391,7 +391,6 @@ export function TaskPanel({
             <AttachmentList
               inputs={visibleInputs}
               readOnly={false}
-              hideDropZone={hasRun}
               pendingFiles={pendingFiles}
               onAdd={() => fileInputRef.current?.click()}
               onDelete={(name) => handleDeleteInput(name)}

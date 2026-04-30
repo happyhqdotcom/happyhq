@@ -9,7 +9,6 @@ import { useTaskContentData, useTaskMutate } from '../hooks/use-task-swr'
 
 export function AttachmentsSection() {
   const content = useTaskContentData()
-  const hasRun = !!content?.run?.status
   const taskSlug = useTaskStore((s) => s.taskSlug)
   const refresh = useTaskMutate()
 
@@ -46,7 +45,6 @@ export function AttachmentsSection() {
       <AttachmentList
         inputs={visibleInputs}
         readOnly={false}
-        hideDropZone={hasRun}
         pendingFiles={pendingFiles}
         onAdd={() => fileInputRef.current?.click()}
         onDelete={(name) => handleDeleteInput(name)}
