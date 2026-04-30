@@ -1,32 +1,57 @@
 /**
  * Map raw SDK tool names to human-friendly labels.
  * Applied at render time — presentation only, no data transformation.
+ *
+ * Voice: gerund ("Reading", "Delegating") so the progress strip reads as one
+ * "what's happening now" feed. Agent SDK upgrades regularly add new tool names;
+ * unmapped tools fall back to a generic gerund and emit a one-time warning so
+ * the next leak surfaces in logs instead of in the UI.
  */
 
+import { reportError } from '@/lib/report-error'
 import type { ToolCall } from './types'
 
+const FALLBACK_LABEL = 'Working'
+
 const TOOL_LABELS: Record<string, string> = {
+  // File operations
   Read: 'Reading',
-  Glob: 'Searching files',
-  Grep: 'Finding',
   Write: 'Writing',
   Edit: 'Updating',
-  Task: 'Working',
-  TodoWrite: 'To Dos',
-  TaskOutput: 'Checking results',
+  NotebookEdit: 'Editing notebook',
+
+  // Search
+  Glob: 'Searching files',
+  Grep: 'Finding',
   WebSearch: 'Searching web',
   WebFetch: 'Fetching page',
-  ProcessSample: 'Updating Samples',
-  EnterLearningMode: 'Ready to learn',
-  ExitLearningMode: 'Done learning',
+
+  // Delegation — what the user gets, not the tool's internal name
+  Task: 'Delegating',
+  Agent: 'Delegating',
+  ToolSearch: 'Looking up tools',
+
+  // Planning + run state
+  TodoWrite: 'Tracking todos',
+  TaskOutput: 'Checking results',
+
+  // HappyHQ MCP tools
+  ProcessSample: 'Updating samples',
+  EnterLearningMode: 'Entering learning mode',
+  ExitLearningMode: 'Exiting learning mode',
 }
 
 /** Tools that have their own UI treatment and should not appear as progress rows. */
 const HIDDEN_TOOLS = new Set(['AskUserQuestion', 'CreateTask'])
 
+const warnedUnmappedTools = new Set<string>()
+
 /**
  * Derive a human-friendly label from a raw SDK tool name.
  * Returns null for tools that should be hidden (they have dedicated UI cards).
+ *
+ * Unmapped non-Bash tools return a generic fallback label and report once per
+ * session so a missing mapping shows up in logs, not as raw SDK names in the UI.
  */
 export function getToolLabel(toolName: string): string | null {
   if (HIDDEN_TOOLS.has(toolName)) return null
@@ -43,10 +68,17 @@ export function getToolLabel(toolName: string): string | null {
       if (cmd === 'git diff') return 'Checking changes'
       return `Running ${cmd}`
     }
-    return 'Working'
+    return FALLBACK_LABEL
   }
 
-  return TOOL_LABELS[toolName] ?? toolName
+  const mapped = TOOL_LABELS[toolName]
+  if (mapped) return mapped
+
+  if (!warnedUnmappedTools.has(toolName)) {
+    warnedUnmappedTools.add(toolName)
+    reportError('client.unmapped_tool', { toolName })
+  }
+  return FALLBACK_LABEL
 }
 
 /** Extract the last path segment (filename) from a file path. */
@@ -107,7 +139,8 @@ function getRawDetail(toolCall: ToolCall): string | null {
       return slug || null
     }
 
-    case 'Task': {
+    case 'Task':
+    case 'Agent': {
       const desc = input.description as string | undefined
       return desc || null
     }
