@@ -4,12 +4,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // Mock browser APIs missing from jsdom
 Element.prototype.scrollIntoView = vi.fn()
 class MockResizeObserver {
+  constructor(_cb: ResizeObserverCallback) {}
   observe() {}
   unobserve() {}
   disconnect() {}
 }
 globalThis.ResizeObserver = MockResizeObserver as any
 class MockIntersectionObserver {
+  constructor(
+    _cb: IntersectionObserverCallback,
+    _opts?: IntersectionObserverInit,
+  ) {}
   observe() {}
   unobserve() {}
   disconnect() {}

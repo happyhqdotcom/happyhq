@@ -119,6 +119,7 @@ vi.mock('./messages/chat-message-list', () => ({
 
 // jsdom lacks ResizeObserver
 class MockResizeObserver {
+  constructor(_cb: ResizeObserverCallback) {}
   observe() {}
   unobserve() {}
   disconnect() {}
