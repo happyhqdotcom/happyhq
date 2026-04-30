@@ -123,6 +123,9 @@ export function useRunActivity(isActive: boolean): RunActivityState {
     toolName: string
     toolUseId: string
   } | null>(null)
+  // Per-subagent start timestamps — used to compute elapsedSeconds on progress
+  // events, since subagent_event payloads don't carry elapsed time.
+  const subagentStartedAtRef = useRef<Map<string, number>>(new Map())
 
   useEffect(() => {
     if (!isActive) {
@@ -139,6 +142,7 @@ export function useRunActivity(isActive: boolean): RunActivityState {
       confirmedRunningRef.current.clear()
       blockLineCountRef.current.clear()
       lastToolStepRef.current = null
+      subagentStartedAtRef.current.clear()
       return
     }
 
@@ -428,6 +432,75 @@ export function useRunActivity(isActive: boolean): RunActivityState {
                 return next
               })
             }
+          } else if (event.type === 'subagent_event') {
+            // Subagents (Task tool) emit lifecycle events while running.
+            // Without surfacing them here the activity panel goes silent
+            // for the duration of each subagent's work — see issue #26.
+            const subagentStepId = `subagent:${event.taskId}`
+
+            if (event.subtype === 'started') {
+              subagentStartedAtRef.current.set(event.taskId, Date.now())
+              setActivitySteps((prev) => {
+                if (prev.some((s) => s.toolUseId === subagentStepId)) {
+                  return prev
+                }
+                return [
+                  ...prev.map((s) =>
+                    s.toolUseId === THINKING_ID ? { ...s, isActive: false } : s,
+                  ),
+                  {
+                    toolUseId: subagentStepId,
+                    toolName: '__subagent__',
+                    label: event.description
+                      ? `Delegating: ${event.description}`
+                      : 'Delegating',
+                    detail: null,
+                    linesAdded: null,
+                    elapsedSeconds: 0,
+                    isActive: true,
+                  },
+                ]
+              })
+            } else if (event.subtype === 'progress') {
+              const startedAt = subagentStartedAtRef.current.get(event.taskId)
+              const elapsed = startedAt
+                ? Math.floor((Date.now() - startedAt) / 1000)
+                : 0
+              const detail = event.description ?? event.lastToolName ?? null
+              setStatusLine(
+                `${event.description ?? event.lastToolName ?? 'Subagent'}... (${elapsed}s)`,
+              )
+              setActivitySteps((prev) =>
+                prev.map((s) =>
+                  s.toolUseId === subagentStepId
+                    ? {
+                        ...s,
+                        detail: detail ?? s.detail,
+                        elapsedSeconds: Math.max(s.elapsedSeconds, elapsed),
+                        isActive: true,
+                      }
+                    : s,
+                ),
+              )
+            } else if (event.subtype === 'completed') {
+              const startedAt = subagentStartedAtRef.current.get(event.taskId)
+              const elapsed = startedAt
+                ? Math.floor((Date.now() - startedAt) / 1000)
+                : 0
+              subagentStartedAtRef.current.delete(event.taskId)
+              setActivitySteps((prev) =>
+                prev.map((s) =>
+                  s.toolUseId === subagentStepId
+                    ? {
+                        ...s,
+                        detail: event.summary ?? s.detail,
+                        elapsedSeconds: Math.max(s.elapsedSeconds, elapsed),
+                        isActive: false,
+                      }
+                    : s,
+                ),
+              )
+            }
           } else if (event.type === 'task_content_changed') {
             setLastContentChangeAt(Date.now())
           } else if (event.type === 'result') {
@@ -439,6 +512,7 @@ export function useRunActivity(isActive: boolean): RunActivityState {
             confirmedRunningRef.current.clear()
             blockLineCountRef.current.clear()
             lastToolStepRef.current = null
+            subagentStartedAtRef.current.clear()
           }
         }
       } catch (err) {
