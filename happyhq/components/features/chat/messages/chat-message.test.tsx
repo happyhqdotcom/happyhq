@@ -191,6 +191,51 @@ describe('ChatMessageComponent', () => {
     expect(screen.getByText('Show more')).not.toBeNull()
   })
 
+  it('caps visible file pills with a "+N more" toggle so the sticky block stays compact', () => {
+    render(
+      <ChatMessageComponent
+        message={makeMessage({
+          role: 'user',
+          content: '',
+          files: ['a.pdf', 'b.pdf', 'c.pdf', 'd.pdf', 'e.pdf'],
+        })}
+      />,
+    )
+
+    // Only the first 3 pill filenames are visible up front…
+    expect(screen.getByText('a.pdf')).not.toBeNull()
+    expect(screen.getByText('b.pdf')).not.toBeNull()
+    expect(screen.getByText('c.pdf')).not.toBeNull()
+    expect(screen.queryByText('d.pdf')).toBeNull()
+    expect(screen.queryByText('e.pdf')).toBeNull()
+
+    // …with a "+N more" affordance for the rest.
+    fireEvent.click(screen.getByText('+2 more'))
+    expect(screen.getByText('d.pdf')).not.toBeNull()
+    expect(screen.getByText('e.pdf')).not.toBeNull()
+
+    fireEvent.click(screen.getByText('Show fewer'))
+    expect(screen.queryByText('d.pdf')).toBeNull()
+    expect(screen.queryByText('e.pdf')).toBeNull()
+  })
+
+  it('renders all pills inline when the count is at or below the visible cap', () => {
+    render(
+      <ChatMessageComponent
+        message={makeMessage({
+          role: 'user',
+          content: '',
+          files: ['a.pdf', 'b.pdf', 'c.pdf'],
+        })}
+      />,
+    )
+
+    expect(screen.getByText('a.pdf')).not.toBeNull()
+    expect(screen.getByText('b.pdf')).not.toBeNull()
+    expect(screen.getByText('c.pdf')).not.toBeNull()
+    expect(screen.queryByText(/more$/)).toBeNull()
+  })
+
   it('toggles between "Show more" and "Show less" on click', () => {
     render(
       <ChatMessageComponent

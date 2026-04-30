@@ -34,20 +34,41 @@ export function ChatMessageComponent({ message }: ChatMessageProps) {
   )
 }
 
+const VISIBLE_FILE_PILL_LIMIT = 3
+
 function UserMessage({ message }: { message: ChatMessage }) {
   const hasFiles = message.files && message.files.length > 0
   const hasContent = message.content.length > 0
   const isLong = message.content.length > 300
   const [expanded, setExpanded] = useState(false)
+  const [pillsExpanded, setPillsExpanded] = useState(false)
+
+  const fileCount = message.files?.length ?? 0
+  const pillsOverflow = fileCount > VISIBLE_FILE_PILL_LIMIT
+  const visibleFiles =
+    pillsOverflow && !pillsExpanded
+      ? message.files!.slice(0, VISIBLE_FILE_PILL_LIMIT)
+      : (message.files ?? [])
 
   return (
     <div className="flex flex-col gap-1">
       {/* File pills */}
       {hasFiles && (
-        <div className="flex max-w-[85%] flex-wrap justify-start gap-1.5">
-          {message.files!.map((filename) => (
+        <div className="flex max-w-[85%] flex-wrap items-center justify-start gap-1.5">
+          {visibleFiles.map((filename) => (
             <FilePill key={filename} filename={filename} />
           ))}
+          {pillsOverflow && (
+            <button
+              type="button"
+              onClick={() => setPillsExpanded((prev) => !prev)}
+              className="text-muted-foreground/80 hover:text-muted-foreground cursor-pointer rounded-xl bg-white px-2.5 py-2 text-xs ring-1 ring-zinc-950/5 transition-colors"
+            >
+              {pillsExpanded
+                ? 'Show fewer'
+                : `+${fileCount - VISIBLE_FILE_PILL_LIMIT} more`}
+            </button>
+          )}
         </div>
       )}
 
