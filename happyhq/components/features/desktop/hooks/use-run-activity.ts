@@ -451,7 +451,9 @@ export function useRunActivity(isActive: boolean): RunActivityState {
                   {
                     toolUseId: subagentStepId,
                     toolName: '__subagent__',
-                    label: event.description ?? 'Subagent',
+                    label: event.description
+                      ? `Delegating: ${event.description}`
+                      : 'Delegating',
                     detail: null,
                     linesAdded: null,
                     elapsedSeconds: 0,

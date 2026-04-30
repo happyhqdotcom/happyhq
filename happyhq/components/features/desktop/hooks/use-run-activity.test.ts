@@ -52,7 +52,7 @@ describe('useRunActivity subagent events', () => {
     })
 
     const step = result.current.activitySteps[0]
-    expect(step.label).toBe('Drafting')
+    expect(step.label).toBe('Delegating: Drafting')
     expect(step.isActive).toBe(true)
   })
 
@@ -78,7 +78,7 @@ describe('useRunActivity subagent events', () => {
 
     await waitFor(() => {
       const step = result.current.activitySteps.find(
-        (s) => s.label === 'Explore',
+        (s) => s.label === 'Delegating: Explore',
       )
       expect(step?.detail).toBe('Read')
       expect(step?.isActive).toBe(true)
@@ -110,7 +110,7 @@ describe('useRunActivity subagent events', () => {
 
     await waitFor(() => {
       const step = result.current.activitySteps.find(
-        (s) => s.label === 'Drafting',
+        (s) => s.label === 'Delegating: Drafting',
       )
       expect(step?.isActive).toBe(false)
       expect(step?.detail).toBe('Wrote 2 files')
