@@ -32,7 +32,7 @@ export function WritingPreviewCard({ preview }: WritingPreviewProps) {
   }
 
   return (
-    <div className="mt-2 overflow-hidden rounded-lg border border-zinc-200/60 bg-zinc-50/50">
+    <div className="overflow-hidden rounded-lg border border-zinc-200/60 bg-zinc-50/50">
       {hasToolProgress && (
         <div className="space-y-1 px-3 py-2">
           {preview.subagentToolProgress!.map((step, i) => (

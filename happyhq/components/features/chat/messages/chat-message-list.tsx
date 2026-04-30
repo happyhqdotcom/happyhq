@@ -11,6 +11,28 @@ interface ChatMessageListProps {
   renderCreateTask?: (tc: ToolCall, msg: ChatMessage) => React.ReactNode
 }
 
+type MessageKind = 'user' | 'thinking' | 'text' | 'tool'
+
+/**
+ * Classify a message for inter-message spacing in the conversation.
+ *
+ * The kind reflects what visually *leads* the message: ThinkingIndicator
+ * renders before tool progress and content inside an assistant message, so
+ * any message with non-empty thinking blocks is 'thinking'. This makes a
+ * tool → thinking transition a kind change (pt-5), preventing the case
+ * where a thinking message after a long run of tool rows visually glued
+ * onto the bottom of the strip with only pt-2 of separation.
+ *
+ * Whitespace-only thinking blocks are ignored, mirroring the same check
+ * inside ThinkingIndicator that hides empty blocks from rendering.
+ */
+export function kindOfMessage(m: ChatMessage): MessageKind {
+  if (m.role === 'user') return 'user'
+  if (m.thinkingBlocks?.some((b) => b.text.trim().length > 0)) return 'thinking'
+  if (m.content) return 'text'
+  return 'tool'
+}
+
 /**
  * Group messages into conversation turns. Each turn starts with a user message
  * and includes all subsequent assistant messages until the next user message.
@@ -51,13 +73,8 @@ export const ChatMessageList = memo(function ChatMessageList({
             {turn.map((msg, i) => {
               const isFirst = i === 0
               const prev = i > 0 ? turn[i - 1] : null
-              // Determine the "kind" of each message for spacing:
-              // text = has content, tool = tool-only, user = user message
-              const kindOf = (m: ChatMessage) =>
-                m.role === 'user' ? 'user' : m.content ? 'text' : 'tool'
-
-              const kind = kindOf(msg)
-              const prevKind = prev ? kindOf(prev) : null
+              const kind = kindOfMessage(msg)
+              const prevKind = prev ? kindOfMessage(prev) : null
               const isFirstTurn = turn === turns[0]
 
               // First of a new kind gets full spacing (pt-5),

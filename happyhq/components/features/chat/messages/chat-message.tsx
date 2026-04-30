@@ -109,7 +109,7 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
       )}
 
       {message.content ? (
-        <div className="prose-chat-code prose prose-headings:font-semibold prose-strong:font-semibold prose-p:m-[0.25rem_0_0.5rem_0] prose-p:leading-[1.7] prose-ul:pl-6 prose-ol:pl-6 prose-li:my-1 prose-li:marker:text-zinc-500 max-w-none text-[15px] text-zinc-900 [&_li_p]:my-1">
+        <div className="prose-chat-code prose prose-headings:font-semibold prose-strong:font-semibold prose-p:m-[0.25rem_0_0.5rem_0] prose-p:leading-[1.7] prose-ul:pl-6 prose-ol:pl-6 prose-li:my-1 prose-li:marker:text-zinc-500 max-w-none text-[15px] text-zinc-900 [&_li_p]:my-1 [&>p:first-child]:mt-0 [&>p:last-child]:mb-0">
           <Markdown remarkPlugins={[remarkGfm]}>{animatedContent}</Markdown>
         </div>
       ) : null}
