@@ -282,7 +282,7 @@ export function ChatWindow({ id, canvasRef }: WindowComponentProps) {
           <div
             ref={scrollRef}
             data-chat-surface="window"
-            className="flex-1 overflow-y-auto px-4 pt-2 pb-4"
+            className="flex-1 overflow-y-auto px-4 pb-4"
           >
             <div className="w-full space-y-3">
               <ChatMessageList messages={messages} />
