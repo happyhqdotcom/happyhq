@@ -67,6 +67,7 @@ Different shape from the build loop. Reads GitHub issues, opens PRs.
 ```bash
 ./bugs.sh                  # triage everything, then fix up to 3 eligible bugs
 ./bugs.sh --triage-only    # just label/comment, don't touch code
+./bugs.sh --fix-only       # skip Phase 1, run the fix loop on the existing queue
 ./bugs.sh --issue 42       # skip triage, attempt one fix on #42
 ./bugs.sh --dry-run        # Phase 1 preview only (no writes); add --issue <#> to preview a fix
 ```
@@ -90,6 +91,7 @@ Edit `bugs-rubric.md` when Ralphie misjudges. Same model as `specs/` for the bui
 | `./loop.sh 20`                      | Build mode, max 20 iterations             |
 | `./bugs.sh`                         | Triage + fix up to 3 bugs                 |
 | `./bugs.sh --triage-only`           | Just triage, no code                      |
+| `./bugs.sh --fix-only`              | Skip triage, fix loop on existing queue   |
 | `./bugs.sh --issue <#>`             | Fix one specific issue                    |
 | `./bugs.sh --dry-run`               | Phase 1 preview only, no writes           |
 

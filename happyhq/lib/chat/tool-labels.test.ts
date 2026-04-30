@@ -1,31 +1,77 @@
-import { describe, expect, it } from 'vitest'
+import { reportError } from '@/lib/report-error'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getToolDetail, getToolLabel } from './tool-labels'
 import type { ToolCall } from './types'
+
+vi.mock('@/lib/report-error', () => ({
+  reportError: vi.fn(),
+}))
 
 // --- getToolLabel ---
 
 describe('getToolLabel', () => {
+  beforeEach(() => {
+    vi.mocked(reportError).mockClear()
+  })
+
   it('returns null for hidden tools (they have dedicated UI cards)', () => {
     expect(getToolLabel('AskUserQuestion')).toBeNull()
     expect(getToolLabel('CreateTask')).toBeNull()
   })
 
-  it('maps known tool names to human-friendly labels', () => {
+  it('maps known tool names to gerund-voiced labels', () => {
     expect(getToolLabel('Read')).toBe('Reading')
     expect(getToolLabel('Glob')).toBe('Searching files')
     expect(getToolLabel('Write')).toBe('Writing')
     expect(getToolLabel('Edit')).toBe('Updating')
-    expect(getToolLabel('Task')).toBe('Working')
+    expect(getToolLabel('NotebookEdit')).toBe('Editing notebook')
     expect(getToolLabel('Grep')).toBe('Finding')
-    expect(getToolLabel('TodoWrite')).toBe('To Dos')
     expect(getToolLabel('TaskOutput')).toBe('Checking results')
     expect(getToolLabel('WebSearch')).toBe('Searching web')
     expect(getToolLabel('WebFetch')).toBe('Fetching page')
-    expect(getToolLabel('ProcessSample')).toBe('Updating Samples')
   })
 
-  it('returns the tool name as-is for unknown non-Bash tools', () => {
-    expect(getToolLabel('SomeCustomTool')).toBe('SomeCustomTool')
+  it('uses an action voice for the labels the issue flagged as off-style', () => {
+    // Was: 'To Dos' (noun). Now: gerund matching siblings.
+    expect(getToolLabel('TodoWrite')).toBe('Tracking todos')
+    // Was: 'Working' (too generic). Now: conveys what the user gets.
+    expect(getToolLabel('Task')).toBe('Delegating')
+    // Was: 'Updating Samples' (mixed case vs siblings).
+    expect(getToolLabel('ProcessSample')).toBe('Updating samples')
+    // Were: 'Ready to learn' / 'Done learning' (statements, mood mismatch).
+    expect(getToolLabel('EnterLearningMode')).toBe('Entering learning mode')
+    expect(getToolLabel('ExitLearningMode')).toBe('Exiting learning mode')
+  })
+
+  it('maps the post-SDK-upgrade tool names that previously leaked through', () => {
+    // Issue #30: raw "Agent" and "ToolSearch" were appearing in the strip.
+    expect(getToolLabel('Agent')).toBe('Delegating')
+    expect(getToolLabel('ToolSearch')).toBe('Looking up tools')
+  })
+
+  describe('unmapped tool fallback', () => {
+    it('returns a generic label instead of the raw SDK name', () => {
+      // Was: returned 'SomeFutureSdkTool' verbatim, leaking SDK identifiers
+      // into the user-facing progress strip.
+      expect(getToolLabel('SomeFutureSdkTool_unique_a')).toBe('Working')
+    })
+
+    it('reports the unmapped name once per session, deduped', () => {
+      const name = 'SomeFutureSdkTool_unique_b'
+      getToolLabel(name)
+      getToolLabel(name)
+      getToolLabel(name)
+      expect(reportError).toHaveBeenCalledTimes(1)
+      expect(reportError).toHaveBeenCalledWith('client.unmapped_tool', {
+        toolName: name,
+      })
+    })
+
+    it('does not report for mapped tools', () => {
+      getToolLabel('Read')
+      getToolLabel('Agent')
+      expect(reportError).not.toHaveBeenCalled()
+    })
   })
 
   describe('Bash tool patterns', () => {
@@ -42,7 +88,7 @@ describe('getToolLabel', () => {
       expect(getToolLabel('Bash(ls:*)')).toBe('Running ls')
     })
 
-    it('returns "Working" for bare Bash with no command pattern', () => {
+    it('returns the generic fallback for bare Bash with no command pattern', () => {
       expect(getToolLabel('Bash')).toBe('Working')
     })
   })
@@ -118,15 +164,19 @@ describe('getToolDetail', () => {
     })
   })
 
-  describe('Task tool', () => {
-    it('returns the task description', () => {
+  describe('Task / Agent subagent tools', () => {
+    it('returns the description for both Task and Agent invocations', () => {
       expect(
         getToolDetail(toolCall('Task', { description: 'Read all specs' })),
       ).toBe('Read all specs')
+      expect(
+        getToolDetail(toolCall('Agent', { description: 'Review the diff' })),
+      ).toBe('Review the diff')
     })
 
     it('returns null when description is absent', () => {
       expect(getToolDetail(toolCall('Task', {}))).toBeNull()
+      expect(getToolDetail(toolCall('Agent', {}))).toBeNull()
     })
   })
 
@@ -203,14 +253,6 @@ describe('getToolDetail', () => {
       )
     })
 
-    it('truncates long commands at 50 characters', () => {
-      const longCmd = 'a'.repeat(60)
-      const result = getToolDetail(
-        toolCall('Bash(cmd:*)', { command: longCmd }),
-      )
-      expect(result).toBe('a'.repeat(50) + '...')
-    })
-
     it('returns null when neither description nor command is present', () => {
       expect(getToolDetail(toolCall('Bash(cmd:*)', {}))).toBeNull()
     })
@@ -218,5 +260,63 @@ describe('getToolDetail', () => {
 
   it('returns null for unknown tools', () => {
     expect(getToolDetail(toolCall('UnknownTool', { foo: 'bar' }))).toBeNull()
+  })
+
+  // Regression for #32: long detail strings forced the chat layout wider than
+  // its container. Detail strings must be capped on the way out so neither the
+  // DOM nor accessibility tree carries unbounded values.
+  describe('detail length cap (issue #32)', () => {
+    const cap = 60
+    const longValue = 'x'.repeat(cap + 50)
+
+    it('caps Bash command details', () => {
+      const result = getToolDetail(
+        toolCall('Bash(cmd:*)', { command: longValue }),
+      )
+      expect(result).not.toBeNull()
+      expect(result!.length).toBeLessThanOrEqual(cap + 3)
+      expect(result!.endsWith('...')).toBe(true)
+    })
+
+    it('caps Bash description details', () => {
+      const result = getToolDetail(
+        toolCall('Bash(cmd:*)', { description: longValue }),
+      )
+      expect(result!.length).toBeLessThanOrEqual(cap + 3)
+      expect(result!.endsWith('...')).toBe(true)
+    })
+
+    it('caps Glob patterns', () => {
+      const result = getToolDetail(toolCall('Glob', { pattern: longValue }))
+      expect(result!.length).toBeLessThanOrEqual(cap + 3)
+    })
+
+    it('caps Grep patterns (including the surrounding quotes)', () => {
+      const result = getToolDetail(toolCall('Grep', { pattern: longValue }))
+      expect(result!.length).toBeLessThanOrEqual(cap + 3)
+    })
+
+    it('caps WebSearch queries', () => {
+      const result = getToolDetail(toolCall('WebSearch', { query: longValue }))
+      expect(result!.length).toBeLessThanOrEqual(cap + 3)
+    })
+
+    it('caps Task descriptions', () => {
+      const result = getToolDetail(toolCall('Task', { description: longValue }))
+      expect(result!.length).toBeLessThanOrEqual(cap + 3)
+    })
+
+    it('caps ProcessSample slugs', () => {
+      const result = getToolDetail(
+        toolCall('ProcessSample', { slug: longValue }),
+      )
+      expect(result!.length).toBeLessThanOrEqual(cap + 3)
+    })
+
+    it('leaves short values untouched', () => {
+      expect(getToolDetail(toolCall('Glob', { pattern: '**/*.tsx' }))).toBe(
+        '**/*.tsx',
+      )
+    })
   })
 })

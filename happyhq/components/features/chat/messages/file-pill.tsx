@@ -23,14 +23,17 @@ export function FilePill({ filename }: { filename: string }) {
   const { color, label, icon: Icon } = getFileInfo(filename)
 
   return (
-    <div className="flex items-center rounded-xl bg-white px-2.5 py-2 ring-1 ring-zinc-950/5">
+    <div className="flex max-w-[200px] items-center rounded-xl bg-white px-2.5 py-2 ring-1 ring-zinc-950/5">
       <div
         className={`mr-2 flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${color}`}
       >
         <Icon size={12} className="text-white" />
       </div>
       <div className="flex min-w-0 flex-col">
-        <span className="truncate text-xs font-medium text-zinc-900">
+        <span
+          className="truncate text-xs font-medium text-zinc-900"
+          title={filename}
+        >
           {filename}
         </span>
         <span className="text-[11px] leading-tight text-zinc-400">{label}</span>

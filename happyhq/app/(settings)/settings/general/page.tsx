@@ -39,8 +39,8 @@ export default function GeneralPage() {
 
       <SettingsSection title="Appearance">
         <SettingsRow
-          label="Home experience"
-          description="Choose the vibe for your home screen"
+          label="Chat experience"
+          description="Choose the vibe for your chat screen"
           className="flex-col items-start"
         >
           <HomeBrandingPicker
