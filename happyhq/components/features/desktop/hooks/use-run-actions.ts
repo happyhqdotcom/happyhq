@@ -1,6 +1,7 @@
 'use client'
 
 import { toastError } from '@/components/common/ui/sonner'
+import { useBillingData } from '@/components/features/sidebar/atoms/usage-indicator'
 import type { DesktopData, RunInfo, TaskContent } from '@/lib/fs/types'
 import { invalidateStream } from '@/lib/swr-helpers'
 import { desktopDataKey, taskContentKey } from '@/lib/swr-keys'
@@ -40,6 +41,15 @@ export function useRunActions(
   // Without this, a quick Continue→Stop sequence can race: stop arrives at
   // the server before start, finds no active run, and silently no-ops.
   const pendingStartRef = useRef<Promise<Response> | null>(null)
+
+  // Client-side gate: when the browser already knows runtime is exhausted,
+  // short-circuit to the upgrade prompt so the UI never flickers through
+  // an optimistic "planning"/"working" status before the server returns 403.
+  // Returns null when billing data isn't available (CE / no user) — in that
+  // case the server-side check in /api/run/start remains the source of truth.
+  const billingData = useBillingData()
+  const isRuntimeExhausted =
+    billingData !== null && billingData.remainingMinutes <= 0
 
   // Track previous isRunActive to detect transition to false
   const prevActiveRef = useRef(isRunActive)
@@ -126,6 +136,10 @@ export function useRunActions(
   )
 
   const approve = useCallback(async () => {
+    if (isRuntimeExhausted) {
+      setUpgradeNeeded(true)
+      return
+    }
     setIsLoading(true)
     setError(null)
     setUpgradeNeeded(false)
@@ -168,13 +182,17 @@ export function useRunActions(
       pendingStartRef.current = null
       setIsLoading(false)
     }
-  }, [streamSlug, taskSlug, optimisticRun, token])
+  }, [streamSlug, taskSlug, optimisticRun, token, isRuntimeExhausted])
 
   // Resume from stopped — same endpoint as approve, but sends
   // resume:true so the server preserves working dir instead of cleaning up.
   // Accepts optional mode for resuming planning vs working.
   const continue_ = useCallback(
     async (continueMode: 'planning' | 'working' = 'working') => {
+      if (isRuntimeExhausted) {
+        setUpgradeNeeded(true)
+        return
+      }
       setIsLoading(true)
       setError(null)
       optimisticRun(continueMode)
@@ -216,10 +234,14 @@ export function useRunActions(
         setIsLoading(false)
       }
     },
-    [streamSlug, taskSlug, optimisticRun, token],
+    [streamSlug, taskSlug, optimisticRun, token, isRuntimeExhausted],
   )
 
   const start = useCallback(async () => {
+    if (isRuntimeExhausted) {
+      setUpgradeNeeded(true)
+      return
+    }
     setIsStopping(false)
     setIsLoading(true)
     setError(null)
@@ -263,7 +285,7 @@ export function useRunActions(
       pendingStartRef.current = null
       setIsLoading(false)
     }
-  }, [streamSlug, taskSlug, optimisticRun, token])
+  }, [streamSlug, taskSlug, optimisticRun, token, isRuntimeExhausted])
 
   const stop = useCallback(async () => {
     setIsStopping(true)
