@@ -13,7 +13,12 @@ import {
 } from '@/lib/file-types'
 import type { InputQuality } from '@/lib/fs/assess-quality.server'
 import { assessTextQuality } from '@/lib/fs/assess-quality.server'
-import { streamPath, taskPath, validatePath } from '@/lib/fs/paths'
+import {
+  assertSafeSessionId,
+  streamPath,
+  taskPath,
+  validatePath,
+} from '@/lib/fs/paths'
 import { readTextFile } from '@/lib/fs/read.server'
 import { ensureDirectory, writeTextFile } from '@/lib/fs/write.server'
 import { commitGitState } from '@/lib/git/sync.server'
@@ -41,6 +46,8 @@ export async function uploadFile(
   token?: string,
   streamSlug?: string | null,
 ): Promise<string> {
+  assertSafeSessionId(sessionId)
+
   const file = formData.get('file') as File
   if (!file) {
     throw new Error('No file provided in FormData')
@@ -205,6 +212,7 @@ export async function setupTaskFromChat(
   textContext: string,
   files: string[],
 ): Promise<void> {
+  assertSafeSessionId(sessionId)
   const taskDir = taskPath(taskSlug)
 
   await Promise.all([

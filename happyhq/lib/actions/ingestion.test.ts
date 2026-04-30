@@ -424,6 +424,15 @@ describe('uploadFile', () => {
     expect(mockWriteFile).not.toHaveBeenCalled()
   })
 
+  it('rejects a malformed session id (path traversal attempt) before any filesystem call', async () => {
+    const fd = makeFormData('a.pdf', 'pdf')
+    await expect(uploadFile('../../etc', fd)).rejects.toThrow(
+      'Invalid session id',
+    )
+    expect(mockMkdir).not.toHaveBeenCalled()
+    expect(mockWriteFile).not.toHaveBeenCalled()
+  })
+
   it('records the original filename in chat.json under uploads[slug] so reloaded chat history can render the right file pill type', async () => {
     mockMkdir.mockResolvedValue(undefined)
     mockWriteFile.mockResolvedValue(undefined)

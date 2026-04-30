@@ -37,3 +37,15 @@ export function validatePath(targetPath: string): void {
     throw new Error(`Path ${targetPath} is outside ~/HappyHQ/`)
   }
 }
+
+/**
+ * Reject sessionIds that aren't a plain UUID-shaped string. Chat session IDs
+ * are minted by `crypto.randomUUID()` on the client, so anything else is a
+ * malformed (or hostile) request — refuse before the value reaches `path.join`.
+ */
+const SESSION_ID_RE = /^[a-zA-Z0-9-]{1,64}$/
+export function assertSafeSessionId(sessionId: string): void {
+  if (!SESSION_ID_RE.test(sessionId)) {
+    throw new Error('Invalid session id')
+  }
+}
