@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const useTaskStatus = vi.hoisted(() => vi.fn())
@@ -44,5 +44,14 @@ describe('TaskSetupChecklist', () => {
     const { container } = render(<TaskSetupChecklist />)
 
     expect(container.firstChild).toBeNull()
+  })
+
+  it('renders one actionable step per setup field when the task is ready', async () => {
+    setupReady()
+    const { TaskSetupChecklist } = await import('./task-setup-checklist')
+
+    render(<TaskSetupChecklist />)
+
+    expect(screen.getAllByRole('button')).toHaveLength(3)
   })
 })
