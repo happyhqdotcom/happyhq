@@ -16,7 +16,6 @@ import { useBillingData } from '@/components/features/billing/use-billing-data'
 import {
   useActiveTask,
   useDesktopMutate,
-  useStreamTitle,
   useTaskContent,
   useTaskStatus,
 } from '@/components/features/desktop/hooks/use-desktop-data'
@@ -89,7 +88,6 @@ export function TaskPanel({
   const { mutate } = useSWRConfig()
   const taskContent = useTaskContent()
   const streamSlug = useStreamSlug()
-  const streamTitle = useStreamTitle()
   const runActions = useRunActions()
   const refresh = useDesktopMutate()
   const streams = useStreams()

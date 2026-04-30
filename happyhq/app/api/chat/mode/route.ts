@@ -4,7 +4,6 @@ import { log } from '@/lib/log.server'
 import path from 'path'
 
 interface ModeRequest {
-  streamSlug?: string
   sessionId: string
   mode: 'general' | 'learning'
   modeStreamSlug?: string
@@ -25,7 +24,7 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { streamSlug, sessionId, mode, modeStreamSlug } = body
+  const { sessionId, mode, modeStreamSlug } = body
   if (!sessionId || (mode !== 'general' && mode !== 'learning')) {
     return Response.json({ error: 'Missing required fields' }, { status: 400 })
   }

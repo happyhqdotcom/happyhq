@@ -7,7 +7,7 @@ import { useCurrentUser } from '@/lib/accounts/hooks'
 import { ingestTaskInput } from '@/lib/actions'
 import type { TaskItem } from '@/lib/fs/types'
 import { useTaskStore } from '@/stores/taskStore'
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import { useTaskData } from '../hooks/use-task-data'
 import { useTaskContentData, useTaskMutate } from '../hooks/use-task-swr'
 import { AttachmentsSection } from './attachments-section'
@@ -53,7 +53,6 @@ export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
   const isIdle = !runStatus
   const isPlanning = runStatus === 'planning'
   const isWorking = runStatus === 'working'
-  const isFinished = runStatus === 'completed' || runStatus === 'stopped'
   const isStopped = runStatus === 'stopped'
   const stoppedDuringPlanning =
     isStopped && content?.run?.stoppedDuring === 'planning'
@@ -75,12 +74,10 @@ export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
     (hasDescription || visibleInputs.length > 0)
 
   // ── Drag-and-drop file upload ─────────────────────────────────────
-  const [isUploading, setIsUploading] = useState(false)
   const handleFiles = useCallback(
     async (files: FileList) => {
       const fileList = Array.from(files)
       if (fileList.length === 0) return
-      setIsUploading(true)
       try {
         for (const file of fileList) {
           const formData = new FormData()
@@ -101,8 +98,6 @@ export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
         toastError(
           'Something went wrong adding this file. Files must be under 100MB.',
         )
-      } finally {
-        setIsUploading(false)
       }
     },
     [taskSlug, token, refresh],

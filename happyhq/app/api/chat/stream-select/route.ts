@@ -4,8 +4,6 @@ import { log } from '@/lib/log.server'
 import path from 'path'
 
 interface StreamSelectRequest {
-  /** The stream where the chat directory physically lives (origin stream). */
-  originStreamSlug?: string
   sessionId: string
   /** The stream the user selected (null = "something new"). */
   selectedStreamSlug: string | null
@@ -25,7 +23,7 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { originStreamSlug, sessionId, selectedStreamSlug } = body
+  const { sessionId, selectedStreamSlug } = body
   if (!sessionId) {
     return Response.json({ error: 'Missing required fields' }, { status: 400 })
   }

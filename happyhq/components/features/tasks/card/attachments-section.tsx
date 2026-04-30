@@ -16,12 +16,11 @@ export function AttachmentsSection() {
   const visibleInputs =
     content?.inputs.filter((i) => i.name !== 'context') ?? []
 
-  const { pendingFiles, isUploading, handleFiles, fileInputRef } =
-    useOptimisticUploads({
-      taskSlug,
-      refresh,
-      resolvedNames: visibleInputs.map((i) => i.name),
-    })
+  const { pendingFiles, handleFiles, fileInputRef } = useOptimisticUploads({
+    taskSlug,
+    refresh,
+    resolvedNames: visibleInputs.map((i) => i.name),
+  })
 
   const handleDeleteInput = useCallback(
     async (inputName: string) => {

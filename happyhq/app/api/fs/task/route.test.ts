@@ -68,7 +68,6 @@ describe('GET /api/fs/task', () => {
     const response = await GET(
       makeRequest({ stream: 'some-stream', task: 'my-task' }),
     )
-    const body = await response.json()
 
     expect(response.status).toBe(200)
     // Verify readTaskContent was called with just the task slug

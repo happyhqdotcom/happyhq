@@ -82,7 +82,7 @@ export function DesktopShell({ children }: { children: ReactNode }) {
   const [desktopExpanded, setDesktopExpanded] = useDesktopExpanded()
   const [islandHidden, setIslandHidden] = useIslandHidden()
 
-  const [sidebarOpen, setSidebarOpen] = useSidebarOpen(openPanel.type)
+  const [sidebarOpen] = useSidebarOpen(openPanel.type)
 
   // ── Windows ───────────────────────────────────────────────────────
   const canvasRef = useRef<HTMLDivElement>(null)

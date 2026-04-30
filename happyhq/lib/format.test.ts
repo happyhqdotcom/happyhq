@@ -107,10 +107,6 @@ describe('generateTaskSlug', () => {
   it('works with special characters in title', () => {
     const slug = generateTaskSlug('Q&A — Draft #3')
     expect(slug).toMatch(/^q-a-draft-3-/)
-    const suffix = slug.slice(slug.lastIndexOf('-') + 1)
-    // The suffix is the last 8 chars after the final hyphen... but wait,
-    // the title "q-a-draft-3" has hyphens too. Let's just verify the full
-    // slug ends with an 8-char Crockford suffix.
     const fullSuffix = slug.slice('q-a-draft-3-'.length)
     expect(fullSuffix).toHaveLength(9)
     expect(fullSuffix).toMatch(CROCKFORD_RE)

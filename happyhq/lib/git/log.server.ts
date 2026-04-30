@@ -8,7 +8,6 @@ export interface GitLogEntry {
   date: string
 }
 
-const SEPARATOR = '---GIT-LOG-SEP---'
 const FIELD_SEP = '---FIELD---'
 
 /**

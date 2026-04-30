@@ -54,8 +54,6 @@ describe('useChatActions contracts', () => {
   let chatStore: UseBoundStore<StoreApi<ChatState>>
   let sessionIdRef: { current: string | null }
 
-  const desktopStore = useDesktopStore
-
   beforeEach(() => {
     vi.clearAllMocks()
     fetchSpy.mockResolvedValue({ ok: true, status: 200, json: () => ({}) })
