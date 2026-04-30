@@ -30,12 +30,28 @@ export function logsDir(): string {
   return path.join(HAPPYHQ_ROOT, '.logs')
 }
 
-export function validatePath(targetPath: string): void {
+/**
+ * Resolve `targetPath` to a canonical absolute path under `HAPPYHQ_ROOT`,
+ * throwing if it would escape the root. Callers MUST use the returned value
+ * for the actual fs operation — passing back the original `targetPath` keeps
+ * the attacker-controlled string in the call and defeats the sanitization
+ * (CodeQL flags this as `js/path-injection` for that reason).
+ */
+export function safePath(targetPath: string): string {
   const resolved = path.resolve(targetPath)
   const root = path.resolve(HAPPYHQ_ROOT)
   if (resolved !== root && !resolved.startsWith(root + path.sep)) {
     throw new Error(`Path ${targetPath} is outside ~/HappyHQ/`)
   }
+  return resolved
+}
+
+/**
+ * Void-returning guard kept for callers outside `lib/fs/` that don't yet
+ * thread the canonical path through. Prefer `safePath()` in new code.
+ */
+export function validatePath(targetPath: string): void {
+  safePath(targetPath)
 }
 
 /**

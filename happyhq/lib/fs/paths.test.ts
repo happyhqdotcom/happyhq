@@ -6,7 +6,7 @@ vi.mock('@/lib/constants.server', () => ({
   HAPPYHQ_ROOT: '/mock/home/HappyHQ',
 }))
 
-import { streamPath, validatePath } from './paths'
+import { safePath, streamPath, validatePath } from './paths'
 
 describe('streamPath', () => {
   it('returns the full path for a stream', () => {
@@ -41,5 +41,36 @@ describe('validatePath', () => {
     expect(() =>
       validatePath('/mock/home/HappyHQ/stream/tasks/task-1/working'),
     ).not.toThrow()
+  })
+})
+
+describe('safePath', () => {
+  it('returns the canonical path for a value already inside ~/HappyHQ/', () => {
+    expect(safePath('/mock/home/HappyHQ/foo/bar')).toBe(
+      path.join('/mock/home/HappyHQ', 'foo', 'bar'),
+    )
+  })
+
+  it('canonicalizes traversal segments that stay inside the root', () => {
+    // ~/HappyHQ/stream/../foo resolves to ~/HappyHQ/foo — still inside root.
+    // The point of returning the canonical value is that downstream fs ops
+    // see the resolved path, not the attacker's original string.
+    expect(safePath('/mock/home/HappyHQ/stream/../foo')).toBe(
+      path.join('/mock/home/HappyHQ', 'foo'),
+    )
+  })
+
+  it('throws on traversal that escapes the root', () => {
+    expect(() => safePath('/mock/home/HappyHQ/../etc/passwd')).toThrow(
+      'outside ~/HappyHQ/',
+    )
+  })
+
+  it('throws on an absolute path outside the root', () => {
+    expect(() => safePath('/etc/passwd')).toThrow('outside ~/HappyHQ/')
+  })
+
+  it('returns the root itself unchanged', () => {
+    expect(safePath('/mock/home/HappyHQ')).toBe('/mock/home/HappyHQ')
   })
 })
