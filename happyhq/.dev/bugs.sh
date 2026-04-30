@@ -4,6 +4,7 @@ set -o pipefail
 #   ./bugs.sh                          # triage + fix loop, default --max-bugs 3
 #   ./bugs.sh --max-bugs 5             # cap Phase 2 attempts at 5
 #   ./bugs.sh --triage-only            # Phase 1 only
+#   ./bugs.sh --fix-only               # skip Phase 1, run the fix loop on the queue
 #   ./bugs.sh --issue 42               # skip triage; one fix session against #42
 #   ./bugs.sh --dry-run                # Phase 1 preview only, no writes
 #   ./bugs.sh --issue 42 --dry-run     # preview a single fix session, no writes
@@ -18,6 +19,7 @@ RESET='\033[0m'
 
 MAX_BUGS=3
 TRIAGE_ONLY=0
+FIX_ONLY=0
 SINGLE_ISSUE=""
 DRY_RUN=""
 
@@ -31,6 +33,10 @@ while [ $# -gt 0 ]; do
             TRIAGE_ONLY=1
             shift
             ;;
+        --fix-only)
+            FIX_ONLY=1
+            shift
+            ;;
         --issue)
             SINGLE_ISSUE="$2"
             shift 2
@@ -40,7 +46,7 @@ while [ $# -gt 0 ]; do
             shift
             ;;
         -h|--help)
-            sed -n '3,9p' "$0" | sed 's/^# \?//'
+            sed -n '3,10p' "$0" | sed 's/^# \?//'
             exit 0
             ;;
         *)
@@ -49,6 +55,15 @@ while [ $# -gt 0 ]; do
             ;;
     esac
 done
+
+if [ $TRIAGE_ONLY -eq 1 ] && [ $FIX_ONLY -eq 1 ]; then
+    echo "Error: --triage-only and --fix-only are mutually exclusive" >&2
+    exit 1
+fi
+if [ $FIX_ONLY -eq 1 ] && [ -n "$DRY_RUN" ]; then
+    echo "Error: --fix-only --dry-run isn't supported (dry-run on fixes wastes a real session). Use --issue <#> --dry-run to preview a single fix." >&2
+    exit 1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR" || exit 1
@@ -97,22 +112,24 @@ if [ -n "$SINGLE_ISSUE" ]; then
     exit $?
 fi
 
-# ── Phase 1: Triage (one session, walks the whole queue) ──
-run_session "PROMPT_bugs_triage.md" "Phase 1 · Triage"
-TRIAGE_EXIT=$?
-if [ $TRIAGE_EXIT -ne 0 ]; then
-    echo -e "  ${RED}Triage exited with status $TRIAGE_EXIT — stopping${RESET}"
-    exit $TRIAGE_EXIT
-fi
+# ── Phase 1: Triage (skipped with --fix-only) ──
+if [ $FIX_ONLY -eq 0 ]; then
+    run_session "PROMPT_bugs_triage.md" "Phase 1 · Triage"
+    TRIAGE_EXIT=$?
+    if [ $TRIAGE_EXIT -ne 0 ]; then
+        echo -e "  ${RED}Triage exited with status $TRIAGE_EXIT — stopping${RESET}"
+        exit $TRIAGE_EXIT
+    fi
 
-if [ $TRIAGE_ONLY -eq 1 ]; then
-    echo -e "\n  ${GREEN}✓${RESET} Triage complete (--triage-only). Exiting."
-    exit 0
-fi
+    if [ $TRIAGE_ONLY -eq 1 ]; then
+        echo -e "\n  ${GREEN}✓${RESET} Triage complete (--triage-only). Exiting."
+        exit 0
+    fi
 
-if [ -n "$DRY_RUN" ]; then
-    echo -e "\n  ${GREEN}✓${RESET} Phase 1 preview complete. Skipping Phase 2 in --dry-run (labels weren't applied, so the fix queue would re-pick the same bugs). Use --issue <#> --dry-run to preview a fix session."
-    exit 0
+    if [ -n "$DRY_RUN" ]; then
+        echo -e "\n  ${GREEN}✓${RESET} Phase 1 preview complete. Skipping Phase 2 in --dry-run (labels weren't applied, so the fix queue would re-pick the same bugs). Use --issue <#> --dry-run to preview a fix session."
+        exit 0
+    fi
 fi
 
 # ── Phase 2: Fix loop (one session per bug) ──
