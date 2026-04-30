@@ -34,7 +34,7 @@ export function ChatMessageComponent({ message }: ChatMessageProps) {
   )
 }
 
-const VISIBLE_FILE_PILL_LIMIT = 3
+const VISIBLE_FILE_PILL_LIMIT = 2
 
 function UserMessage({ message }: { message: ChatMessage }) {
   const hasFiles = message.files && message.files.length > 0
@@ -62,7 +62,7 @@ function UserMessage({ message }: { message: ChatMessage }) {
             <button
               type="button"
               onClick={() => setPillsExpanded((prev) => !prev)}
-              className="text-muted-foreground/80 hover:text-muted-foreground cursor-pointer rounded-xl bg-white px-2.5 py-2 text-xs ring-1 ring-zinc-950/5 transition-colors"
+              className="text-muted-foreground/80 hover:text-muted-foreground cursor-pointer px-1.5 text-xs transition-colors"
             >
               {pillsExpanded
                 ? 'Show fewer'
