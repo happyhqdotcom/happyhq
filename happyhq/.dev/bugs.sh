@@ -6,6 +6,7 @@ set -o pipefail
 #   ./bugs.sh --triage-only            # Phase 1 only
 #   ./bugs.sh --fix-only               # skip Phase 1, run the fix loop on the queue
 #   ./bugs.sh --issue 42               # skip triage; one fix session against #42
+#   ./bugs.sh --issue 42 --override    # bypass Ralphie's self-skip rules (size, repro, verification, out-of-scope)
 #   ./bugs.sh --dry-run                # Phase 1 preview only, no writes
 #   ./bugs.sh --issue 42 --dry-run     # preview a single fix session, no writes
 
@@ -22,6 +23,7 @@ TRIAGE_ONLY=0
 FIX_ONLY=0
 SINGLE_ISSUE=""
 DRY_RUN=""
+OVERRIDE=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -45,8 +47,12 @@ while [ $# -gt 0 ]; do
             DRY_RUN=1
             shift
             ;;
+        --override)
+            OVERRIDE=1
+            shift
+            ;;
         -h|--help)
-            sed -n '3,10p' "$0" | sed 's/^# \?//'
+            sed -n '3,11p' "$0" | sed 's/^# \?//'
             exit 0
             ;;
         *)
@@ -64,6 +70,10 @@ if [ $FIX_ONLY -eq 1 ] && [ -n "$DRY_RUN" ]; then
     echo "Error: --fix-only --dry-run isn't supported (dry-run on fixes wastes a real session). Use --issue <#> --dry-run to preview a single fix." >&2
     exit 1
 fi
+if [ -n "$OVERRIDE" ] && [ -z "$SINGLE_ISSUE" ]; then
+    echo "Error: --override is only valid with --issue <#>. The Phase 2 auto-loop must always respect skip labels." >&2
+    exit 1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR" || exit 1
@@ -79,6 +89,12 @@ if [ -n "$DRY_RUN" ]; then
     export DRY_RUN_NOTE="**DRY RUN MODE**: For every action that would write to GitHub or the repo (labels, comments, branches, commits, pushes, PRs), print one line prefixed with 'DRY-RUN:' describing what you WOULD do, then SKIP the actual call. Do not invoke any 'gh issue edit', 'gh issue comment', 'gh pr create', 'git commit', 'git push', or filesystem write. Reads (gh issue view/list, code search, file reads) are fine."
 else
     export DRY_RUN_NOTE=""
+fi
+
+if [ -n "$OVERRIDE" ]; then
+    export OVERRIDE_NOTE="**OVERRIDE MODE**: The maintainer invoked --override on this single-issue session. Skip the soft self-skip checks: do NOT apply ralphie:skip-too-big, ralphie:skip-not-reproducible, ralphie:skip-verification-failed, or ralphie:skip-out-of-scope, and do NOT exit early on those conditions — push and open the PR anyway. Hard constraints from guardrail [2] (no push to main, no edits to happyhq/ee/, .github/, CI workflows, lockfiles beyond focused fix demands, or licensing files) remain non-negotiable. Note the override in the PR body's AI-disclosure paragraph: 'Maintainer invoked --override; size/repro/verification self-skip gates were bypassed.'"
+else
+    export OVERRIDE_NOTE=""
 fi
 
 run_session() {
