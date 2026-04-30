@@ -586,9 +586,9 @@ describe('chatStore', () => {
         streamSlug: 'my-stream',
       })
 
-      // Bash → "Working", Glob → "Searching files" via getToolLabel
+      // Bare Bash → generic fallback, Glob → "Searching files" via getToolLabel
       expect(toast.error).toHaveBeenCalledWith(
-        'Permission denied: Working, Searching files',
+        'Permission denied: Working…, Searching files',
         { duration: Infinity },
       )
     })

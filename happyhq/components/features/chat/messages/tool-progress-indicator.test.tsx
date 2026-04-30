@@ -113,7 +113,7 @@ describe('ToolProgressIndicator', () => {
       )
 
       // Header label renders
-      expect(screen.queryByText('To Dos')).not.toBeNull()
+      expect(screen.queryByText('Tracking todos')).not.toBeNull()
 
       // No checklist items (toolCall not matched)
       // No buttons either
