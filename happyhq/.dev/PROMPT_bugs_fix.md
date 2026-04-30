@@ -26,7 +26,9 @@
 
 10. ${DRY_RUN_NOTE}
 
-11. Exit.
+11. ${OVERRIDE_NOTE}
+
+12. Exit.
 
 **[1]** ONE issue per session. Do not pick up other issues, do not chain. The orchestrator handles the next one.
 **[2]** Hard constraints from @bugs-rubric.md are non-negotiable: never push to `main`, never modify `happyhq/ee/`, `.github/`, CI workflows, lockfiles (beyond what the focused fix demands), or licensing files. If the fix would require any of these, apply `ralphie:skip-out-of-scope` and exit.
