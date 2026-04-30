@@ -4,6 +4,8 @@ Debugging and diagnostics for Q.
 
 Q runs locally — all session data lives on the user's machine. When something goes wrong (a chat hangs, Q produces unexpected output, a task stalls), developers have no visibility unless the user can send them the relevant data. This spec defines the tools and patterns that close that gap.
 
+Related: [Playground § Sessions](playground.md#sessions) — sandboxed live-SDK sessions with recorded transcripts and a stable viewer URL. Same observability shape (record once, replay or share later), targeted at dev-loop iteration rather than user-reported bugs.
+
 ## 1. Debug Bundle Export
 
 ### Problem

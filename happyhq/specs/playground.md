@@ -13,6 +13,7 @@ Dev-only — returns 404 in production.
 - [Chat](chat.md) — Chat components, message rendering, interaction cards
 - [Home](home.md) — Composer component, animated placeholder
 - [Desktop](desktop.md) — Window system, canvas layout
+- [Observability](observability.md) — Sessions are observability for live SDK behavior; sibling to debug-bundle export
 
 ## Layout
 
@@ -411,12 +412,17 @@ playground/
 
 ## Routing
 
-Single route: `/playground`. No sub-routes. The selected component is tracked in URL search params (`?component=messages/user&variant=with-files`) so links are shareable and browser back works.
+Two routes:
+
+- `/playground` — the component fixture browser. Selected component is tracked in URL search params (`?component=messages/user&variant=with-files`) so links are shareable and browser back works.
+- `/playground/sessions/[sessionId]` — viewer for a recorded live-SDK session (see [Sessions](#sessions)).
 
 ```
 app/(playground)/playground/
   layout.tsx            — Navbar + peekaboo panels + ResizablePanelGroup + BottomTabBar
   page.tsx              — reads search params, syncs to store, renders selected component
+  sessions/[sessionId]/
+    page.tsx            — three-pane viewer for a session (real panel + ActivityStep[] snapshot + wire log)
   _registry/            — component registrations (see Registry section)
   _data/                — fixture data
   _components/
@@ -512,9 +518,159 @@ Sync `selectedComponent` and `selectedVariant` to URL search params via `useSear
 
 **Apple pie theme** is maintained across all fixtures for coherence. Every mock message, tool call, and question relates to baking.
 
+## Sessions
+
+The component registry covers fixtures with pre-built data. Sessions cover the
+opposite shape: real `query()` invocations against the SDK, sandboxed, with
+every wire event recorded so the result is observable to both Ralphie
+(programmatically, via CLI) and a human (visually, via a stable URL).
+
+The motivation: when Ralphie is iterating on UI surfaces during an autonomous
+loop (run activity panel, chat, task cards), it can't easily verify whether a
+fix actually worked without running the real product — but real runs pollute
+task data, leave git commits, and write to billing. Sessions are the sandbox.
+
+Dev-only — same `(playground)` route group, same 404-in-prod constraint as the
+fixture browser.
+
+### Container
+
+A session is a directory: `~/HappyHQ/.playground/<YYYYMMDD-HHMMSS>-<shortUuid>/`
+(sibling to `.logs/`, `.chats/`, `.q/` — distinct from user-config and real
+user content, easy to nuke wholesale).
+
+| File               | Purpose                                                              |
+| ------------------ | -------------------------------------------------------------------- |
+| `meta.json`        | `{ sessionId, createdAt, kind, preset, prompt, status, durationMs }` |
+| `transcript.jsonl` | Every `ChatStreamEvent` emitted on the wire                          |
+| `result.json`      | Final result event + computed `ActivityStep[]` snapshot              |
+| `cwd/`             | Sandbox dir tools see, seeded with a tiny throwaway tree             |
+
+`status` transitions `running` → `succeeded` / `failed` / `aborted`. No
+cleanup — the dir is the artifact. Ralphie or the human can `cat`/`ls` into
+any session afterward.
+
+### Endpoints
+
+- `POST /api/playground/sessions` — body `{ kind: 'query', preset: 'chat' | 'planning' | 'working', prompt: string }`. Creates the session, runs `query()` with the production agent-options factory, pipes events through `filterMessage` + `encodeEvent`, tees to `transcript.jsonl`, streams NDJSON to caller. Response headers carry `X-Playground-Session-Id` and `X-Playground-Viewer-Url` so callers can surface the URL before the body finishes.
+- `GET /api/playground/sessions/[sessionId]/stream` — replays `transcript.jsonl` if terminal, tails it if running. Same NDJSON wire as `/api/run/stream` so the same hook consumes it.
+
+Pollution avoidance — sessions explicitly do NOT call any of `writeRunInfo`,
+`syncTaskMdFromRun`, `startTaskRun`, `commitGitState`, the `loop.server.ts`
+`broadcast()` subscriber set, or any `.chats/` writer. Auth reuses
+`getAuthEnv()`.
+
+### CLI (Ralphie's primary interface)
+
+`pnpm tsx scripts/playground.ts query [--preset=chat|planning|working] "<prompt>"`
+
+Behavior:
+
+1. POST to the sessions endpoint (default preset `chat`).
+2. Print viewer URL, sandbox cwd, and session id to stderr immediately (from response headers, before the body finishes).
+3. Stream NDJSON; for each event, log compactly to stderr and feed into `reduceActivity`.
+4. On `result`: print the final `ActivityStep[]` table (or JSON with `--json`) to stdout, plus cost / subtype / denials.
+5. Exit 0 on `subtype === 'success'`, non-zero otherwise — Ralphie's autonomous loop branches on exit code.
+
+`--json` mode emits one machine-readable object on stdout:
+`{ sessionId, viewerUrl, cwd, finalSteps, result, transcriptPath }`.
+
+The CLI never accumulates anything across runs — each invocation = one session.
+
+### Viewer page (human's primary interface)
+
+`/playground/sessions/[sessionId]/page.tsx` — three panes driven by the
+session's stream URL:
+
+- **Top**: `ConnectedActivityDebugContent` from the desktop island — the real production panel, driven by `useRunActivity` pointed at the session stream.
+- **Right**: live-updating `ActivityStep[]` JSON snapshot — what data the panel is rendering against. Discrepancy between this and the panel = FE bug; between this and the wire log = reducer bug.
+- **Bottom**: collapsible NDJSON wire log, type-colored.
+
+Header carries prompt, preset, status, elapsed, cost, denials, sandbox cwd
+path (click-to-copy). The URL works the same whether the session is live
+(tailing) or finished (replay) — Ralphie hands the same URL to the human in
+both cases, and the human can't tell which mode it's in.
+
+### Reducer extraction
+
+`useRunActivity` today inlines the wire-events-to-`ActivityStep[]` reducer as
+`useEffect` + refs. Sessions require the same logic to run outside React (the
+CLI, deterministic tests, replay), so it's extracted to a pure function:
+
+```ts
+// lib/run/activity-reducer.ts
+export function reduceActivity(
+  prev: ActivityState,
+  event: ChatStreamEvent,
+  now: number,
+): ActivityState
+```
+
+The hook rewrites to wrap `useReducer(reduceActivity, initialActivityState())` —
+production behavior unchanged. The CLI imports `reduceActivity` directly. A
+captured `transcript.jsonl` becomes a deterministic regression fixture for
+issues like #26 (subagent activity rendering).
+
+### Presets
+
+Each preset is a thin wrapper around an existing production agent-options
+factory — sessions exercise the actual production tool surface, in the
+sandbox cwd:
+
+```ts
+export const PRESETS = {
+  chat:     (cwd) => chatAgentOptions(...),
+  planning: (cwd) => planningAgentOptions(...),
+  working:  (cwd) => workingAgentOptions(...),
+}
+```
+
+No new options shape. If a factory has hard dependencies on session/task ids
+that can't be stripped cleanly for the sandbox, that's the one place a small
+adapter goes — discovered during implementation.
+
+### Files
+
+- New: `lib/run/activity-reducer.ts` (+ `.test.ts`)
+- New: `lib/playground/session.server.ts`, `lib/playground/presets.server.ts`
+- New: `app/api/playground/sessions/route.ts`, `app/api/playground/sessions/[sessionId]/stream/route.ts`
+- New: `app/(playground)/playground/sessions/[sessionId]/page.tsx`
+- New: `scripts/playground.ts`
+- Edit: `components/features/desktop/hooks/use-run-activity.ts` — useReducer + optional `streamUrl` arg
+
+Reused unchanged: `filterMessage`, `encodeEvent`, `getAuthEnv`,
+`chatAgentOptions` / `planningAgentOptions` / `workingAgentOptions`,
+`ConnectedActivityDebugContent`. The `_registry/` fixture set is untouched —
+the session viewer is a sibling route, not another fixture entry.
+
+### Verification
+
+CLI path:
+
+1. `pnpm dev` (separate shell).
+2. `pnpm tsx scripts/playground.ts query "Read README.md and tell me what's in it"` — stderr prints viewer URL; stdout shows final `ActivityStep[]` with a Read step; exit 0.
+3. `cat ~/HappyHQ/.playground/<latest>/result.json` — matches.
+4. Working-preset prompt that spawns a subagent — stdout timeline contains `Delegating: …` step (#26 surface).
+
+Viewer path:
+
+5. Open the URL printed in step 2 _while_ the CLI streams — three panes update in real time.
+6. Refresh after completion — same view, replay-mode.
+7. Open an old session URL — replay still works.
+
+Pollution audit (must remain clean after any session):
+
+- `git status` clean.
+- No new files under `~/HappyHQ/tasks/`.
+- No new `.chats/*/chat.json`.
+- InstantDB `taskRun` count unchanged.
+- `~/HappyHQ/.logs/<today>.jsonl` may contain `playground.*` events but no `run.*`, `task.*`, or `chat.*`.
+
+The only filesystem residue is under `~/HappyHQ/.playground/`.
+
 ## Testing
 
-Playground is a dev tool — no automated tests. Verification is visual:
+The fixture browser is a dev tool — no automated tests. Verification is visual:
 
 - Navigate to `/playground` in development mode
 - Click through every component in the browser
@@ -527,17 +683,24 @@ Playground is a dev tool — no automated tests. Verification is visual:
 - Verify URL search params update and are shareable (copy URL -> paste in new tab -> same component and variant load)
 - Verify peekaboo panels: hover rail triggers slide-in, mouse leave auto-hides, Escape dismisses, lock/unlock transitions smoothly
 
+Sessions add deterministic test surface via the extracted reducer:
+
+- `lib/run/activity-reducer.test.ts` — replay captured `transcript.jsonl` fixtures through `reduceActivity`, snapshot the resulting `ActivityStep[]`. Issues like #26 become pinned regression tests once a transcript is captured.
+- Session endpoints, CLI, and viewer follow the existing observability verification pattern (see [Sessions § Verification](#verification-1)).
+
 ## Constraints
 
 - Dev-only (production returns 404)
 - Light mode only (per foundation spec)
 - No external dependencies — built with existing UI primitives
-- No real agent SDK calls in v1 (future enhancement)
+- Sessions never write to production state surfaces (`.run.json`, `task.md`, billing, git, `.chats/`); the only filesystem residue is `~/HappyHQ/.playground/`
 
 ## Future Enhancements
 
-- **Live mode** — wire up real agent SDK calls for specific components (e.g., send a real message and watch it stream)
+- **More session kinds** — extend `kind` beyond `'query'` to cover the chat, task creation, and plan-approval surfaces. Same session container and viewer infrastructure; additive only.
+- **Multi-turn sessions** — today each session is one `query()`. Multi-turn comes when sessions extend to the chat surface.
 - **Windows** — register desktop window components (MarkdownWindow, PdfWindow, etc.) with their own canvas treatment
 - **Side-by-side** — render two variants of the same component next to each other for comparison
 - **Theme testing** — when dark mode is added, toggle light/dark in the playground
 - **Viewport simulation** — render components at different container widths to test responsive behavior
+- **Playwright DOM capture** — for visual/CSS regressions, optionally snapshot rendered DOM at the viewer URL. Strictly additive on top of the data-level observability sessions already provide.
