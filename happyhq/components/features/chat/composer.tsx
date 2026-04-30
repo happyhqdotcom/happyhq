@@ -1,6 +1,7 @@
 'use client'
 
 import { useConfig } from '@/lib/config/use-config'
+import { ALLOWED_INPUT_ACCEPT, isAllowedInputFilename } from '@/lib/file-types'
 import { cn } from '@/lib/utils'
 import type { StagedFile } from '@/stores/chatStore'
 import { ArrowUp, Plus, Square } from 'lucide-react'
@@ -103,12 +104,9 @@ export const Composer = memo(function Composer({
 
   const handleFiles = useCallback((files: FileList) => {
     // Filter to supported types — the <input> has accept but drag-and-drop bypasses it
-    const allowed = Array.from(files).filter((f) => {
-      const name = f.name.toLowerCase()
-      return (
-        name.endsWith('.pdf') || name.endsWith('.eml') || name.endsWith('.docx')
-      )
-    })
+    const allowed = Array.from(files).filter((f) =>
+      isAllowedInputFilename(f.name),
+    )
     for (const file of allowed) {
       setStagedFiles((prev) => [
         ...prev,
@@ -218,7 +216,7 @@ export const Composer = memo(function Composer({
       ref={fileInputRef}
       type="file"
       multiple
-      accept=".pdf,.eml,.docx"
+      accept={ALLOWED_INPUT_ACCEPT}
       className="hidden"
       onChange={(e) => {
         if (e.target.files?.length) handleFiles(e.target.files)

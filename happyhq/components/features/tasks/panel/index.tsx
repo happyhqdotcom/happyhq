@@ -48,6 +48,7 @@ import {
   writeTaskDescription,
   writeTaskTitle,
 } from '@/lib/actions'
+import { ALLOWED_INPUT_ACCEPT } from '@/lib/file-types'
 import { displayTitle } from '@/lib/format'
 import type { FileItem } from '@/lib/fs/types'
 import { invalidateStream } from '@/lib/swr-helpers'
@@ -254,6 +255,7 @@ export function TaskPanel({
         ref={fileInputRef}
         type="file"
         multiple
+        accept={ALLOWED_INPUT_ACCEPT}
         className="hidden"
         onChange={(e) => {
           if (e.target.files) handleFiles(e.target.files)

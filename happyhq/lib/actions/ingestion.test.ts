@@ -110,7 +110,7 @@ vi.mock('@/ee/lib/billing/limits.server', () => ({
 
 const MOCK_TOKEN = 'test-refresh-token'
 
-import { setupTaskFromChat, uploadFile } from './ingestion'
+import { ingestTaskInput, setupTaskFromChat, uploadFile } from './ingestion'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -169,7 +169,7 @@ describe('uploadFile', () => {
     mockMkdir.mockResolvedValue(undefined)
     mockWriteFile.mockResolvedValue(undefined)
 
-    const fd = makeFormData('data.CSV', 'content')
+    const fd = makeFormData('data.PDF', 'content')
     const result = await uploadFile('sess-1', fd)
 
     expect(result).toBe('data')
@@ -180,7 +180,7 @@ describe('uploadFile', () => {
         'sess-1',
         'uploads',
         'data',
-        'original.CSV',
+        'original.PDF',
       ),
       expect.any(Buffer),
     )
@@ -309,13 +309,16 @@ describe('uploadFile', () => {
     warnSpy.mockRestore()
   })
 
-  it('does not run extraction for unsupported file types', async () => {
+  it('rejects unsupported file types before writing to disk', async () => {
     mockMkdir.mockResolvedValue(undefined)
     mockWriteFile.mockResolvedValue(undefined)
 
-    const fd = makeFormData('data.csv', 'csv-content')
-    await uploadFile('sess-1', fd)
+    const fd = makeFormData('clip.mp4', 'mp4-bytes')
+    await expect(uploadFile('sess-1', fd)).rejects.toThrow(
+      'Unsupported file type "clip.mp4"',
+    )
 
+    expect(mockWriteFile).not.toHaveBeenCalled()
     expect(mockExtractTextFromPdf).not.toHaveBeenCalled()
     expect(mockExtractContentFromEml).not.toHaveBeenCalled()
   })
@@ -487,6 +490,57 @@ describe('setupTaskFromChat', () => {
 
     expect(mockCommitGitState).toHaveBeenCalledWith(
       '[tasks/my-task-01abc] Chat inputs',
+    )
+  })
+})
+
+// --- ingestTaskInput ---
+
+describe('ingestTaskInput', () => {
+  function makeFormData(name: string, content: string): FormData {
+    const encoder = new TextEncoder()
+    const bytes = encoder.encode(content)
+    const fileMock = {
+      name,
+      arrayBuffer: async () => bytes.buffer,
+    }
+    return {
+      get: (key: string) => (key === 'file' ? fileMock : null),
+    } as unknown as FormData
+  }
+
+  it('rejects unsupported file types so drag-and-drop cannot bypass the picker accept list', async () => {
+    mockMkdir.mockResolvedValue(undefined)
+    mockWriteFile.mockResolvedValue(undefined)
+
+    const fd = makeFormData('clip.mp4', 'mp4-bytes')
+    await expect(ingestTaskInput('my-task', fd)).rejects.toThrow(
+      'Unsupported file type "clip.mp4"',
+    )
+
+    expect(mockWriteFile).not.toHaveBeenCalled()
+    expect(mockCommitGitState).not.toHaveBeenCalled()
+  })
+
+  it('accepts the canonical allowed types regardless of extension casing', async () => {
+    mockMkdir.mockResolvedValue(undefined)
+    mockWriteFile.mockResolvedValue(undefined)
+    mockExtractTextFromPdf.mockResolvedValue('text')
+
+    const fd = makeFormData('Report.PDF', 'pdf-bytes')
+    const result = await ingestTaskInput('my-task', fd)
+
+    expect(result.slug).toBe('report')
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      path.join(
+        MOCK_ROOT,
+        'tasks',
+        'my-task',
+        'inputs',
+        'report',
+        'original.PDF',
+      ),
+      expect.any(Buffer),
     )
   })
 })

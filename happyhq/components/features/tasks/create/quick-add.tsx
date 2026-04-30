@@ -8,6 +8,7 @@ import { useFileDrop } from '@/components/features/desktop/windows/shared/use-fi
 import { StreamPicker } from '@/components/features/tasks/atoms/stream-picker'
 import { useCurrentUser } from '@/lib/accounts/hooks'
 import { createTask, ingestTaskInput } from '@/lib/actions'
+import { ALLOWED_INPUT_ACCEPT } from '@/lib/file-types'
 import { toSlug } from '@/lib/format'
 import { taskItemsKey } from '@/lib/swr-keys'
 import { useStreams } from '@/stores/streamsStore'
@@ -139,6 +140,7 @@ export function TaskQuickAdd({
         ref={fileInputRef}
         type="file"
         multiple
+        accept={ALLOWED_INPUT_ACCEPT}
         className="hidden"
         onChange={(e) => {
           if (e.target.files) addFiles(e.target.files)

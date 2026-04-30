@@ -2,6 +2,7 @@
 
 import { useOptimisticUploads } from '@/components/features/tasks/hooks/use-optimistic-uploads'
 import { deleteTaskInput } from '@/lib/actions'
+import { ALLOWED_INPUT_ACCEPT } from '@/lib/file-types'
 import { useTaskStore } from '@/stores/taskStore'
 import { useCallback } from 'react'
 import { AttachmentList } from '../atoms/attachment-list'
@@ -36,6 +37,7 @@ export function AttachmentsSection() {
         ref={fileInputRef}
         type="file"
         multiple
+        accept={ALLOWED_INPUT_ACCEPT}
         className="hidden"
         onChange={(e) => {
           if (e.target.files) handleFiles(e.target.files)
