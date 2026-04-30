@@ -90,6 +90,33 @@ async function isPrivateIp(hostname: string): Promise<boolean> {
 }
 
 /**
+ * Parse user-supplied input into a URL, defaulting to https:// when no scheme
+ * is present. Any value that can't be coerced into a valid URL returns null.
+ */
+function parseInputUrl(input: string): URL | null {
+  const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(input)
+  const candidate = hasScheme ? input : `https://${input}`
+  try {
+    return new URL(candidate)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * SSRF gate: only http(s), no embedded credentials, hostname must not resolve
+ * to a private/loopback range. Applied to the initial URL and every redirect
+ * target so a 302 can't slip past the initial check.
+ */
+async function validateUrl(parsed: URL | null): Promise<URL | null> {
+  if (!parsed) return null
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+  if (parsed.username || parsed.password) return null
+  if (await isPrivateIp(parsed.hostname)) return null
+  return parsed
+}
+
+/**
  * Resolve a potentially relative URL to an absolute URL
  */
 function resolveUrl(href: string, baseUrl: string): string {
@@ -104,17 +131,24 @@ function resolveUrl(href: string, baseUrl: string): string {
   }
 }
 
+const HTML_ENTITIES: Record<string, string> = {
+  '&amp;': '&',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&#39;': "'",
+  '&nbsp;': ' ',
+}
+
 /**
- * Decode common HTML entities
+ * Decode common HTML entities in a single pass so already-decoded entities in
+ * the input (e.g. `&amp;lt;` meaning a literal `&lt;`) are not re-decoded.
  */
 function decodeHtmlEntities(str: string): string {
-  return str
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ')
+  return str.replace(
+    /&(?:amp|lt|gt|quot|#39|nbsp);/g,
+    (match) => HTML_ENTITIES[match] ?? match,
+  )
 }
 
 /**
@@ -122,23 +156,21 @@ function decodeHtmlEntities(str: string): string {
  */
 export async function unfurlUrl(url: string): Promise<UnfurlResponse> {
   try {
-    const normalizedUrl = url.match(/^https?:\/\//) ? url : `https://${url}`
-    const hostname = new URL(normalizedUrl).hostname
-
-    if (await isPrivateIp(hostname)) {
+    let current = await validateUrl(parseInputUrl(url))
+    if (!current) {
       return { success: false, error: 'Invalid URL' }
     }
 
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 5000)
 
-    // Follow redirects manually to validate each target against SSRF
-    let currentUrl = normalizedUrl
+    // Follow redirects manually so the same SSRF/scheme/credential gate
+    // applies to every hop, not just the initial URL.
     const maxRedirects = 5
     let response: Response | undefined
 
     for (let i = 0; i <= maxRedirects; i++) {
-      response = await fetch(currentUrl, {
+      response = await fetch(current.href, {
         signal: controller.signal,
         redirect: 'manual',
         headers: {
@@ -148,22 +180,23 @@ export async function unfurlUrl(url: string): Promise<UnfurlResponse> {
         },
       })
 
-      // Not a redirect — done
       if (response.status < 300 || response.status >= 400) break
 
       const location = response.headers.get('location')
       if (!location) break
 
-      // Resolve relative redirect URLs
-      const redirectUrl = new URL(location, currentUrl).href
-      const redirectHostname = new URL(redirectUrl).hostname
-
-      // SSRF check on redirect target
-      if (await isPrivateIp(redirectHostname)) {
+      let redirectParsed: URL | null
+      try {
+        redirectParsed = new URL(location, current.href)
+      } catch {
         return { success: false, error: 'Invalid URL' }
       }
 
-      currentUrl = redirectUrl
+      const next = await validateUrl(redirectParsed)
+      if (!next) {
+        return { success: false, error: 'Invalid URL' }
+      }
+      current = next
     }
 
     clearTimeout(timeout)
@@ -209,15 +242,15 @@ export async function unfurlUrl(url: string): Promise<UnfurlResponse> {
 
     const imageRaw =
       html.match(OG_IMAGE_REGEX)?.[1] || html.match(OG_IMAGE_REGEX_ALT)?.[1]
-    const image = imageRaw ? resolveUrl(imageRaw, normalizedUrl) : null
+    const image = imageRaw ? resolveUrl(imageRaw, current.href) : null
 
     const faviconRaw =
       html.match(FAVICON_REGEX)?.[1] ||
       html.match(FAVICON_REGEX_ALT)?.[1] ||
       html.match(SHORTCUT_ICON_REGEX)?.[1]
     const favicon = faviconRaw
-      ? resolveUrl(faviconRaw, normalizedUrl)
-      : `https://www.google.com/s2/favicons?domain=${new URL(normalizedUrl).hostname}&sz=32`
+      ? resolveUrl(faviconRaw, current.href)
+      : `https://www.google.com/s2/favicons?domain=${current.hostname}&sz=32`
 
     return {
       success: true,
