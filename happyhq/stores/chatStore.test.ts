@@ -586,11 +586,15 @@ describe('chatStore', () => {
         streamSlug: 'my-stream',
       })
 
-      // Bare Bash → generic fallback, Glob → "Searching files" via getToolLabel
-      expect(toast.error).toHaveBeenCalledWith(
-        'Permission denied: Working…, Searching files',
-        { duration: Infinity },
-      )
+      // Toast surfaces a permission denial with human-friendly labels —
+      // raw SDK tool names ("Bash", "Glob") must not leak through.
+      expect(toast.error).toHaveBeenCalledOnce()
+      const [message, options] = vi.mocked(toast.error).mock.calls[0]!
+      expect(message).toMatch(/permission denied/i)
+      expect(message).toContain('Searching files')
+      expect(message).not.toMatch(/\bBash\b/)
+      expect(message).not.toMatch(/\bGlob\b/)
+      expect(options).toEqual({ duration: Infinity })
     })
 
     it('shows toast on network failure', async () => {
