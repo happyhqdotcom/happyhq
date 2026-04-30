@@ -10,7 +10,7 @@
 
 4. **Verify.** From the `happyhq/` directory, run `pnpm format`, `pnpm lint`, `pnpm check-types`, `pnpm --filter=happyhq test`. If any fail, fix and re-run. If they fail twice, apply `ralphie:skip-verification-failed` (rubric rule 8), post the rubric-shaped comment with the failing output included, exit.
 
-5. **Size gate.** After the fix is in, check the diff: `git diff --stat main...HEAD`. If >10 files changed or >300 lines net added, apply `ralphie:skip-too-big` (rubric rule 6/9), post the rubric-shaped comment summarizing what the fix would have entailed, leave the branch in place (do not push), exit.
+5. **Size gate.** After the fix is in, check the diff: `git diff --stat main...HEAD -- ':!*.md' ':!*.mdx'`. If >10 files changed or >300 lines net added, apply `ralphie:skip-too-big` (rubric rule 6/9), post the rubric-shaped comment summarizing what the fix would have entailed, leave the branch in place (do not push), exit. Spec/doc updates (`*.md`/`*.mdx`) are excluded from the count — they don't carry the same review burden as code, and bundling them with the fix keeps design and implementation in sync.
 
 6. **Commit.** `git add -A && git commit -m "fix: <one-line summary>\n\nCloses #${ISSUE_NUMBER}"`.
 

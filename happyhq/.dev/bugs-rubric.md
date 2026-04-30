@@ -12,17 +12,17 @@ Source of truth for how Ralphie judges open `bug`-labeled issues. Both `PROMPT_b
 
 Apply in order — bail at the earliest stop. The first six are evaluable from the issue text alone (Phase 1 — triage). The last three only show up after attempting a fix (Phase 2).
 
-| #   | Condition                                                                                              | Label applied                      | What unblocks it                                                      |
-| --- | ------------------------------------------------------------------------------------------------------ | ---------------------------------- | --------------------------------------------------------------------- |
-| 1   | Fix would touch `happyhq/ee/`                                                                          | `ralphie:skip-ee`                  | Maintainer decides whether to take it on; remove label after deciding |
-| 2   | Author is not OWNER/MEMBER and the report lacks repro details a third party would need to provide      | `ralphie:skip-third-party-unclear` | Add repro details or escalate; remove label                           |
-| 3   | Issue body or comments contain unresolved questions for the maintainer                                 | `ralphie:skip-needs-decision`      | Answer the question in a comment, remove label                        |
-| 4   | Requires a schema migration, new env var, new dependency, or `.github/`/CI/workflow change             | `ralphie:skip-out-of-scope`        | Maintainer scopes and does it; remove label if the work was decoupled |
-| 5   | No reasonable repro can be inferred from issue + linked logs                                           | `ralphie:skip-not-reproducible`    | Reporter or maintainer adds repro/logs, remove label                  |
-| 6   | Estimated >10 files or >300 LoC after a quick code search                                              | `ralphie:skip-too-big`             | Scope it down (split issue) or do it manually                         |
-| 7   | (Phase 2) Repro could not be established locally                                                       | `ralphie:skip-not-reproducible`    | Same as #5                                                            |
-| 8   | (Phase 2) `pnpm format` / `pnpm lint` / `pnpm check-types` / `pnpm --filter=happyhq test` failed twice | `ralphie:skip-verification-failed` | Read the comment Ralphie left; fix locally                            |
-| 9   | (Phase 2) Fix shipped                                                                                  | `ralphie:fixed-in-pr`              | Terminal — the linked PR closes the loop                              |
+| #   | Condition                                                                                                                         | Label applied                      | What unblocks it                                                      |
+| --- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | --------------------------------------------------------------------- |
+| 1   | Fix would touch `happyhq/ee/`                                                                                                     | `ralphie:skip-ee`                  | Maintainer decides whether to take it on; remove label after deciding |
+| 2   | Author is not OWNER/MEMBER and the report lacks repro details a third party would need to provide                                 | `ralphie:skip-third-party-unclear` | Add repro details or escalate; remove label                           |
+| 3   | Issue body or comments contain unresolved questions for the maintainer                                                            | `ralphie:skip-needs-decision`      | Answer the question in a comment, remove label                        |
+| 4   | Requires a schema migration, new env var, new dependency, or `.github/`/CI/workflow change                                        | `ralphie:skip-out-of-scope`        | Maintainer scopes and does it; remove label if the work was decoupled |
+| 5   | No reasonable repro can be inferred from issue + linked logs                                                                      | `ralphie:skip-not-reproducible`    | Reporter or maintainer adds repro/logs, remove label                  |
+| 6   | Estimated >10 files or >300 LoC after a quick code search (excludes `*.md`/`*.mdx` — spec/doc updates don't count toward the cap) | `ralphie:skip-too-big`             | Scope it down (split issue) or do it manually                         |
+| 7   | (Phase 2) Repro could not be established locally                                                                                  | `ralphie:skip-not-reproducible`    | Same as #5                                                            |
+| 8   | (Phase 2) `pnpm format` / `pnpm lint` / `pnpm check-types` / `pnpm --filter=happyhq test` failed twice                            | `ralphie:skip-verification-failed` | Read the comment Ralphie left; fix locally                            |
+| 9   | (Phase 2) Fix shipped                                                                                                             | `ralphie:fixed-in-pr`              | Terminal — the linked PR closes the loop                              |
 
 ## Comment shape (for skips)
 
