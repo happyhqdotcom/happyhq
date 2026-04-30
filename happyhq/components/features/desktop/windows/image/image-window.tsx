@@ -2,7 +2,8 @@
 
 import { useWindowStore } from '@/stores/windowStore'
 import { Loader2 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import NextImage from 'next/image'
+import { useEffect, useState } from 'react'
 import type { WindowComponentProps } from '../types'
 import { useFrameProps } from '../use-frame-props'
 import { WindowFileActions } from '../window-file-actions'
@@ -18,10 +19,8 @@ const MIN_HEIGHT = 160
 
 export function ImageWindow({ id, canvasRef }: WindowComponentProps) {
   const result = useFrameProps(id, canvasRef)
-  const [loaded, setLoaded] = useState(false)
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
   const [error, setError] = useState(false)
-  const imgRef = useRef<HTMLImageElement>(null)
-  const resizedRef = useRef(false)
 
   const w = result?.window
   const filePath = w?.contentType === 'image' ? w.meta.filePath : undefined
@@ -29,37 +28,40 @@ export function ImageWindow({ id, canvasRef }: WindowComponentProps) {
     ? `/api/fs/download?path=${encodeURIComponent(filePath)}`
     : undefined
 
-  // Once the image loads, resize the window to fit the natural image size.
+  // Preload to measure natural dimensions, then resize the window to fit.
+  // We preload via the browser Image constructor so next/image can be rendered
+  // with explicit width/height (required for non-fill usage).
   useEffect(() => {
-    if (!loaded || !imgRef.current || resizedRef.current) return
-    resizedRef.current = true
+    if (!src) return
+    const probe = new window.Image()
+    probe.onload = () => {
+      const { naturalWidth, naturalHeight } = probe
+      if (!naturalWidth || !naturalHeight) return
+      setNatural({ w: naturalWidth, h: naturalHeight })
 
-    const { naturalWidth, naturalHeight } = imgRef.current
-    if (!naturalWidth || !naturalHeight) return
-
-    // Fit the image within max bounds while preserving aspect ratio,
-    // accounting for padding and title bar chrome.
-    const maxContentW = MAX_WIDTH - CHROME.w
-    const maxContentH = MAX_HEIGHT - CHROME.h
-    const scale = Math.min(
-      1,
-      maxContentW / naturalWidth,
-      maxContentH / naturalHeight,
-    )
-    const targetW = Math.max(
-      MIN_WIDTH,
-      Math.round(naturalWidth * scale) + CHROME.w,
-    )
-    const targetH = Math.max(
-      MIN_HEIGHT,
-      Math.round(naturalHeight * scale) + CHROME.h,
-    )
-
-    useWindowStore.getState().resizeWindow(id, {
-      width: targetW,
-      height: targetH,
-    })
-  }, [loaded, id])
+      const maxContentW = MAX_WIDTH - CHROME.w
+      const maxContentH = MAX_HEIGHT - CHROME.h
+      const scale = Math.min(
+        1,
+        maxContentW / naturalWidth,
+        maxContentH / naturalHeight,
+      )
+      const targetW = Math.max(
+        MIN_WIDTH,
+        Math.round(naturalWidth * scale) + CHROME.w,
+      )
+      const targetH = Math.max(
+        MIN_HEIGHT,
+        Math.round(naturalHeight * scale) + CHROME.h,
+      )
+      useWindowStore.getState().resizeWindow(id, {
+        width: targetW,
+        height: targetH,
+      })
+    }
+    probe.onerror = () => setError(true)
+    probe.src = src
+  }, [src, id])
 
   if (!result) return null
   const { frameProps } = result
@@ -72,18 +74,19 @@ export function ImageWindow({ id, canvasRef }: WindowComponentProps) {
       actions={<WindowFileActions filePath={w.meta.filePath} />}
     >
       <div className="flex h-full items-center justify-center overflow-hidden bg-zinc-100 p-4">
-        {!loaded && !error && (
+        {!natural && !error && (
           <Loader2 className="h-5 w-5 animate-spin text-zinc-300" />
         )}
         {error && <p className="text-sm text-zinc-400">Failed to load image</p>}
-        {src && (
-          <img
-            ref={imgRef}
+        {src && natural && (
+          <NextImage
             src={src}
             alt={w.title}
-            onLoad={() => setLoaded(true)}
-            onError={() => setError(true)}
-            className={`max-h-full max-w-full object-contain ${loaded ? '' : 'hidden'}`}
+            width={natural.w}
+            height={natural.h}
+            unoptimized
+            className="max-h-full max-w-full object-contain"
+            style={{ width: 'auto', height: 'auto' }}
             draggable={false}
           />
         )}

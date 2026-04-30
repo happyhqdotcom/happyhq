@@ -23,7 +23,7 @@ vi.mock('next/image', () => ({
     priority: _,
     ...props
   }: React.ComponentProps<'img'> & { priority?: boolean }) => {
-    // eslint-disable-next-line jsx-a11y/alt-text
+    // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text -- mock for next/image, simpler test output
     return <img {...props} />
   },
 }))

@@ -68,7 +68,10 @@ vi.mock('@/components/common/catalyst/avatar', () => ({
     className?: string
   }) => (
     <div data-slot="avatar" data-initials={initials} data-alt={alt}>
-      {src && <img data-slot="avatar-image" src={src} alt={alt ?? ''} />}
+      {src && (
+        // eslint-disable-next-line @next/next/no-img-element -- mock renders plain img for test simplicity
+        <img data-slot="avatar-image" src={src} alt={alt ?? ''} />
+      )}
       {!src && initials && <span data-slot="avatar-fallback">{initials}</span>}
     </div>
   ),

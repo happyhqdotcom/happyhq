@@ -13,6 +13,7 @@ import type { TaskContent } from '@/lib/fs/types'
 import { taskContentKey, taskItemsKey } from '@/lib/swr-keys'
 import { useTaskStore } from '@/stores/taskStore'
 import { X } from 'lucide-react'
+import Image from 'next/image'
 import { useCallback, useState } from 'react'
 import { mutate } from 'swr'
 
@@ -126,9 +127,11 @@ export function MockTaskPanel() {
         onClick={() => setOpen(true)}
         className="fixed right-5 bottom-16 z-50 flex size-9 items-center justify-center rounded-full border border-white/10 bg-zinc-900 shadow-lg transition-colors hover:bg-zinc-800"
       >
-        <img
+        <Image
           src="/brand/gophie.png"
           alt="Dev tools"
+          width={32}
+          height={32}
           className="size-8 rounded-full"
         />
         {mockMode && (

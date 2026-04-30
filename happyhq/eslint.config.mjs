@@ -20,7 +20,6 @@ const eslintConfig = [
       '@typescript-eslint/no-unused-expressions': 'off',
       '@typescript-eslint/no-empty-interface': 'off',
       'prefer-const': 'off',
-      '@next/next/no-img-element': 'off',
     },
   },
 ]

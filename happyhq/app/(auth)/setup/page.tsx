@@ -3,6 +3,7 @@
 import { Button } from '@/components/common/catalyst/button'
 import { ErrorMessage, Field } from '@/components/common/catalyst/fieldset'
 import { Input } from '@/components/common/catalyst/input'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { mutate } from 'swr'
@@ -112,7 +113,15 @@ export default function SetupPage() {
     <div className="bg-background flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-[320px]">
         <div className="mb-8 flex justify-center">
-          <img src="/brand/logo.svg" alt="HappyHQ" className="h-12" />
+          <Image
+            src="/brand/logo.svg"
+            alt="HappyHQ"
+            width={235}
+            height={48}
+            priority
+            unoptimized
+            className="h-12 w-auto"
+          />
         </div>
 
         {mode === 'choice' && (

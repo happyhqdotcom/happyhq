@@ -10,6 +10,7 @@ import { allChatsKey } from '@/lib/swr-keys'
 import { groupByTime } from '@/lib/time-groups'
 import { AnimatePresence, motion } from 'framer-motion'
 import { MessageCircle } from 'lucide-react'
+import Image from 'next/image'
 import { useState } from 'react'
 import useSWR from 'swr'
 import { ChatListItem } from './chat-list-item'
@@ -198,10 +199,13 @@ export function ChatListHome() {
       {/* Poolside mode */}
       {branding === 'poolside' && !isMobile && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 hidden translate-y-[60%] sm:block">
-          <img
+          <Image
             src="/brand/poolside.png"
             alt="Poolside"
+            width={1734}
+            height={904}
             className="w-full"
+            style={{ height: 'auto' }}
             draggable={false}
           />
         </div>

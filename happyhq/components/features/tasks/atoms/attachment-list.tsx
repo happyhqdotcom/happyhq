@@ -11,6 +11,7 @@ import { FileRow } from '@/components/features/desktop/windows/shared/file-row'
 import type { PendingFile } from '@/components/features/tasks/hooks/use-optimistic-uploads'
 import type { FileItem } from '@/lib/fs/types'
 import { AlertTriangle, MoreHorizontal } from 'lucide-react'
+import Image from 'next/image'
 
 interface AttachmentListProps {
   inputs: FileItem[]
@@ -123,9 +124,12 @@ function InputRow({
         iconSlot={
           input.favicon ? (
             <>
-              <img
+              <Image
                 src={input.favicon}
                 alt=""
+                width={18}
+                height={18}
+                unoptimized
                 className="h-[18px] w-[18px] shrink-0 rounded-sm"
                 onError={(e) => {
                   // Fall back to generic web icon on favicon load failure

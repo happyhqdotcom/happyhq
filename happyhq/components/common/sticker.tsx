@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils'
 import { motion } from 'framer-motion'
+import Image from 'next/image'
 
 interface StickerProps {
   src: string
@@ -56,7 +57,16 @@ export function Sticker({
           ].join(' '),
         }}
       >
-        <img src={src} alt={alt} className="block w-full" draggable={false} />
+        <Image
+          src={src}
+          alt={alt}
+          width={size}
+          height={size}
+          unoptimized
+          draggable={false}
+          className="block w-full"
+          style={{ height: 'auto' }}
+        />
       </div>
     </motion.div>
   )

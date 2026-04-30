@@ -4,6 +4,7 @@ import type { HomeBranding } from '@/lib/config/types'
 import { cn } from '@/lib/utils'
 import { Radio, RadioGroup } from '@headlessui/react'
 import { CircleOff, Shuffle } from 'lucide-react'
+import Image from 'next/image'
 
 const BRANDING_OPTIONS: {
   value: HomeBranding
@@ -34,12 +35,16 @@ function MiniSticker({
   className?: string
 }) {
   return (
-    <img
+    <Image
       src={src}
       alt={alt}
+      width={48}
+      height={48}
+      unoptimized
       draggable={false}
       className={cn('block', className)}
       style={{
+        height: 'auto',
         filter: [
           'drop-shadow(0px -1.5px 0 white)',
           'drop-shadow(0px 1.5px 0 white)',
@@ -80,10 +85,13 @@ function OptionPreview({ value }: { value: HomeBranding }) {
       )
     case 'poolside':
       return (
-        <img
+        <Image
           src="/brand/poolside.png"
           alt="Poolside"
+          width={1734}
+          height={904}
           className="absolute bottom-0 left-0 w-full translate-y-1/3 object-contain"
+          style={{ height: 'auto' }}
           draggable={false}
         />
       )
@@ -97,10 +105,13 @@ function OptionPreview({ value }: { value: HomeBranding }) {
       )
     case 'q':
       return (
-        <img
+        <Image
           src="/brand/qutie-avatar.png"
           alt="Q"
+          width={713}
+          height={1005}
           className="w-10 object-contain"
+          style={{ height: 'auto' }}
           draggable={false}
         />
       )

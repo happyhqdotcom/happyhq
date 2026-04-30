@@ -15,6 +15,7 @@ import {
   Search,
   Video,
 } from 'lucide-react'
+import Image from 'next/image'
 import { useEffect, useState, useTransition } from 'react'
 
 // Action state exposed to parent for header button
@@ -262,10 +263,13 @@ export function UrlInputPage({
             }`}
           >
             {isLoaded && unfurlData?.image && (
-              <img
+              <Image
                 src={unfurlData.image}
                 alt=""
-                className="absolute inset-0 h-full w-full object-cover"
+                fill
+                unoptimized
+                sizes="320px"
+                className="object-cover"
                 onError={(e) => {
                   e.currentTarget.style.display = 'none'
                 }}
@@ -300,9 +304,12 @@ export function UrlInputPage({
               <>
                 <div className="flex items-start gap-2">
                   {unfurlData.favicon && (
-                    <img
+                    <Image
                       src={unfurlData.favicon}
                       alt=""
+                      width={16}
+                      height={16}
+                      unoptimized
                       className="mt-0.5 size-4 shrink-0 rounded"
                       onError={(e) => {
                         e.currentTarget.style.display = 'none'

@@ -1,5 +1,7 @@
 'use client'
 
+import Image from 'next/image'
+
 export function getGreeting(): { text: string; emoji: string } {
   const hour = new Date().getHours()
   if (hour < 12) return { text: 'Good morning', emoji: '☀️' }
@@ -16,11 +18,12 @@ export function Greeting({ showQ = false }: { showQ?: boolean }) {
       }
     >
       {showQ && (
-        <img
+        <Image
           src="/brand/qutie.png"
           alt="Q"
+          width={42}
+          height={55}
           className="mt-1 shrink-0"
-          style={{ width: 42, height: 55 }}
           draggable={false}
         />
       )}
