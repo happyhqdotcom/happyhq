@@ -159,7 +159,7 @@ export async function uploadFile(
   // type-specific pill (PDF / Word / Excel) after a reload — the JSONL
   // marker only carries slugs, which lack extensions and would otherwise
   // collapse to a generic "File" pill on history round-trip.
-  await recordUploadDisplayName(chatDir, finalSlug, file.name)
+  await recordUploadDisplayName(sessionId, finalSlug, file.name)
 
   log('file.uploaded', { chat: sessionId, file: finalSlug, ext })
   return finalSlug
@@ -167,11 +167,12 @@ export async function uploadFile(
 
 /** Merge `uploads[slug] = displayName` into the session's chat.json. */
 async function recordUploadDisplayName(
-  chatDir: string,
+  sessionId: string,
   slug: string,
   displayName: string,
 ): Promise<void> {
-  const chatJsonPath = path.join(chatDir, 'chat.json')
+  assertSafeSessionId(sessionId)
+  const chatJsonPath = path.join(HAPPYHQ_ROOT, '.chats', sessionId, 'chat.json')
   validatePath(chatJsonPath)
 
   let existing: Record<string, unknown> = {}

@@ -462,7 +462,7 @@ describe('uploadFile', () => {
       '{"name":"Chat","uploads":{"old-doc":"old.docx"}}',
     )
 
-    const fd = makeFormData('new.csv', 'csv')
+    const fd = makeFormData('new.pdf', 'pdf')
     await uploadFile('sess-1', fd)
 
     const chatJsonPath = path.join(MOCK_ROOT, '.chats', 'sess-1', 'chat.json')
@@ -472,7 +472,7 @@ describe('uploadFile', () => {
     const persisted = JSON.parse(writtenChatJson![1] as string)
     expect(persisted.uploads).toEqual({
       'old-doc': 'old.docx',
-      new: 'new.csv',
+      new: 'new.pdf',
     })
   })
 })
