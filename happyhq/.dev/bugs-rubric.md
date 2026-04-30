@@ -53,6 +53,8 @@ These are guidance, not gates. The rubric above is pass/fail; these tune _how_ t
 
 **A fix isn't just the diff.** Leave the surrounding system coherent. If the fix changes documented behavior, update the spec/doc in the same PR. If you notice a pattern that spans multiple recent issues, surface it for the maintainer rather than fixing one instance silently. If you skip, leave a rationale specific enough that a human can act on it without re-investigating.
 
+**Tests defend behavior, not lines.** Apply `testing.md`'s litmus test before adding a regression test: "what bug would this catch?" If the only answer is "someone reverted this exact line" — asserting a hardcoded asset path, a class name, copy text, or that a specific element exists — it's a vanity test that locks in implementation. Skip it. Asset swaps, copy tweaks, and CSS-only fixes are visually verified, not test-locked. A good regression test would still catch the bug under any reasonable reimplementation; a vanity test only catches the literal revert.
+
 ## Tuning signal
 
 When Ralphie gets it wrong — labels something `skip-too-big` that wasn't, opens a PR that shouldn't have been opened, misses an `ee/` touch — that's a rubric-tuning signal, not a one-off correction. Edit this file. The next run will pick up the change.

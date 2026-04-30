@@ -63,16 +63,6 @@ describe('Greeting component', () => {
     ).not.toBeNull()
   })
 
-  it('renders the new shaded Q glyph (not the old qutie.png) when showQ is set', async () => {
-    vi.spyOn(Date.prototype, 'getHours').mockReturnValue(10)
-
-    const { Greeting } = await import('./greeting')
-    render(<Greeting showQ />)
-
-    const q = screen.getByAltText('Q') as HTMLImageElement
-    expect(q.getAttribute('src')).toBe('/brand/q.svg')
-  })
-
   it('omits the Q glyph by default', async () => {
     vi.spyOn(Date.prototype, 'getHours').mockReturnValue(10)
 
