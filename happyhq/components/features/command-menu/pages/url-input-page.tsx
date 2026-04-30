@@ -262,7 +262,6 @@ export function UrlInputPage({
             }`}
           >
             {isLoaded && unfurlData?.image && (
-              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={unfurlData.image}
                 alt=""
@@ -301,7 +300,6 @@ export function UrlInputPage({
               <>
                 <div className="flex items-start gap-2">
                   {unfurlData.favicon && (
-                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={unfurlData.favicon}
                       alt=""

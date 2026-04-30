@@ -5,6 +5,7 @@ import { ErrorMessage, Field } from '@/components/common/catalyst/fieldset'
 import { Input } from '@/components/common/catalyst/input'
 import { AccountsLogin } from '@/components/features/auth/accounts-login'
 import { isAccountsEnabledClient } from '@/lib/accounts/config'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useActionState, useEffect, useRef, useState } from 'react'
 import { login } from './actions'
@@ -23,7 +24,15 @@ export function LoginPage({ hasPasswordGate }: { hasPasswordGate: boolean }) {
     <div className="bg-background flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-[320px]">
         <div className="mb-8 flex justify-center">
-          <img src="/brand/logo.svg" alt="HappyHQ" className="h-12" />
+          <Image
+            src="/brand/logo.svg"
+            alt="HappyHQ"
+            width={235}
+            height={48}
+            priority
+            unoptimized
+            className="h-12 w-auto"
+          />
         </div>
 
         {accountsEnabled && (!hasPasswordGate || passwordCleared) ? (
