@@ -18,15 +18,17 @@ function EditableDescription() {
   const refresh = useTaskMutate()
   const [isEditing, setIsEditing] = useState(false)
 
-  // Inline setState pattern — sync with server data when SWR updates
-  // (e.g., SWRConfig fallback arrives after initial render).
-  const serverDesc = content?.description ?? ''
-  const [lastServerDesc, setLastServerDesc] = useState(serverDesc)
-  const [description, setDescription] = useState(serverDesc)
+  // Initialize from server data exactly once. The parent remounts this
+  // component on taskSlug change (key={taskSlug}), so syncing again after
+  // init only ever races user input — a debounced save triggers an SWR
+  // refetch, the older snapshot wins, and the controlled value snaps back
+  // mid-keystroke (cursor jumps, dropped chars).
+  const [description, setDescription] = useState(content?.description ?? '')
+  const [initialized, setInitialized] = useState(content != null)
 
-  if (serverDesc !== lastServerDesc) {
-    setLastServerDesc(serverDesc)
-    setDescription(serverDesc)
+  if (!initialized && content != null) {
+    setDescription(content.description ?? '')
+    setInitialized(true)
   }
 
   const descTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
