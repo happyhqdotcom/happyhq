@@ -24,7 +24,7 @@ export function ThinkingIndicator({
   if (!hasContent) return null
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="mb-3">
+    <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger className="group/think text-muted-foreground hover:text-foreground flex cursor-pointer items-center gap-1 text-sm transition-colors">
         <span>Thinking</span>
         <ChevronRight className="h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]/think:rotate-90" />

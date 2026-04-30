@@ -219,4 +219,91 @@ describe('ToolProgressIndicator', () => {
       expect(detail.textContent!.endsWith('...')).toBe(true)
     })
   })
+
+  describe('row rhythm', () => {
+    // The row shell owns vertical spacing. Rich bodies must not contribute
+    // their own outer margin, and the wrapper must not use sibling-margin
+    // spacing — otherwise gaps between rows vary by tool type.
+    it('does not stack rows with sibling-margin spacing', () => {
+      const steps = [makeStep('Read', 'r1'), makeStep('TodoWrite', 'r2')]
+      const toolCalls = [
+        makeToolCall('Read', { file_path: '/a.ts' }, 'r1'),
+        makeToolCall(
+          'TodoWrite',
+          {
+            todos: [
+              {
+                content: 'Task one',
+                status: 'pending',
+                activeForm: 'Doing task one',
+              },
+            ],
+          },
+          'r2',
+        ),
+      ]
+
+      const { container } = render(
+        <ToolProgressIndicator
+          steps={steps}
+          toolCalls={toolCalls}
+          isStreaming={false}
+        />,
+      )
+
+      const wrapper = container.firstChild as HTMLElement
+      expect(/\bspace-y-/.test(wrapper.className)).toBe(false)
+    })
+
+    it('renders rich bodies inside the row shell with no top margin of their own', () => {
+      const steps = [makeStep('TodoWrite', 'r1'), makeStep('Write', 'r2')]
+      const toolCalls = [
+        makeToolCall(
+          'TodoWrite',
+          {
+            todos: [
+              {
+                content: 'Task one',
+                status: 'pending',
+                activeForm: 'Doing task one',
+              },
+            ],
+          },
+          'r1',
+        ),
+        makeToolCall(
+          'Write',
+          { file_path: '/x.ts', content: 'export const x = 1\n' },
+          'r2',
+        ),
+      ]
+
+      const { container } = render(
+        <ToolProgressIndicator
+          steps={steps}
+          toolCalls={toolCalls}
+          isStreaming={false}
+        />,
+      )
+
+      // The rich body lives inside the same row container as its header,
+      // and does not bring its own top margin — the row shell handles rhythm.
+      const todoText = screen.getByText('Task one')
+      const todoRichRoot = todoText.parentElement!.parentElement as HTMLElement
+      expect(/\bmt-/.test(todoRichRoot.className)).toBe(false)
+
+      const writeContent = screen.getByText('export const x = 1')
+      // <pre> is wrapped in a card div which is the rich root for Write.
+      const writeRichRoot = writeContent.parentElement!
+        .parentElement as HTMLElement
+      expect(/\bmt-/.test(writeRichRoot.className)).toBe(false)
+
+      // Both rich bodies are descendants of their row, not promoted out of it.
+      const wrapper = container.firstChild as HTMLElement
+      const rows = Array.from(wrapper.children) as HTMLElement[]
+      expect(rows.length).toBe(2)
+      expect(rows[0].contains(todoText)).toBe(true)
+      expect(rows[1].contains(writeContent)).toBe(true)
+    })
+  })
 })

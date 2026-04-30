@@ -39,7 +39,7 @@ export function ToolProgressIndicator({
   if (visible.length === 0) return null
 
   return (
-    <div className="space-y-1.5">
+    <div>
       {visible.map((step, i) => (
         <ToolStep
           key={step.toolUseId}
@@ -72,7 +72,9 @@ function ToolStep({
   const RichRenderer = RICH_RENDERERS[step.toolName]
 
   return (
-    <div className={isActive ? 'animate-fade-in' : ''}>
+    <div
+      className={'space-y-1.5 py-0.5' + (isActive ? ' animate-fade-in' : '')}
+    >
       {/* Header row — same for all tools */}
       {/* min-w-0 stops a long detail child from forcing the row past the chat width;
           the detail itself truncates inside the remaining space. */}
@@ -125,7 +127,7 @@ function ToolStep({
       ) : (
         showDetail &&
         toolCall && (
-          <pre className="text-muted-foreground/60 border-border/50 mt-1 overflow-x-auto rounded-lg border px-3 py-2 text-[11px] leading-snug">
+          <pre className="text-muted-foreground/60 border-border/50 overflow-x-auto rounded-lg border px-3 py-2 text-[11px] leading-snug">
             {JSON.stringify(toolCall.input, null, 2)}
           </pre>
         )

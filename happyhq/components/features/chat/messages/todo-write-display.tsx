@@ -19,7 +19,7 @@ export function TodoWriteDisplay({ toolCall }: TodoWriteDisplayProps) {
   if (!Array.isArray(todos) || todos.length === 0) return null
 
   const wrapperClass =
-    'mt-1.5 ml-6 space-y-0.5' +
+    'ml-6 space-y-0.5' +
     (todos.length > 6 ? ' max-h-[180px] overflow-y-auto' : '')
 
   return (
