@@ -203,14 +203,6 @@ describe('getToolDetail', () => {
       )
     })
 
-    it('truncates long commands at 50 characters', () => {
-      const longCmd = 'a'.repeat(60)
-      const result = getToolDetail(
-        toolCall('Bash(cmd:*)', { command: longCmd }),
-      )
-      expect(result).toBe('a'.repeat(50) + '...')
-    })
-
     it('returns null when neither description nor command is present', () => {
       expect(getToolDetail(toolCall('Bash(cmd:*)', {}))).toBeNull()
     })
@@ -218,5 +210,63 @@ describe('getToolDetail', () => {
 
   it('returns null for unknown tools', () => {
     expect(getToolDetail(toolCall('UnknownTool', { foo: 'bar' }))).toBeNull()
+  })
+
+  // Regression for #32: long detail strings forced the chat layout wider than
+  // its container. Detail strings must be capped on the way out so neither the
+  // DOM nor accessibility tree carries unbounded values.
+  describe('detail length cap (issue #32)', () => {
+    const cap = 60
+    const longValue = 'x'.repeat(cap + 50)
+
+    it('caps Bash command details', () => {
+      const result = getToolDetail(
+        toolCall('Bash(cmd:*)', { command: longValue }),
+      )
+      expect(result).not.toBeNull()
+      expect(result!.length).toBeLessThanOrEqual(cap + 3)
+      expect(result!.endsWith('...')).toBe(true)
+    })
+
+    it('caps Bash description details', () => {
+      const result = getToolDetail(
+        toolCall('Bash(cmd:*)', { description: longValue }),
+      )
+      expect(result!.length).toBeLessThanOrEqual(cap + 3)
+      expect(result!.endsWith('...')).toBe(true)
+    })
+
+    it('caps Glob patterns', () => {
+      const result = getToolDetail(toolCall('Glob', { pattern: longValue }))
+      expect(result!.length).toBeLessThanOrEqual(cap + 3)
+    })
+
+    it('caps Grep patterns (including the surrounding quotes)', () => {
+      const result = getToolDetail(toolCall('Grep', { pattern: longValue }))
+      expect(result!.length).toBeLessThanOrEqual(cap + 3)
+    })
+
+    it('caps WebSearch queries', () => {
+      const result = getToolDetail(toolCall('WebSearch', { query: longValue }))
+      expect(result!.length).toBeLessThanOrEqual(cap + 3)
+    })
+
+    it('caps Task descriptions', () => {
+      const result = getToolDetail(toolCall('Task', { description: longValue }))
+      expect(result!.length).toBeLessThanOrEqual(cap + 3)
+    })
+
+    it('caps ProcessSample slugs', () => {
+      const result = getToolDetail(
+        toolCall('ProcessSample', { slug: longValue }),
+      )
+      expect(result!.length).toBeLessThanOrEqual(cap + 3)
+    })
+
+    it('leaves short values untouched', () => {
+      expect(getToolDetail(toolCall('Glob', { pattern: '**/*.tsx' }))).toBe(
+        '**/*.tsx',
+      )
+    })
   })
 })

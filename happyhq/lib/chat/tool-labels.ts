@@ -55,6 +55,17 @@ function fileName(filePath: string): string {
   return parts[parts.length - 1] || filePath
 }
 
+// Hard cap on the user-visible detail string. CSS truncate is the primary
+// guard against overflow; this cap keeps tooltips/screen readers sane and
+// prevents truly absurd values (multi-KB Grep patterns, paste-bombed URLs)
+// from ever reaching the DOM.
+const MAX_DETAIL_LENGTH = 60
+
+function clamp(value: string): string {
+  if (value.length <= MAX_DETAIL_LENGTH) return value
+  return value.slice(0, MAX_DETAIL_LENGTH) + '...'
+}
+
 /**
  * Extract a short detail string from a tool call's input.
  * Returns null if no meaningful detail can be derived.
@@ -65,6 +76,11 @@ function fileName(filePath: string): string {
  *   Grep { pattern: "useState" } → "useState"
  */
 export function getToolDetail(toolCall: ToolCall): string | null {
+  const raw = getRawDetail(toolCall)
+  return raw === null ? null : clamp(raw)
+}
+
+function getRawDetail(toolCall: ToolCall): string | null {
   const { name, input } = toolCall
   if (!input) return null
 
@@ -123,9 +139,7 @@ export function getToolDetail(toolCall: ToolCall): string | null {
         const desc = input.description as string | undefined
         if (desc) return desc
         const command = input.command as string | undefined
-        if (command) {
-          return command.length > 50 ? command.slice(0, 50) + '...' : command
-        }
+        if (command) return command
       }
       return null
     }

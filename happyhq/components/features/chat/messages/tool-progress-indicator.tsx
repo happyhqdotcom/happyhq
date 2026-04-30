@@ -74,28 +74,36 @@ function ToolStep({
   return (
     <div className={isActive ? 'animate-fade-in' : ''}>
       {/* Header row — same for all tools */}
-      <div className="flex items-baseline gap-2">
+      {/* min-w-0 stops a long detail child from forcing the row past the chat width;
+          the detail itself truncates inside the remaining space. */}
+      <div className="flex min-w-0 items-baseline gap-2">
         {isActive ? (
           <Loader2 className="text-muted-foreground h-4 w-4 shrink-0 translate-y-[2px] animate-spin" />
         ) : (
           <Check className="text-muted-foreground h-4 w-4 shrink-0 translate-y-[2px]" />
         )}
-        <span className="text-foreground text-sm font-medium">{label}</span>
+        <span className="text-foreground shrink-0 text-sm font-medium">
+          {label}
+        </span>
         {detail && filePath ? (
           <button
             type="button"
             onClick={() => openFileWindow({ name: detail, path: filePath })}
-            className="text-muted-foreground hover:text-foreground cursor-pointer font-mono text-xs underline decoration-transparent transition-colors hover:decoration-current"
+            title={detail}
+            className="text-muted-foreground hover:text-foreground min-w-0 cursor-pointer truncate text-left font-mono text-xs underline decoration-transparent transition-colors hover:decoration-current"
           >
             {detail}
           </button>
         ) : detail ? (
-          <span className="text-muted-foreground font-mono text-xs">
+          <span
+            title={detail}
+            className="text-muted-foreground min-w-0 truncate font-mono text-xs"
+          >
             {detail}
           </span>
         ) : null}
         {isActive && elapsed > 0 && (
-          <span className="text-muted-foreground text-xs tabular-nums">
+          <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
             {elapsed}s
           </span>
         )}
@@ -104,7 +112,7 @@ function ToolStep({
           <button
             type="button"
             onClick={() => setShowDetail((prev) => !prev)}
-            className="text-muted-foreground/40 hover:text-muted-foreground ml-auto cursor-pointer transition-colors"
+            className="text-muted-foreground/40 hover:text-muted-foreground ml-auto shrink-0 cursor-pointer transition-colors"
           >
             <Info className="h-3.5 w-3.5" />
           </button>
