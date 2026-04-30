@@ -34,6 +34,7 @@ export async function POST(request: Request) {
       { status: 400 },
     )
   }
+  const planAcceptedMessage = `[${stream}/${task}] Plan accepted`
 
   // Verify task directory exists on filesystem (always root)
   const content = await readTaskContent(task)
@@ -78,8 +79,7 @@ export async function POST(request: Request) {
         const result = await canStartTask(userId)
         if (!result.allowed) {
           if (mode === 'working' && content.run?.status !== 'stopped') {
-            const prefix = stream ? `${stream}/` : ''
-            commitGitState(`[${prefix}${task}] Plan accepted`)
+            commitGitState(planAcceptedMessage)
             const now = new Date().toISOString()
             const runInfo: RunInfo = {
               status: 'stopped',
@@ -116,7 +116,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    await startRun(stream ?? '', task, mode, userId, body.resume)
+    await startRun(stream, task, mode, userId, body.resume)
   } catch (error) {
     if (error instanceof Error && error.message.includes('already active')) {
       return Response.json({ error: error.message }, { status: 409 })
@@ -138,8 +138,7 @@ export async function POST(request: Request) {
   // Placed after startRun so a failed start (409) doesn't create a stale commit.
   // Skip when resuming from stopped — plan was already accepted.
   if (mode === 'working' && content.run?.status !== 'stopped') {
-    const prefix = stream ? `${stream}/` : ''
-    commitGitState(`[${prefix}${task}] Plan accepted`)
+    commitGitState(planAcceptedMessage)
   }
 
   return Response.json({
