@@ -191,6 +191,68 @@ describe('ChatMessageComponent', () => {
     expect(screen.getByText('Show more')).not.toBeNull()
   })
 
+  it('caps visible file pills with a "+N more" toggle so the sticky block stays compact', () => {
+    render(
+      <ChatMessageComponent
+        message={makeMessage({
+          role: 'user',
+          content: '',
+          files: ['a.pdf', 'b.pdf', 'c.pdf', 'd.pdf', 'e.pdf'],
+        })}
+      />,
+    )
+
+    // Only the first 2 pill filenames are visible up front…
+    expect(screen.getByText('a.pdf')).not.toBeNull()
+    expect(screen.getByText('b.pdf')).not.toBeNull()
+    expect(screen.queryByText('c.pdf')).toBeNull()
+    expect(screen.queryByText('d.pdf')).toBeNull()
+    expect(screen.queryByText('e.pdf')).toBeNull()
+
+    // …with a "+N more" affordance for the rest.
+    fireEvent.click(screen.getByText('+3 more'))
+    expect(screen.getByText('c.pdf')).not.toBeNull()
+    expect(screen.getByText('d.pdf')).not.toBeNull()
+    expect(screen.getByText('e.pdf')).not.toBeNull()
+
+    fireEvent.click(screen.getByText('Show fewer'))
+    expect(screen.queryByText('c.pdf')).toBeNull()
+    expect(screen.queryByText('d.pdf')).toBeNull()
+    expect(screen.queryByText('e.pdf')).toBeNull()
+  })
+
+  it('renders all pills inline when the count is at or below the visible cap', () => {
+    render(
+      <ChatMessageComponent
+        message={makeMessage({
+          role: 'user',
+          content: '',
+          files: ['a.pdf', 'b.pdf'],
+        })}
+      />,
+    )
+
+    expect(screen.getByText('a.pdf')).not.toBeNull()
+    expect(screen.getByText('b.pdf')).not.toBeNull()
+    expect(screen.queryByText(/more$/)).toBeNull()
+  })
+
+  it('exposes the full filename as a title attribute so truncated pills reveal on hover', () => {
+    const longName =
+      '813c566a-ed6a-4d81-b708-b29234596465-2fguide-using-merchstack-to-power-your-storefront-experiences'
+    render(
+      <ChatMessageComponent
+        message={makeMessage({
+          role: 'user',
+          content: '',
+          files: [longName],
+        })}
+      />,
+    )
+
+    expect(screen.getByText(longName).getAttribute('title')).toBe(longName)
+  })
+
   it('toggles between "Show more" and "Show less" on click', () => {
     render(
       <ChatMessageComponent
