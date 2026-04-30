@@ -1,4 +1,4 @@
-import type { ChatMessage, ToolCall } from '@/lib/chat/types'
+import type { ChatMessage, SubagentActivity, ToolCall } from '@/lib/chat/types'
 import { stripMcpPrefix } from '@/lib/run/filter.server'
 
 /**
@@ -23,7 +23,19 @@ interface JournalEntry {
       content?: string | Array<{ type: string; text?: string }> // tool_result content
     }>
   }
+  // Top-level metadata the SDK attaches to user entries that carry a Task
+  // tool_result. The live `task_notification` system event isn't persisted to
+  // JSONL, so this aggregate is the only source of truth for tool count and
+  // duration on the reload path.
+  toolUseResult?: {
+    status?: 'completed' | 'failed' | 'stopped'
+    totalDurationMs?: number
+    totalToolUseCount?: number
+  }
 }
+
+/** Tool names the SDK uses to spawn subagents. */
+const SUBAGENT_TOOL_NAMES = new Set(['Task', 'Agent'])
 
 type ChatMessageWithRequestId = ChatMessage & { _requestId?: string }
 
@@ -112,6 +124,39 @@ function extractFilesFromContent(content: string): {
 }
 
 /**
+ * Find the SubagentActivity seeded by a Task/Agent tool_use and merge in the
+ * completion metrics from the tool_result entry. Returns true when an activity
+ * was matched (so the caller can short-circuit AskUserQuestion handling).
+ *
+ * The SDK's live `task_notification` system events aren't persisted to JSONL,
+ * so durations and tool counts come from the entry's top-level `toolUseResult`.
+ */
+function completeSubagentActivity(
+  rawMessages: ChatMessageWithRequestId[],
+  toolUseId: string,
+  entry: JournalEntry,
+): boolean {
+  for (let i = rawMessages.length - 1; i >= 0; i--) {
+    const msg = rawMessages[i]
+    if (msg.role !== 'assistant' || !msg.subagentActivities) continue
+    const activity = msg.subagentActivities.find((a) => a.taskId === toolUseId)
+    if (!activity) continue
+    activity.isComplete = true
+    const meta = entry.toolUseResult
+    if (meta) {
+      if (typeof meta.totalToolUseCount === 'number') {
+        activity.toolUses = meta.totalToolUseCount
+      }
+      if (typeof meta.totalDurationMs === 'number') {
+        activity.durationMs = meta.totalDurationMs
+      }
+    }
+    return true
+  }
+  return false
+}
+
+/**
  * Parse SDK session JSONL content into a ChatMessage array.
  *
  * Filters to user/assistant messages, extracts AskUserQuestion answers from
@@ -137,6 +182,7 @@ export function parseJournalEntries(content: string): ChatMessage[] {
 
     // Extract interactive tool state from tool_result entries, then skip them.
     // AskUserQuestion: populate tc.answers from the result text.
+    // Task/Agent: complete the matching SubagentActivity.
     // CreateTask taskStarted is annotated by the history route from chat.json, not here.
     if (entry.type === 'user') {
       const toolResults = entry.message.content.filter(
@@ -144,8 +190,14 @@ export function parseJournalEntries(content: string): ChatMessage[] {
       )
       if (toolResults.length > 0) {
         for (const tr of toolResults) {
+          if (!tr.tool_use_id) continue
+
+          if (completeSubagentActivity(rawMessages, tr.tool_use_id, entry)) {
+            continue
+          }
+
           const text = extractToolResultText(tr.content)
-          if (!text || !tr.tool_use_id) continue
+          if (!text) continue
 
           // AskUserQuestion: parse answers from result text
           const answers = parseAskAnswers(text)
@@ -208,6 +260,17 @@ export function parseJournalEntries(content: string): ChatMessage[] {
         .filter((block) => block.type === 'thinking' && block.thinking)
         .map((block) => ({ text: block.thinking! }))
 
+      const subagentActivities: SubagentActivity[] = toolCalls
+        .filter((tc) => SUBAGENT_TOOL_NAMES.has(tc.name))
+        .map((tc) => ({
+          taskId: tc.id,
+          description:
+            typeof tc.input.description === 'string' && tc.input.description
+              ? tc.input.description
+              : 'agent',
+          isComplete: false,
+        }))
+
       rawMessages.push({
         id: entry.uuid,
         role: 'assistant',
@@ -222,6 +285,8 @@ export function parseJournalEntries(content: string): ChatMessage[] {
                 elapsedSeconds: 0,
               }))
             : undefined,
+        subagentActivities:
+          subagentActivities.length > 0 ? subagentActivities : undefined,
         isHistorical: true,
         timestamp: new Date(entry.timestamp).getTime(),
         _requestId: entry.requestId,
