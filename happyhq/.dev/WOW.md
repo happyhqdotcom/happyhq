@@ -60,6 +60,26 @@ git checkout -b ralph/next-thing
 
 Each new branch starts from a richer main. Ralph reads the merged code and builds on top of it.
 
+## Ralphie does bugs
+
+Different shape from the build loop. Reads GitHub issues, opens PRs.
+
+```bash
+./bugs.sh                  # triage everything, then fix up to 3 eligible bugs
+./bugs.sh --triage-only    # just label/comment, don't touch code
+./bugs.sh --issue 42       # skip triage, attempt one fix on #42
+./bugs.sh --dry-run        # Phase 1 preview only (no writes); add --issue <#> to preview a fix
+```
+
+Two phases, one command:
+
+- **Phase 1 — Triage.** One session reads every open `bug` issue with no `ralphie:*` label and applies `bugs-rubric.md`. For each rule trip, it writes a `ralphie:skip-*` label + a comment explaining what it saw and what would unblock it. Eligible issues stay unlabeled.
+- **Phase 2 — Fix.** Loops one fix-session per bug: pick the oldest unlabeled `bug`, reproduce, branch `fix/<#>-...`, fix, regression test, verify, PR. Late-stage rubric checks (not-reproducible, verification-failed, too-big) can still skip a bug here. Stops when the queue is empty or `--max-bugs` is hit.
+
+The breadcrumbs (labels + comments) are how Ralphie talks to itself across runs and how you manage the loop. A `ralphie:*` label is terminal — Ralphie never re-evaluates a labeled issue. **You unblock by removing the label.**
+
+Edit `bugs-rubric.md` when Ralphie misjudges. Same model as `specs/` for the build loop: the spec is the source of truth, the prompts stay thin.
+
 ## Quick Reference
 
 | Command                             | What it does                              |
@@ -68,6 +88,10 @@ Each new branch starts from a richer main. Ralph reads the merged code and build
 | `./loop.sh plan-work "description"` | Scoped plan for a branch                  |
 | `./loop.sh`                         | Build mode, unlimited iterations          |
 | `./loop.sh 20`                      | Build mode, max 20 iterations             |
+| `./bugs.sh`                         | Triage + fix up to 3 bugs                 |
+| `./bugs.sh --triage-only`           | Just triage, no code                      |
+| `./bugs.sh --issue <#>`             | Fix one specific issue                    |
+| `./bugs.sh --dry-run`               | Phase 1 preview only, no writes           |
 
 ## When Things Go Wrong
 
@@ -85,4 +109,7 @@ Each new branch starts from a richer main. Ralph reads the merged code and build
 - `PROMPT_plan.md` — Planning prompt. Includes ULTIMATE GOAL.
 - `PROMPT_build.md` — Build prompt. One task per iteration.
 - `PROMPT_plan_work.md` — Scoped planning prompt. Uses `${WORK_SCOPE}`.
+- `bugs-rubric.md` — Source of truth for bug triage/fix judgment. Loaded by both bug prompts.
+- `PROMPT_bugs_triage.md` — Phase 1 prompt. Reads `bugs-rubric.md`, walks the queue, labels.
+- `PROMPT_bugs_fix.md` — Phase 2 prompt. One bug per session. Uses `${ISSUE_NUMBER}`.
 - `lib/` — Standard library. Steer Ralph through code, not just prompts.
