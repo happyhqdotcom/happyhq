@@ -660,6 +660,240 @@ describe('parseJournalEntries', () => {
     expect(messages).toHaveLength(1)
     expect(messages[0].toolCalls![0].answers).toBeUndefined()
   })
+
+  describe('subagent activities', () => {
+    function taskResultLine(opts: {
+      toolUseId: string
+      uuid?: string
+      timestamp?: string
+      status?: 'completed' | 'failed' | 'stopped'
+      totalDurationMs?: number
+      totalToolUseCount?: number
+      summaryText?: string
+    }) {
+      const {
+        toolUseId,
+        uuid = 'tr1',
+        timestamp = '2025-01-01T00:00:02Z',
+        status = 'completed',
+        totalDurationMs = 77000,
+        totalToolUseCount = 26,
+        summaryText = 'subagent finished',
+      } = opts
+      return JSON.stringify({
+        type: 'user',
+        uuid,
+        timestamp,
+        toolUseResult: {
+          status,
+          totalDurationMs,
+          totalToolUseCount,
+        },
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: toolUseId,
+              content: [{ type: 'text', text: summaryText }],
+            },
+          ],
+        },
+      })
+    }
+
+    it('reconstructs a completed Task subagent activity with description, tool count, and duration', () => {
+      const content = [
+        assistantLine('Delegating to subagent', {
+          uuid: 'a1',
+          toolCalls: [
+            {
+              id: 'task-1',
+              name: 'Task',
+              input: {
+                description: 'Read all specs',
+                subagent_type: 'Explore',
+                prompt: 'Read X, Y, Z',
+              },
+            },
+          ],
+        }),
+        taskResultLine({
+          toolUseId: 'task-1',
+          totalDurationMs: 77000,
+          totalToolUseCount: 26,
+        }),
+      ].join('\n')
+
+      const messages = parseJournalEntries(content)
+
+      expect(messages).toHaveLength(1)
+      expect(messages[0].subagentActivities).toEqual([
+        expect.objectContaining({
+          taskId: 'task-1',
+          description: 'Read all specs',
+          isComplete: true,
+          toolUses: 26,
+          durationMs: 77000,
+        }),
+      ])
+    })
+
+    it('also reconstructs activities for the Agent tool name', () => {
+      const content = [
+        assistantLine('Delegating', {
+          uuid: 'a1',
+          toolCalls: [
+            {
+              id: 'agent-1',
+              name: 'Agent',
+              input: { description: 'Review the diff' },
+            },
+          ],
+        }),
+        taskResultLine({
+          toolUseId: 'agent-1',
+          totalDurationMs: 12000,
+          totalToolUseCount: 4,
+        }),
+      ].join('\n')
+
+      const messages = parseJournalEntries(content)
+
+      expect(messages[0].subagentActivities).toEqual([
+        expect.objectContaining({
+          taskId: 'agent-1',
+          description: 'Review the diff',
+          isComplete: true,
+          toolUses: 4,
+          durationMs: 12000,
+        }),
+      ])
+    })
+
+    it('attaches multiple subagent activities spawned from the same assistant message', () => {
+      const content = [
+        assistantLine('Two delegations', {
+          uuid: 'a1',
+          toolCalls: [
+            {
+              id: 'task-a',
+              name: 'Task',
+              input: { description: 'Read playbook' },
+            },
+            {
+              id: 'task-b',
+              name: 'Task',
+              input: { description: 'Read crm spec' },
+            },
+          ],
+        }),
+        taskResultLine({
+          toolUseId: 'task-a',
+          uuid: 'tr-a',
+          totalDurationMs: 1000,
+          totalToolUseCount: 1,
+        }),
+        taskResultLine({
+          toolUseId: 'task-b',
+          uuid: 'tr-b',
+          totalDurationMs: 2000,
+          totalToolUseCount: 2,
+        }),
+      ].join('\n')
+
+      const messages = parseJournalEntries(content)
+
+      expect(messages[0].subagentActivities).toHaveLength(2)
+      expect(messages[0].subagentActivities![0]).toEqual(
+        expect.objectContaining({
+          taskId: 'task-a',
+          description: 'Read playbook',
+          isComplete: true,
+          toolUses: 1,
+          durationMs: 1000,
+        }),
+      )
+      expect(messages[0].subagentActivities![1]).toEqual(
+        expect.objectContaining({
+          taskId: 'task-b',
+          description: 'Read crm spec',
+          isComplete: true,
+          toolUses: 2,
+          durationMs: 2000,
+        }),
+      )
+    })
+
+    it('completes activities when the tool_result arrives in a later assistant turn', () => {
+      const content = [
+        assistantLine('Spawning subagent', {
+          uuid: 'a1',
+          toolCalls: [
+            {
+              id: 'task-x',
+              name: 'Task',
+              input: { description: 'Long-running work' },
+            },
+          ],
+        }),
+        assistantLine('Thinking aloud while subagent runs', { uuid: 'a2' }),
+        taskResultLine({
+          toolUseId: 'task-x',
+          totalDurationMs: 30000,
+          totalToolUseCount: 9,
+        }),
+      ].join('\n')
+
+      const messages = parseJournalEntries(content)
+
+      expect(messages).toHaveLength(2)
+      expect(messages[0].subagentActivities).toEqual([
+        expect.objectContaining({
+          taskId: 'task-x',
+          description: 'Long-running work',
+          isComplete: true,
+          toolUses: 9,
+          durationMs: 30000,
+        }),
+      ])
+      expect(messages[1].subagentActivities).toBeUndefined()
+    })
+
+    it('marks an activity incomplete if no tool_result arrives (interrupted run)', () => {
+      const content = assistantLine('Just spawned, never finished', {
+        uuid: 'a1',
+        toolCalls: [
+          {
+            id: 'task-pending',
+            name: 'Task',
+            input: { description: 'Will be cut off' },
+          },
+        ],
+      })
+
+      const messages = parseJournalEntries(content)
+
+      expect(messages[0].subagentActivities).toEqual([
+        expect.objectContaining({
+          taskId: 'task-pending',
+          description: 'Will be cut off',
+          isComplete: false,
+        }),
+      ])
+    })
+
+    it('does not create a subagent activity for non-Task tool calls', () => {
+      const content = assistantLine('Just reading a file', {
+        uuid: 'a1',
+        toolCalls: [{ id: 'tc-read', name: 'Read', input: { path: '/foo' } }],
+      })
+
+      const messages = parseJournalEntries(content)
+
+      expect(messages[0].subagentActivities).toBeUndefined()
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------
