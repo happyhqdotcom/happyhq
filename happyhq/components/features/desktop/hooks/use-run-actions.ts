@@ -1,7 +1,7 @@
 'use client'
 
 import { toastError } from '@/components/common/ui/sonner'
-import { useBillingData } from '@/components/features/sidebar/atoms/usage-indicator'
+import { useBillingData } from '@/components/features/billing/use-billing-data'
 import type { DesktopData, RunInfo, TaskContent } from '@/lib/fs/types'
 import { invalidateStream } from '@/lib/swr-helpers'
 import { desktopDataKey, taskContentKey } from '@/lib/swr-keys'

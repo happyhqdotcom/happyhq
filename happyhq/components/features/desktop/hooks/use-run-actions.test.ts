@@ -11,12 +11,11 @@ vi.mock('swr', () => ({
   mutate: vi.fn(),
 }))
 
-// Mock useBillingData so the hook can be exercised without InstantDB.
 // Default: null (CE / unauthenticated) → no client-side gate.
 const mockUseBillingData = vi.fn(
   () => null as null | { remainingMinutes: number },
 )
-vi.mock('@/components/features/sidebar/atoms/usage-indicator', () => ({
+vi.mock('@/components/features/billing/use-billing-data', () => ({
   useBillingData: () => mockUseBillingData(),
 }))
 

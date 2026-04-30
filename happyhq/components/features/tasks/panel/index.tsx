@@ -12,6 +12,7 @@ import {
 } from '@/components/common/catalyst/sidebar'
 import { DeleteAlert } from '@/components/common/shared/delete-alert'
 import { UpgradePrompt } from '@/components/features/billing/upgrade-prompt'
+import { useBillingData } from '@/components/features/billing/use-billing-data'
 import {
   useActiveTask,
   useDesktopMutate,
@@ -27,7 +28,6 @@ import {
 } from '@/components/features/desktop/panels/atoms'
 import { openChatSessionWindow } from '@/components/features/desktop/windows/chat/open-chat-window'
 import { useFileDrop } from '@/components/features/desktop/windows/shared/use-file-drop'
-import { useBillingData } from '@/components/features/sidebar/atoms/usage-indicator'
 import { ActivityHeader } from '@/components/features/tasks/atoms/activity-header'
 import { AttachmentList } from '@/components/features/tasks/atoms/attachment-list'
 import { ConfirmRestartAlert } from '@/components/features/tasks/atoms/confirm-restart-alert'
