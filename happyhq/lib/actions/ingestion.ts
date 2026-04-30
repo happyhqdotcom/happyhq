@@ -7,6 +7,10 @@ import path from 'node:path'
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
 import { extractContentFromDocx } from '@/lib/docx/extract-text.server'
 import { extractContentFromEml } from '@/lib/eml/extract-text.server'
+import {
+  ALLOWED_INPUT_EXTENSIONS,
+  isAllowedInputExtension,
+} from '@/lib/file-types'
 import type { InputQuality } from '@/lib/fs/assess-quality.server'
 import { assessTextQuality } from '@/lib/fs/assess-quality.server'
 import { streamPath, taskPath, validatePath } from '@/lib/fs/paths'
@@ -17,6 +21,11 @@ import { extractTextFromPdf } from '@/lib/pdf/extract-text.server'
 import { log } from '@/lib/log.server'
 
 import { deferredCommit, deleteFileItem } from './shared'
+
+function unsupportedTypeMessage(filename: string): string {
+  const allowed = ALLOWED_INPUT_EXTENSIONS.join(', ')
+  return `Unsupported file type "${filename}". Allowed: ${allowed}.`
+}
 
 /**
  * Stage an uploaded file to the chat's uploads/ directory.
@@ -34,6 +43,10 @@ export async function uploadFile(
   const file = formData.get('file') as File
   if (!file) {
     throw new Error('No file provided in FormData')
+  }
+
+  if (!isAllowedInputExtension(path.extname(file.name))) {
+    throw new Error(unsupportedTypeMessage(file.name))
   }
 
   // Billing limit check — dynamic import to keep core/EE separation.
@@ -221,6 +234,9 @@ async function ingestFile(
   }
 
   const ext = path.extname(file.name)
+  if (!isAllowedInputExtension(ext)) {
+    throw new Error(unsupportedTypeMessage(file.name))
+  }
 
   // Billing limit check
   if (opts.streamName) {

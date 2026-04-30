@@ -9,6 +9,7 @@ import { setSessionMode } from '@/lib/chat/session-mode'
 import type { ChatStreamEvent } from '@/lib/chat/types'
 import { extractContentFromDocx } from '@/lib/docx/extract-text.server'
 import { extractContentFromEml } from '@/lib/eml/extract-text.server'
+import { isAllowedInputExtension } from '@/lib/file-types'
 import { chatPath, streamPath } from '@/lib/fs/paths'
 import { listDirectory, readStreamContent } from '@/lib/fs/read.server'
 import { extractTextFromPdf } from '@/lib/pdf/extract-text.server'
@@ -129,8 +130,7 @@ export function createQsMcpServer(
 
           // 3. Validate file is a supported format
           const ext = path.extname(originalFile).toLowerCase()
-          const supportedExts = ['.pdf', '.eml', '.docx']
-          if (!supportedExts.includes(ext)) {
+          if (!isAllowedInputExtension(ext)) {
             return {
               content: [
                 {
