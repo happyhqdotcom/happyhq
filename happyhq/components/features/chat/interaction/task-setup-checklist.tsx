@@ -53,7 +53,7 @@ export function TaskSetupChecklist() {
       }}
     >
       <Image
-        src="/brand/qutie.png"
+        src="/brand/q.svg"
         alt="Q"
         width={28}
         height={28}

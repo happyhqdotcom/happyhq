@@ -17,7 +17,7 @@ export function Greeting({ showQ = false }: { showQ?: boolean }) {
     >
       {showQ && (
         <img
-          src="/brand/qutie.png"
+          src="/brand/q.svg"
           alt="Q"
           className="mt-1 shrink-0"
           style={{ width: 42, height: 55 }}
