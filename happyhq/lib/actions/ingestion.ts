@@ -171,8 +171,18 @@ async function recordUploadDisplayName(
   slug: string,
   displayName: string,
 ): Promise<void> {
+  // Two-step sanitization: assertSafeSessionId rejects garbage, and the
+  // path.basename round-trip is what CodeQL's path-traversal analysis
+  // recognizes as a sanitizer (a regex test alone isn't picked up).
   assertSafeSessionId(sessionId)
-  const chatJsonPath = path.join(HAPPYHQ_ROOT, '.chats', sessionId, 'chat.json')
+  const safeSessionId = path.basename(sessionId)
+  if (safeSessionId !== sessionId) throw new Error('Invalid session id')
+  const chatJsonPath = path.join(
+    HAPPYHQ_ROOT,
+    '.chats',
+    safeSessionId,
+    'chat.json',
+  )
   validatePath(chatJsonPath)
 
   let existing: Record<string, unknown> = {}
