@@ -50,6 +50,7 @@ export async function loadChatHistory(
   let mode: string | null = null
   let chatStreamSlug: string | null = null
   let selectedStreamSlug: string | null = null
+  let uploads: Record<string, string> = {}
 
   if (chatJsonRaw) {
     try {
@@ -60,6 +61,9 @@ export async function loadChatHistory(
       selectedStreamSlug = chatJson.selectedStreamSlug ?? null
       if (Array.isArray(chatJson.startedTasks)) {
         startedTasks = chatJson.startedTasks
+      }
+      if (chatJson.uploads && typeof chatJson.uploads === 'object') {
+        uploads = chatJson.uploads as Record<string, string>
       }
     } catch {
       // Malformed chat.json
@@ -78,6 +82,15 @@ export async function loadChatHistory(
           tc.taskStarted = true
         }
       }
+    }
+  }
+
+  // Restore original filenames on file pills. The JSONL marker carries
+  // extensionless upload slugs; without this, pills fall through to the
+  // generic "File" icon after reload because the slug has no extension.
+  for (const msg of messages) {
+    if (msg.files?.length) {
+      msg.files = msg.files.map((slug) => uploads[slug] ?? slug)
     }
   }
 

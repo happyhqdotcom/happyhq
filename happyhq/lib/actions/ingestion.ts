@@ -14,6 +14,7 @@ import {
 import type { InputQuality } from '@/lib/fs/assess-quality.server'
 import { assessTextQuality } from '@/lib/fs/assess-quality.server'
 import { streamPath, taskPath, validatePath } from '@/lib/fs/paths'
+import { readTextFile } from '@/lib/fs/read.server'
 import { ensureDirectory, writeTextFile } from '@/lib/fs/write.server'
 import { commitGitState } from '@/lib/git/sync.server'
 import { extractTextFromPdf } from '@/lib/pdf/extract-text.server'
@@ -147,8 +148,50 @@ export async function uploadFile(
     }
   }
 
+  // Persist slug -> original filename so chat history can render the
+  // type-specific pill (PDF / Word / Excel) after a reload — the JSONL
+  // marker only carries slugs, which lack extensions and would otherwise
+  // collapse to a generic "File" pill on history round-trip.
+  await recordUploadDisplayName(chatDir, finalSlug, file.name)
+
   log('file.uploaded', { chat: sessionId, file: finalSlug, ext })
   return finalSlug
+}
+
+/** Merge `uploads[slug] = displayName` into the session's chat.json. */
+async function recordUploadDisplayName(
+  chatDir: string,
+  slug: string,
+  displayName: string,
+): Promise<void> {
+  const chatJsonPath = path.join(chatDir, 'chat.json')
+  validatePath(chatJsonPath)
+
+  let existing: Record<string, unknown> = {}
+  const raw = await readTextFile(chatJsonPath)
+  if (raw) {
+    try {
+      existing = JSON.parse(raw)
+    } catch {
+      // Malformed — overwrite with fresh data
+    }
+  }
+
+  const uploads =
+    existing.uploads && typeof existing.uploads === 'object'
+      ? { ...(existing.uploads as Record<string, string>) }
+      : {}
+  uploads[slug] = displayName
+
+  try {
+    await writeFile(
+      chatJsonPath,
+      JSON.stringify({ ...existing, uploads }),
+      'utf-8',
+    )
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') throw err
+  }
 }
 
 /**
