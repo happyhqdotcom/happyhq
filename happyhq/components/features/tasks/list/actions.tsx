@@ -6,7 +6,8 @@ import { DeleteAlert } from '@/components/common/shared/delete-alert'
 import { StreamPicker } from '@/components/features/tasks/atoms/stream-picker'
 import { deleteTaskByLocation, updateTaskStream } from '@/lib/actions'
 import type { TaskItem } from '@/lib/fs/types'
-import { taskItemsKey } from '@/lib/swr-keys'
+import { invalidateStream } from '@/lib/swr-helpers'
+import { taskContentKey, taskItemsKey } from '@/lib/swr-keys'
 import { useStreams } from '@/stores/streamsStore'
 import { ArrowUpRight, Trash2, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -43,7 +44,11 @@ export function TaskListItemActions({
   }
 
   async function handleStreamChange(slug: string | null) {
+    const prevStream = streamSlug
     await updateTaskStream(task.slug, slug)
+    if (prevStream) invalidateStream(prevStream)
+    if (slug) invalidateStream(slug)
+    await mutate(taskContentKey(task.slug))
     await mutate(taskItemsKey())
   }
 
