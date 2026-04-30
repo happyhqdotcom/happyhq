@@ -6,13 +6,15 @@ vi.mock('@/lib/constants.server', () => ({
 
 const MOCK_ROOT = '/mock/home/HappyHQ'
 
-const { mockExecSync } = vi.hoisted(() => ({
+const { mockExecSync, mockExecFileSync } = vi.hoisted(() => ({
   mockExecSync: vi.fn(),
+  mockExecFileSync: vi.fn(),
 }))
 
 vi.mock('node:child_process', () => ({
-  default: { execSync: mockExecSync },
+  default: { execSync: mockExecSync, execFileSync: mockExecFileSync },
   execSync: mockExecSync,
+  execFileSync: mockExecFileSync,
 }))
 
 import { commitGitState, isTaskCompleted, syncGitState } from './sync.server'
@@ -115,7 +117,7 @@ describe('syncGitState', () => {
 
 describe('isTaskCompleted', () => {
   it('returns true when latest commit subject contains [done]', () => {
-    mockExecSync.mockReturnValue(
+    mockExecFileSync.mockReturnValue(
       '[my-stream/my-task] [done] Final deliverables\n',
     )
 
@@ -123,76 +125,104 @@ describe('isTaskCompleted', () => {
   })
 
   it('returns false when latest commit subject does not contain [done]', () => {
-    mockExecSync.mockReturnValue('[my-stream/my-task] Work in progress\n')
+    mockExecFileSync.mockReturnValue('[my-stream/my-task] Work in progress\n')
 
     expect(isTaskCompleted('my-task')).toBe(false)
   })
 
   it('returns false when git log returns empty output (no commits)', () => {
-    mockExecSync.mockReturnValue('')
+    mockExecFileSync.mockReturnValue('')
 
     expect(isTaskCompleted('my-task')).toBe(false)
   })
 
-  it('returns false when execSync throws (git error)', () => {
-    mockExecSync.mockImplementation(() => {
+  it('returns false when execFileSync throws (git error)', () => {
+    mockExecFileSync.mockImplementation(() => {
       throw new Error('not a git repository')
     })
 
     expect(isTaskCompleted('my-task')).toBe(false)
   })
 
-  it('runs git log from workspace root scoped to the task directory', () => {
-    mockExecSync.mockReturnValue('')
+  it('passes the task path as a discrete argv element so a hostile task name cannot inject shell args', () => {
+    // Security contract: taskName flows through `--` as a positional argument,
+    // never interpolated into a shell command line.
+    mockExecFileSync.mockReturnValue('')
 
-    isTaskCompleted('my-task')
+    isTaskCompleted('my-task; rm -rf /')
 
-    expect(mockExecSync).toHaveBeenCalledWith(
-      "git log --format='%s' -1 -- tasks/my-task",
-      expect.objectContaining({
-        cwd: MOCK_ROOT,
-        encoding: 'utf8',
-        timeout: 5000,
-      }),
-    )
+    expect(mockExecFileSync).toHaveBeenCalledTimes(1)
+    const [file, args, opts] = mockExecFileSync.mock.calls[0]
+    expect(file).toBe('git')
+    expect(args).toEqual([
+      'log',
+      '--format=%s',
+      '-1',
+      '--',
+      'tasks/my-task; rm -rf /',
+    ])
+    expect(opts).toMatchObject({ cwd: MOCK_ROOT, encoding: 'utf8' })
   })
 })
 
 describe('commitGitState', () => {
   it('skips commit when working tree is clean', () => {
-    mockExecSync.mockReturnValue(Buffer.from(''))
+    mockExecFileSync.mockReturnValue(Buffer.from(''))
 
     commitGitState('[my-stream] Create stream')
 
-    expect(mockExecSync).toHaveBeenCalledTimes(1)
-    expect(mockExecSync).toHaveBeenCalledWith('git status --porcelain', {
-      cwd: MOCK_ROOT,
-      stdio: 'pipe',
-    })
-  })
-
-  it('commits with the provided message when tree has changes', () => {
-    mockExecSync.mockReturnValue(Buffer.from('?? new-dir/'))
-
-    commitGitState('[my-stream] Create stream')
-
-    expect(mockExecSync).toHaveBeenCalledTimes(2)
-    expect(mockExecSync).toHaveBeenCalledWith(
-      'git add -A && git commit -m "[my-stream] Create stream"',
+    expect(mockExecFileSync).toHaveBeenCalledTimes(1)
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'git',
+      ['status', '--porcelain'],
       { cwd: MOCK_ROOT, stdio: 'pipe' },
     )
   })
 
+  it('commits with the provided message when tree has changes', () => {
+    mockExecFileSync.mockReturnValue(Buffer.from('?? new-dir/'))
+
+    commitGitState('[my-stream] Create stream')
+
+    // status + add + commit = 3 calls (no shell, so add and commit are split)
+    expect(mockExecFileSync).toHaveBeenCalledTimes(3)
+    expect(mockExecFileSync).toHaveBeenNthCalledWith(2, 'git', ['add', '-A'], {
+      cwd: MOCK_ROOT,
+      stdio: 'pipe',
+    })
+    expect(mockExecFileSync).toHaveBeenNthCalledWith(
+      3,
+      'git',
+      ['commit', '-m', '[my-stream] Create stream'],
+      { cwd: MOCK_ROOT, stdio: 'pipe' },
+    )
+  })
+
+  it('passes the message as a discrete argv element so shell metacharacters cannot inject commands', () => {
+    // Security contract: the commit message is never interpolated into a shell
+    // command — it travels as its own argv slot to `git commit -m`.
+    mockExecFileSync.mockReturnValue(Buffer.from('M file.txt'))
+
+    const hostile = '" && rm -rf $HOME && echo "'
+    commitGitState(hostile)
+
+    const commitCall = mockExecFileSync.mock.calls.find(
+      (c) => Array.isArray(c[1]) && c[1][0] === 'commit',
+    )
+    expect(commitCall).toBeDefined()
+    expect(commitCall![1]).toEqual(['commit', '-m', hostile])
+  })
+
   it('treats whitespace-only status as clean', () => {
-    mockExecSync.mockReturnValue(Buffer.from('   \n  \n'))
+    mockExecFileSync.mockReturnValue(Buffer.from('   \n  \n'))
 
     commitGitState('[my-stream] Delete stream')
 
-    expect(mockExecSync).toHaveBeenCalledTimes(1)
+    expect(mockExecFileSync).toHaveBeenCalledTimes(1)
   })
 
   it('does not throw when git status fails', () => {
-    mockExecSync.mockImplementation(() => {
+    mockExecFileSync.mockImplementation(() => {
       throw new Error('git not found')
     })
 
@@ -200,8 +230,9 @@ describe('commitGitState', () => {
   })
 
   it('does not throw when git commit fails', () => {
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (cmd.startsWith('git status')) return Buffer.from('M file.txt')
+    mockExecFileSync.mockImplementation((_file: string, args: string[]) => {
+      if (args[0] === 'status') return Buffer.from('M file.txt')
+      if (args[0] === 'add') return Buffer.from('')
       throw new Error('commit failed')
     })
 
@@ -210,7 +241,7 @@ describe('commitGitState', () => {
 
   it('logs a warning when an error occurs', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    mockExecSync.mockImplementation(() => {
+    mockExecFileSync.mockImplementation(() => {
       throw new Error('repository corrupt')
     })
 
@@ -224,12 +255,12 @@ describe('commitGitState', () => {
   })
 
   it('runs all commands in HAPPYHQ_ROOT', () => {
-    mockExecSync.mockReturnValue(Buffer.from('D deleted-file.txt'))
+    mockExecFileSync.mockReturnValue(Buffer.from('D deleted-file.txt'))
 
     commitGitState('[my-stream] Delete stream')
 
-    for (const call of mockExecSync.mock.calls) {
-      expect(call[1]).toHaveProperty('cwd', MOCK_ROOT)
+    for (const call of mockExecFileSync.mock.calls) {
+      expect(call[2]).toHaveProperty('cwd', MOCK_ROOT)
     }
   })
 })

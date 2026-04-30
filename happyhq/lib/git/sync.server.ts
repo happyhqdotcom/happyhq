@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process'
+import { execFileSync, execSync } from 'node:child_process'
 
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
 
@@ -22,7 +22,7 @@ import { HAPPYHQ_ROOT } from '@/lib/constants.server'
  */
 export function commitGitState(message: string): void {
   try {
-    const status = execSync('git status --porcelain', {
+    const status = execFileSync('git', ['status', '--porcelain'], {
       cwd: HAPPYHQ_ROOT,
       stdio: 'pipe',
     })
@@ -31,7 +31,8 @@ export function commitGitState(message: string): void {
 
     if (!status) return
 
-    execSync(`git add -A && git commit -m "${message}"`, {
+    execFileSync('git', ['add', '-A'], { cwd: HAPPYHQ_ROOT, stdio: 'pipe' })
+    execFileSync('git', ['commit', '-m', message], {
       cwd: HAPPYHQ_ROOT,
       stdio: 'pipe',
     })
@@ -53,12 +54,16 @@ export function commitGitState(message: string): void {
 export function isTaskCompleted(taskName: string): boolean {
   try {
     const taskDir = `tasks/${taskName}`
-    const subject = execSync(`git log --format='%s' -1 -- ${taskDir}`, {
-      cwd: HAPPYHQ_ROOT,
-      encoding: 'utf8',
-      timeout: 5000,
-      stdio: 'pipe',
-    }).trim()
+    const subject = execFileSync(
+      'git',
+      ['log', '--format=%s', '-1', '--', taskDir],
+      {
+        cwd: HAPPYHQ_ROOT,
+        encoding: 'utf8',
+        timeout: 5000,
+        stdio: 'pipe',
+      },
+    ).trim()
     return subject.includes('[done]')
   } catch {
     return false

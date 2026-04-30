@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
 
@@ -11,18 +11,14 @@ export interface GitLogEntry {
 const SEPARATOR = '---GIT-LOG-SEP---'
 const FIELD_SEP = '---FIELD---'
 
-/** Wrap a value in single quotes, escaping any embedded single quotes. */
-function shellEscape(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`
-}
-
 /**
  * Check if a file has uncommitted changes (staged or unstaged).
  */
 export function isFileDirty(filePath: string): boolean {
   try {
-    const out = execSync(
-      `git diff HEAD --name-only -- ${shellEscape(filePath)}`,
+    const out = execFileSync(
+      'git',
+      ['diff', 'HEAD', '--name-only', '--', filePath],
       { cwd: HAPPYHQ_ROOT, encoding: 'utf8', timeout: 5000, stdio: 'pipe' },
     ).trim()
     return out.length > 0
@@ -37,8 +33,16 @@ export function isFileDirty(filePath: string): boolean {
  */
 export function getFileHistory(filePath: string, limit = 20): GitLogEntry[] {
   try {
-    const raw = execSync(
-      `git log --format='%h${FIELD_SEP}%s${FIELD_SEP}%ar' -${limit} --no-merges -- ${shellEscape(filePath)}`,
+    const raw = execFileSync(
+      'git',
+      [
+        'log',
+        `--format=%h${FIELD_SEP}%s${FIELD_SEP}%ar`,
+        `-${limit}`,
+        '--no-merges',
+        '--',
+        filePath,
+      ],
       {
         cwd: HAPPYHQ_ROOT,
         encoding: 'utf8',
@@ -64,7 +68,7 @@ export function getFileHistory(filePath: string, limit = 20): GitLogEntry[] {
  */
 export function readFileAtRef(ref: string, filePath: string): string | null {
   try {
-    return execSync(`git show ${shellEscape(ref)}:${shellEscape(filePath)}`, {
+    return execFileSync('git', ['show', `${ref}:${filePath}`], {
       cwd: HAPPYHQ_ROOT,
       encoding: 'utf8',
       timeout: 5000,
@@ -84,18 +88,21 @@ export function readFileAtRef(ref: string, filePath: string): string | null {
  */
 export function getGitLog(limit = 50, grep?: string): GitLogEntry[] {
   try {
-    const grepFlag = grep
-      ? ` --extended-regexp --grep=${shellEscape(grep)}`
-      : ''
-    const raw = execSync(
-      `git log --format='%h${FIELD_SEP}%s${FIELD_SEP}%ar' -${limit} --no-merges${grepFlag}`,
-      {
-        cwd: HAPPYHQ_ROOT,
-        encoding: 'utf8',
-        timeout: 5000,
-        stdio: 'pipe',
-      },
-    ).trim()
+    const args = [
+      'log',
+      `--format=%h${FIELD_SEP}%s${FIELD_SEP}%ar`,
+      `-${limit}`,
+      '--no-merges',
+    ]
+    if (grep) {
+      args.push('--extended-regexp', `--grep=${grep}`)
+    }
+    const raw = execFileSync('git', args, {
+      cwd: HAPPYHQ_ROOT,
+      encoding: 'utf8',
+      timeout: 5000,
+      stdio: 'pipe',
+    }).trim()
 
     if (!raw) return []
 

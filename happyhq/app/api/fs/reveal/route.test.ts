@@ -13,12 +13,12 @@ vi.mock('node:fs/promises', () => ({
   stat: mockStat,
 }))
 
-const { mockExecSync } = vi.hoisted(() => ({
-  mockExecSync: vi.fn(),
+const { mockExecFileSync } = vi.hoisted(() => ({
+  mockExecFileSync: vi.fn(),
 }))
 
 vi.mock('node:child_process', () => ({
-  execSync: mockExecSync,
+  execFileSync: mockExecFileSync,
 }))
 
 import { POST } from './route'
@@ -88,29 +88,31 @@ describe('POST /api/fs/reveal', () => {
 
       expect(response.status).toBe(501)
       expect(body).toEqual({ error: 'Not supported on this platform' })
-      expect(mockExecSync).not.toHaveBeenCalled()
+      expect(mockExecFileSync).not.toHaveBeenCalled()
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform })
     }
   })
 
-  it('calls open -R and returns ok for a valid file', async () => {
+  it('spawns open without a shell, passing the path as a discrete argv element', async () => {
+    // Security contract: the path must reach `open` as its own argv slot so
+    // shell metacharacters in a filename can never be interpreted as a command.
     mockStat.mockResolvedValue({ isFile: () => true })
-    mockExecSync.mockReturnValue(undefined)
+    mockExecFileSync.mockReturnValue(undefined)
     const originalPlatform = process.platform
     Object.defineProperty(process, 'platform', { value: 'darwin' })
 
     try {
-      const response = await POST(
-        makeRequest({ path: 'my-stream/outputs/report.md' }),
-      )
+      const hostile = 'my-stream/outputs/"; touch /tmp/pwn; "weird.md'
+      const response = await POST(makeRequest({ path: hostile }))
       const body = await response.json()
 
       expect(response.status).toBe(200)
       expect(body).toEqual({ ok: true })
-      expect(mockExecSync).toHaveBeenCalledWith(
-        'open -R "/mock/home/HappyHQ/my-stream/outputs/report.md"',
-      )
+      expect(mockExecFileSync).toHaveBeenCalledTimes(1)
+      const [file, args] = mockExecFileSync.mock.calls[0]
+      expect(file).toBe('open')
+      expect(args).toEqual(['-R', `/mock/home/HappyHQ/${hostile}`])
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform })
     }
