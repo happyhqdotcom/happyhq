@@ -423,6 +423,58 @@ describe('uploadFile', () => {
     ).rejects.toThrow('Sign in required to upload files.')
     expect(mockWriteFile).not.toHaveBeenCalled()
   })
+
+  it('rejects a malformed session id (path traversal attempt) before any filesystem call', async () => {
+    const fd = makeFormData('a.pdf', 'pdf')
+    await expect(uploadFile('../../etc', fd)).rejects.toThrow(
+      'Invalid session id',
+    )
+    expect(mockMkdir).not.toHaveBeenCalled()
+    expect(mockWriteFile).not.toHaveBeenCalled()
+  })
+
+  it('records the original filename in chat.json under uploads[slug] so reloaded chat history can render the right file pill type', async () => {
+    mockMkdir.mockResolvedValue(undefined)
+    mockWriteFile.mockResolvedValue(undefined)
+    mockReadFile.mockResolvedValue('{"name":"My chat","mode":"general"}')
+
+    const fd = makeFormData('Q4 Report.pdf', 'pdf')
+    const slug = await uploadFile('sess-1', fd)
+
+    expect(slug).toBe('q4-report')
+    const chatJsonPath = path.join(MOCK_ROOT, '.chats', 'sess-1', 'chat.json')
+    const writtenChatJson = mockWriteFile.mock.calls.find(
+      (c) => c[0] === chatJsonPath,
+    )
+    expect(writtenChatJson).toBeDefined()
+    const persisted = JSON.parse(writtenChatJson![1] as string)
+    expect(persisted).toEqual({
+      name: 'My chat',
+      mode: 'general',
+      uploads: { 'q4-report': 'Q4 Report.pdf' },
+    })
+  })
+
+  it('merges into an existing uploads map rather than overwriting prior entries', async () => {
+    mockMkdir.mockResolvedValue(undefined)
+    mockWriteFile.mockResolvedValue(undefined)
+    mockReadFile.mockResolvedValue(
+      '{"name":"Chat","uploads":{"old-doc":"old.docx"}}',
+    )
+
+    const fd = makeFormData('new.pdf', 'pdf')
+    await uploadFile('sess-1', fd)
+
+    const chatJsonPath = path.join(MOCK_ROOT, '.chats', 'sess-1', 'chat.json')
+    const writtenChatJson = mockWriteFile.mock.calls.find(
+      (c) => c[0] === chatJsonPath,
+    )
+    const persisted = JSON.parse(writtenChatJson![1] as string)
+    expect(persisted.uploads).toEqual({
+      'old-doc': 'old.docx',
+      new: 'new.pdf',
+    })
+  })
 })
 
 // --- setupTaskFromChat ---
