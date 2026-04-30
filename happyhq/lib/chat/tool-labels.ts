@@ -11,7 +11,7 @@
 import { reportError } from '@/lib/report-error'
 import type { ToolCall } from './types'
 
-const FALLBACK_LABEL = 'Working…'
+const FALLBACK_LABEL = 'Working'
 
 const TOOL_LABELS: Record<string, string> = {
   // File operations
@@ -123,7 +123,8 @@ export function getToolDetail(toolCall: ToolCall): string | null {
       return slug || null
     }
 
-    case 'Task': {
+    case 'Task':
+    case 'Agent': {
       const desc = input.description as string | undefined
       return desc || null
     }

@@ -53,7 +53,7 @@ describe('getToolLabel', () => {
     it('returns a generic label instead of the raw SDK name', () => {
       // Was: returned 'SomeFutureSdkTool' verbatim, leaking SDK identifiers
       // into the user-facing progress strip.
-      expect(getToolLabel('SomeFutureSdkTool_unique_a')).toBe('Working…')
+      expect(getToolLabel('SomeFutureSdkTool_unique_a')).toBe('Working')
     })
 
     it('reports the unmapped name once per session, deduped', () => {
@@ -89,7 +89,7 @@ describe('getToolLabel', () => {
     })
 
     it('returns the generic fallback for bare Bash with no command pattern', () => {
-      expect(getToolLabel('Bash')).toBe('Working…')
+      expect(getToolLabel('Bash')).toBe('Working')
     })
   })
 })
@@ -164,15 +164,19 @@ describe('getToolDetail', () => {
     })
   })
 
-  describe('Task tool', () => {
-    it('returns the task description', () => {
+  describe('Task / Agent subagent tools', () => {
+    it('returns the description for both Task and Agent invocations', () => {
       expect(
         getToolDetail(toolCall('Task', { description: 'Read all specs' })),
       ).toBe('Read all specs')
+      expect(
+        getToolDetail(toolCall('Agent', { description: 'Review the diff' })),
+      ).toBe('Review the diff')
     })
 
     it('returns null when description is absent', () => {
       expect(getToolDetail(toolCall('Task', {}))).toBeNull()
+      expect(getToolDetail(toolCall('Agent', {}))).toBeNull()
     })
   })
 
