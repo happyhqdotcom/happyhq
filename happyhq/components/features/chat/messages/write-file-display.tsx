@@ -47,7 +47,7 @@ export function FilePreviewCard({
       type={onClick ? 'button' : undefined}
       onClick={onClick}
       className={
-        'mt-1.5 ml-6 block overflow-hidden rounded-lg border border-zinc-200/60 bg-zinc-50/50 text-left transition-colors' +
+        'ml-6 block overflow-hidden rounded-lg border border-zinc-200/60 bg-zinc-50/50 text-left transition-colors' +
         (onClick
           ? ' cursor-pointer hover:border-zinc-300/80 hover:bg-zinc-100/50'
           : '')
