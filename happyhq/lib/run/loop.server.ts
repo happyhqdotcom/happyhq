@@ -3,7 +3,7 @@ import type {
   SDKResultMessage,
 } from '@anthropic-ai/claude-agent-sdk'
 import { query } from '@anthropic-ai/claude-agent-sdk'
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
@@ -130,8 +130,8 @@ export async function startRun(
     s.activeRunTask = taskName
     startKeepalives(s)
 
-    // Defer heavy work (commitGitState uses execSync) with setImmediate so
-    // the HTTP response is sent before we block the event loop.
+    // Defer heavy work (commitGitState shells out to git synchronously) with
+    // setImmediate so the HTTP response is sent before we block the event loop.
     s.loopPromise = new Promise<void>((resolve) => {
       setImmediate(() => {
         ;(async () => {
@@ -1100,12 +1100,13 @@ async function readRunInfo(taskName: string): Promise<RunInfo | null> {
 function restorePlanFromGit(taskName: string): void {
   try {
     const taskRelPath = `tasks/${taskName}/plan.md`
-    const hash = execSync(
-      `git log --format='%H' --grep='Plan accepted' -1 -- ${taskRelPath}`,
+    const hash = execFileSync(
+      'git',
+      ['log', '--format=%H', '--grep=Plan accepted', '-1', '--', taskRelPath],
       { cwd: HAPPYHQ_ROOT, encoding: 'utf8', stdio: 'pipe' },
     ).trim()
     if (!hash) return
-    execSync(`git restore --source=${hash} -- ${taskRelPath}`, {
+    execFileSync('git', ['restore', `--source=${hash}`, '--', taskRelPath], {
       cwd: HAPPYHQ_ROOT,
       stdio: 'pipe',
     })

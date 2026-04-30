@@ -48,11 +48,12 @@ export async function POST(request: Request) {
     )
   }
 
-  // Reveal in Finder (macOS). execSync is intentional here — we need
-  // the shell to invoke `open -R` and this is a user-triggered action.
-  const { execSync } = await import('node:child_process')
+  // Reveal in Finder (macOS). execFileSync passes args directly to the
+  // child process — no shell, so metacharacters in the path can't be
+  // interpreted as commands.
+  const { execFileSync } = await import('node:child_process')
   try {
-    execSync(`open -R "${fullPath}"`)
+    execFileSync('open', ['-R', fullPath])
   } catch (err) {
     log('api.error', {
       route: '/api/fs/reveal',
