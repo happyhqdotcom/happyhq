@@ -1,11 +1,6 @@
 'use client'
 
-import { ExcelIcon, PDFIcon, PowerpointIcon } from '@/components/common/icons'
 import { FileTypeIcon } from '@/components/common/icons/file-type-icon'
-import { GoogleDriveIcon } from '@/components/common/icons/google-drive'
-import { SlackIcon } from '@/components/common/icons/slack'
-import { YouTubeIcon } from '@/components/common/icons/youtube'
-import { Kbd } from '@/components/common/ui/kbd'
 import { FileContextMenu } from '@/components/features/desktop/windows/shared/file-context-menu'
 import { FileRow } from '@/components/features/desktop/windows/shared/file-row'
 import type { PendingFile } from '@/components/features/tasks/hooks/use-optimistic-uploads'
@@ -15,8 +10,6 @@ import { AlertTriangle, MoreHorizontal } from 'lucide-react'
 interface AttachmentListProps {
   inputs: FileItem[]
   readOnly?: boolean
-  /** Suppress the big drop-zone empty state — show "None" instead while keeping add/delete active. */
-  hideDropZone?: boolean
   // Editable mode
   pendingFiles?: PendingFile[]
   onAdd?: () => void
@@ -35,7 +28,6 @@ interface AttachmentListProps {
 export function AttachmentList({
   inputs,
   readOnly,
-  hideDropZone,
   pendingFiles,
   onAdd,
   onDelete,
@@ -93,10 +85,7 @@ export function AttachmentList({
       ))}
 
       {/* Empty state */}
-      {isEmpty && !readOnly && !hideDropZone && <AttachmentsEmptyState />}
-      {isEmpty && (readOnly || hideDropZone) && (
-        <p className="px-2 text-xs text-zinc-400">None</p>
-      )}
+      {isEmpty && <p className="px-2 text-xs text-zinc-400">None</p>}
     </div>
   )
 }
@@ -201,40 +190,6 @@ function InputRow({
   }
 
   return row
-}
-
-// ── Empty state ─────────────────────────────────────────────────────────
-
-function AttachmentsEmptyState() {
-  return (
-    <div className="flex flex-1 items-center justify-center">
-      <div className="rounded-lg bg-zinc-100/20 px-4 py-3 text-center text-sm text-zinc-500/80 select-none">
-        <div className="-ml-1 flex items-center justify-center gap-1">
-          <span>Drop</span>
-          <span className="relative">
-            files
-            <span className="absolute bottom-full left-1/2 mb-1 flex -translate-x-1/2 items-end gap-0.5">
-              <PDFIcon size={15} className="-rotate-6 text-red-500" />
-              <ExcelIcon size={15} className="-translate-y-1 text-green-600" />
-              <PowerpointIcon size={15} className="rotate-6 text-orange-500" />
-            </span>
-          </span>
-          <span className="text-zinc-400">&ndash;</span>
-          <span>click to</span>
-          <span className="relative">
-            browse
-            <span className="absolute bottom-full left-1/2 mb-1 flex -translate-x-1/2 items-end gap-0.5">
-              <SlackIcon size={15} className="-translate-x-0.5 -rotate-6" />
-              <GoogleDriveIcon size={15} className="-translate-y-1" />
-              <YouTubeIcon size={15} className="translate-x-0.5 rotate-6" />
-            </span>
-          </span>
-          <span className="text-zinc-400">&ndash; or tap</span>
-          <Kbd className="bg-zinc-200 text-zinc-600">/</Kbd>
-        </div>
-      </div>
-    </div>
-  )
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
