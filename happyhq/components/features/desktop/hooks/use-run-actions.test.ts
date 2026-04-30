@@ -11,6 +11,14 @@ vi.mock('swr', () => ({
   mutate: vi.fn(),
 }))
 
+// Default: null (CE / unauthenticated) → no client-side gate.
+const mockUseBillingData = vi.fn(
+  () => null as null | { remainingMinutes: number },
+)
+vi.mock('@/components/features/billing/use-billing-data', () => ({
+  useBillingData: () => mockUseBillingData(),
+}))
+
 import { useRunActions } from './use-run-actions'
 
 const mockFetch = vi.fn()
@@ -18,6 +26,7 @@ const mockFetch = vi.fn()
 beforeEach(() => {
   vi.stubGlobal('fetch', mockFetch)
   mockFetch.mockReset()
+  mockUseBillingData.mockReturnValue(null)
 })
 
 afterEach(() => {
@@ -152,6 +161,95 @@ describe('useRunActions billing integration', () => {
     })
 
     expect(result.current.upgradeNeeded).toBe(true)
+  })
+
+  describe('client-side runtime gate (issue #28)', () => {
+    it('start() short-circuits to upgrade prompt when remainingMinutes is 0, without hitting the network', async () => {
+      mockUseBillingData.mockReturnValue({ remainingMinutes: 0 })
+
+      const { result } = renderHook(() =>
+        useRunActions(defaultArgs[0], defaultArgs[1], false),
+      )
+
+      await act(async () => {
+        await result.current.start()
+      })
+
+      expect(result.current.upgradeNeeded).toBe(true)
+      expect(mockFetch).not.toHaveBeenCalled()
+      // No optimistic flip → run loading state stays clean
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    it('approve() short-circuits to upgrade prompt when remainingMinutes is 0, without hitting the network', async () => {
+      mockUseBillingData.mockReturnValue({ remainingMinutes: 0 })
+
+      const { result } = renderHook(() =>
+        useRunActions(defaultArgs[0], defaultArgs[1], false),
+      )
+
+      await act(async () => {
+        await result.current.approve()
+      })
+
+      expect(result.current.upgradeNeeded).toBe(true)
+      expect(mockFetch).not.toHaveBeenCalled()
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    it('continue_() short-circuits to upgrade prompt when remainingMinutes is 0, without hitting the network', async () => {
+      mockUseBillingData.mockReturnValue({ remainingMinutes: 0 })
+
+      const { result } = renderHook(() =>
+        useRunActions(defaultArgs[0], defaultArgs[1], false),
+      )
+
+      await act(async () => {
+        await result.current.continue_()
+      })
+
+      expect(result.current.upgradeNeeded).toBe(true)
+      expect(mockFetch).not.toHaveBeenCalled()
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    it('start() proceeds normally when remainingMinutes is positive', async () => {
+      mockUseBillingData.mockReturnValue({ remainingMinutes: 12 })
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'planning' }),
+      })
+
+      const { result } = renderHook(() =>
+        useRunActions(defaultArgs[0], defaultArgs[1], false),
+      )
+
+      await act(async () => {
+        await result.current.start()
+      })
+
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      expect(result.current.upgradeNeeded).toBe(false)
+    })
+
+    it('start() proceeds normally when billing data is unavailable (CE / unauthenticated)', async () => {
+      mockUseBillingData.mockReturnValue(null)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'planning' }),
+      })
+
+      const { result } = renderHook(() =>
+        useRunActions(defaultArgs[0], defaultArgs[1], false),
+      )
+
+      await act(async () => {
+        await result.current.start()
+      })
+
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      expect(result.current.upgradeNeeded).toBe(false)
+    })
   })
 
   it('does not set billing warning when response has no warning', async () => {

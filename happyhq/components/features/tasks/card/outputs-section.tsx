@@ -1,8 +1,8 @@
 'use client'
 
 import { FileList } from '@/components/common/atoms/file-list'
+import { useBillingData } from '@/components/features/billing/use-billing-data'
 import { openChatSessionWindow } from '@/components/features/desktop/windows/chat/open-chat-window'
-import { useBillingData } from '@/components/features/sidebar/atoms/usage-indicator'
 import { ActivityHeader } from '@/components/features/tasks/atoms/activity-header'
 import { ConfirmRestartAlert } from '@/components/features/tasks/atoms/confirm-restart-alert'
 import {
