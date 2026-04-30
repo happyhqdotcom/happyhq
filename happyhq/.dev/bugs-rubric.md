@@ -45,6 +45,14 @@ Comments are for the human reading the queue. The label is for the next Ralphie.
 - PRs always target `main`, branch from `main`, use the `fix/` prefix, and include `Closes #<issue>` plus an AI-assistance disclosure (per `CONTRIBUTING.md`).
 - One outcome per session. After labeling or opening a PR, exit.
 
+## Principles
+
+These are guidance, not gates. The rubric above is pass/fail; these tune _how_ the allowed work gets done.
+
+**Look around before you write.** Before drafting a fix or skip, scan for prior art on the concern: existing consumers/handlers of the same data shape, recent open/closed issues with the same shape, in-flight PRs touching the same surface, specs documenting the affected behavior. Anchor the work to what's already there. Most "we keep fixing this" pain comes from rederiving in isolation when a reference exists that would have constrained the fix.
+
+**A fix isn't just the diff.** Leave the surrounding system coherent. If the fix changes documented behavior, update the spec/doc in the same PR. If you notice a pattern that spans multiple recent issues, surface it for the maintainer rather than fixing one instance silently. If you skip, leave a rationale specific enough that a human can act on it without re-investigating.
+
 ## Tuning signal
 
 When Ralphie gets it wrong — labels something `skip-too-big` that wasn't, opens a PR that shouldn't have been opened, misses an `ee/` touch — that's a rubric-tuning signal, not a one-off correction. Edit this file. The next run will pick up the change.

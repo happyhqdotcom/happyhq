@@ -36,3 +36,4 @@
 **[6]** If you discover the fix requires a schema migration / new env var / new dep / CI change mid-implementation, stop, revert your changes (`git checkout main && git branch -D fix/${ISSUE_NUMBER}-...`), apply `ralphie:skip-out-of-scope`, exit.
 **[7]** AI disclosure in the PR body is required by @CONTRIBUTING.md. Never omit it.
 **[8]** When applying any `ralphie:skip-*` label, the comment uses the rubric's "Comment shape" format. Always.
+**[9]** Question the shape of the fix before committing to it. If the fix is purely a constraint (cap, limit, truncate, hide), the unbounded behavior has a cause — find it and fix it, even when it lives in nearby code. Scope follows the cause: touch nearby code when it's the cause, leave it when it's just adjacent and looks improvable. If you're adding a new element to an existing UI surface, check it's distinguishable from neighbors of similar shape.
