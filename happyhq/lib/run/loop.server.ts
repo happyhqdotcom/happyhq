@@ -641,7 +641,6 @@ async function runWorkingLoop(
   taskRunId?: string | null,
   remainingBudgetUsd?: number,
 ): Promise<RunInfo['status']> {
-  const taskDir = taskPath(taskName)
   const config = resolveConfig(await readConfig())
   const maxIterations = config.limits.maxIterations
 

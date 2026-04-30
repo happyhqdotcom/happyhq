@@ -18,7 +18,7 @@ export async function generateMetadata({
 }: {
   params: Promise<{ stream: string; task: string }>
 }): Promise<Metadata> {
-  const { stream, task } = await params
+  const { task } = await params
   const taskMd = await readTaskMd(taskPath(task))
   const title = displayTitle(taskMd?.frontmatter.title ?? null, task)
   return { title: `${title} | HappyHQ` }

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
@@ -128,33 +128,6 @@ export function learningLayerPrompt(streamName: string): string {
     .replaceAll('{{STREAM_NAME}}', streamName)
     .replaceAll('{{STREAM_SLUG}}', streamName)
     .replaceAll('{{Q_PATH}}', qPath())
-}
-
-/**
- * Pick the agent-readable extracted file inside a directory containing a
- * binary original. Each file type has its own extracted form:
- *   PDF  → raw.txt  (plain text extraction)
- *   EML  → email.json (structured email metadata)
- *
- * Fallback: any .md/.txt, then any non-hidden file so the agent at least
- * knows the input exists.
- *
- * Returns the filename (not full path), or null if directory is empty/unreadable.
- */
-function resolveReadable(dirPath: string): string | null {
-  if (existsSync(path.join(dirPath, 'content.md'))) return 'content.md'
-  if (existsSync(path.join(dirPath, 'raw.txt'))) return 'raw.txt'
-  if (existsSync(path.join(dirPath, 'email.json'))) return 'email.json'
-  try {
-    const all = readdirSync(dirPath).filter((n) => !n.startsWith('.'))
-    const text = all.filter((n) => n.endsWith('.md') || n.endsWith('.txt'))
-    if (text.length > 0) return text[0]
-    // Fallback: return the original file so the agent at least knows it exists
-    if (all.length > 0) return all[0]
-  } catch {
-    // skip unreadable
-  }
-  return null
 }
 
 /**

@@ -182,7 +182,7 @@ export function createQsMcpServer(
           const originalPath = path.join(sampleDir, originalFile)
 
           // 5. Extract agent-readable form if not already present
-          //    PDF → raw.txt, EML → email.json, DOCX → content.md (see resolveReadable)
+          //    PDF → raw.txt, EML → email.json, DOCX → content.md
           const hasExtracted =
             fs.existsSync(path.join(sampleDir, 'raw.txt')) ||
             fs.existsSync(path.join(sampleDir, 'email.json')) ||

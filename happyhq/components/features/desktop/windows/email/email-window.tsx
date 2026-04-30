@@ -4,7 +4,6 @@ import type { EmailMetadata } from '@/lib/eml/types'
 import { useWindowStore } from '@/stores/windowStore'
 import { Loader2, Paperclip } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { getFileType } from '../shared/file-icon'
 import type { WindowComponentProps } from '../types'
 import { useFrameProps } from '../use-frame-props'
 import { WindowFileActions } from '../window-file-actions'
@@ -144,36 +143,24 @@ export function EmailWindow({
           {email.attachments.length > 0 && (
             <div className="shrink-0 border-t border-zinc-200 px-4 py-2.5">
               <div className="flex flex-wrap gap-1.5">
-                {email.attachments.map((filename) => {
-                  const isImage = getFileType(filename) === 'image'
-                  return (
-                    <button
-                      key={filename}
-                      type="button"
-                      onClick={() => {
-                        if (!dirPath) return
-                        const filePath = `${dirPath}/${filename}`
-                        if (isImage) {
-                          // Open a simple image window
-                          const imgWindowId = `file-${filePath}`
-                          openFileWindow({
-                            name: filename,
-                            path: filePath,
-                          })
-                        } else {
-                          openFileWindow({
-                            name: filename,
-                            path: filePath,
-                          })
-                        }
-                      }}
-                      className="flex items-center gap-1.5 rounded-md bg-zinc-100 px-2.5 py-1.5 text-xs text-zinc-600 transition-colors hover:bg-zinc-200"
-                    >
-                      <Paperclip className="h-3 w-3 text-zinc-400" />
-                      {filename}
-                    </button>
-                  )
-                })}
+                {email.attachments.map((filename) => (
+                  <button
+                    key={filename}
+                    type="button"
+                    onClick={() => {
+                      if (!dirPath) return
+                      const filePath = `${dirPath}/${filename}`
+                      openFileWindow({
+                        name: filename,
+                        path: filePath,
+                      })
+                    }}
+                    className="flex items-center gap-1.5 rounded-md bg-zinc-100 px-2.5 py-1.5 text-xs text-zinc-600 transition-colors hover:bg-zinc-200"
+                  >
+                    <Paperclip className="h-3 w-3 text-zinc-400" />
+                    {filename}
+                  </button>
+                ))}
               </div>
             </div>
           )}

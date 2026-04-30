@@ -131,7 +131,7 @@ Tasks: write-sow (completed, has plan)
 
 For a brand-new stream: `"This is a brand new stream. No playbook, specs, samples, or uploads yet."`
 
-**`{{READING_LIST}}`** (planning and working prompts). A server-built list of exact file paths the agent should read, replacing the old `{{CONTEXT}}` presence summary. Built by `buildReadingList()` in `lib/agents/prompts.server.ts`, which walks the stream's specs, samples, and task inputs to produce a bulleted markdown list of concrete paths. For each directory (samples, inputs), `resolveReadable()` picks the agent-readable extracted form of the file — each input type has its own convention:
+**`{{READING_LIST}}`** (planning and working prompts). A server-built list of exact file paths the agent should read, replacing the old `{{CONTEXT}}` presence summary. Built by `buildReadingList()` in `lib/agents/prompts.server.ts`, which walks the stream's specs, samples, and task inputs to produce a bulleted markdown list of concrete paths. For samples and inputs, the entry's `rawPath` (set by `listFileItems()`) points at the agent-readable extracted form — each input type has its own convention:
 
 - **PDF** → `raw.txt` (plain text extraction via pdfium)
 - **EML** → `email.json` (structured email metadata: subject, from, to, body, attachments)

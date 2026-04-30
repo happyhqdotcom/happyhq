@@ -19,7 +19,7 @@ Every input type follows the same structure on disk:
   {additional files...}   # Optional — e.g., attachments extracted from an email
 ```
 
-The **original** is the source of truth. The **extracted form** is the agent-readable version — what `resolveReadable()` returns and what the agent reads first. The extracted form varies by type because different formats have different structures worth preserving.
+The **original** is the source of truth. The **extracted form** is the agent-readable version — what `listFileItems()` records as `rawPath` and what the agent reads first. The extracted form varies by type because different formats have different structures worth preserving.
 
 ## Current Input Types
 
@@ -118,7 +118,7 @@ When adding support for a new file format:
 
 3. **Update ProcessSample** — Add the new extension to the `supportedExts` array in `tools.server.ts`. Add an extraction branch in the fallback section.
 
-4. **Update resolveReadable** — Add the new extracted filename to `resolveReadable()` in `lib/agents/prompts.server.ts` and update `listFileItems()` in `lib/fs/read.server.ts` to recognise it.
+4. **Update listFileItems** — Update `listFileItems()` in `lib/fs/read.server.ts` to recognise the new extracted filename (so `rawPath` points at it).
 
 5. **Composer** — Add the extension to `accept` and the drag-drop filter in `composer.tsx`. Add the file type to `FileIcon` in `file-icon.tsx`.
 
@@ -138,8 +138,8 @@ When adding support for a new file format:
 | `lib/pdf/extract-text.server.ts`                             | PDF text extraction                                                     |
 | `lib/actions.ts`                                             | `uploadFile()` / `ingestFile()` — wires extraction into upload pipeline |
 | `lib/agents/tools.server.ts`                                 | `ProcessSample` — validates extensions, fallback extraction             |
-| `lib/agents/prompts.server.ts`                               | `resolveReadable()` — picks agent-readable file per directory           |
-| `lib/fs/read.server.ts`                                      | `listFileItems()` — discovers extracted form for UI (`rawPath` field)   |
+| `lib/agents/prompts.server.ts`                               | `buildReadingList()` — emits agent-readable paths for prompts           |
+| `lib/fs/read.server.ts`                                      | `listFileItems()` — discovers extracted form (`rawPath` field)          |
 | `components/features/chat/composer.tsx`                      | File accept filter + drag-drop filter + `FileCard` icon                 |
 | `components/features/desktop/windows/shared/file-icon.tsx`   | `getFileType()` + icon/color mapping                                    |
 | `components/features/desktop/windows/use-desktop-windows.ts` | `openFileWindow()` — routes by extension                                |

@@ -14,7 +14,6 @@ interface UseStickToBottomReturn {
 export function useStickToBottom(): UseStickToBottomReturn {
   // Store actual DOM elements in state so effects re-run when they mount/unmount
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null)
-  const [contentEl, setContentEl] = useState<HTMLDivElement | null>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
   const isAtBottomRef = useRef(true)
 
@@ -23,10 +22,9 @@ export function useStickToBottom(): UseStickToBottomReturn {
     (el: HTMLDivElement | null) => setScrollEl(el),
     [],
   )
-  const contentRef = useCallback(
-    (el: HTMLDivElement | null) => setContentEl(el),
-    [],
-  )
+  // contentRef is exposed for callers that attach it to their content div, but
+  // the hook itself observes scrollEl rather than the content node.
+  const contentRef = useCallback((_el: HTMLDivElement | null) => {}, [])
 
   // Imperative scroll — for chat switches, initial load, or a future button
   const scrollToBottom = useCallback(
