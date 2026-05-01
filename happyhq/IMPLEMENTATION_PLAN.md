@@ -698,6 +698,48 @@ crypto.randomUUID()` per `startRun()`, refactored `broadcast()` to take a
    Verify by running it with an empty no-op script — should produce
    `meta.json` + `console.jsonl` + `network.jsonl` + `dom.html`. PR
    title: `feat(harness): scripts/exercise.ts CLI skeleton`.
+   ✅ **Done** — `lib/exercise/dump.ts` exports `createDump(page, exDir)`
+   (validated `name` segment, mkdir-p screenshots dir). `scripts/exercise.ts`
+   parses `--root`/`--script`/`--id`/`--port`/`--keep`/`--no-keep`, picks a
+   free port if not given, spawns `pnpm next dev` with `HAPPYHQ_ROOT=<root>`,
+   polls `/api/auth/status` for readiness (60s budget, 250ms cadence),
+   dynamic-imports the script module, launches Playwright Chromium, wires
+   console/pageerror/request/response/requestfailed listeners, runs
+   `script.run({page, dump, root, baseUrl})`, then writes the artifact set:
+   `meta.json` (id, script, root, port, baseUrl, started, ended, durationMs,
+   exit, error?, runIds[]), `dom.html`, `console.jsonl`, `network.jsonl`,
+   `wire.jsonl` (concatenated from `<root>/.runs/<runId>/wire.jsonl` for new
+   runIds, separated by `{"_runId":"..."}`), `logs.jsonl` (sliced by
+   `[started,ended]` from `<root>/.logs/<date>.jsonl`, day-spanning).
+   Exit-code contract: 0 clean, 1 script throw, 2 dev-server timeout,
+   3 internal/launch error. `package.json` got `playwright@^1.55.2` as a
+   devDependency and a `postinstall` script that runs `playwright install
+   chromium`. A self-test exercise lives at `scripts/exercises/noop.ts`
+   (just `page.goto('/')`).
+   Smoke-tested end-to-end: `pnpm tsx scripts/exercise.ts --root
+/tmp/exercise-noop-smoke --script scripts/exercises/noop.ts` exits 0,
+   produces all six artifact files (60K+ DOM dump of `/tasks` after
+   redirect, 4 console events, ~25 network events, empty `wire.jsonl`/
+   `logs.jsonl` since no run fired). Pollution audit clean: `~/HappyHQ/`
+   has no `.exercises/`, `.runs/`, or files newer than the meta.json.
+   All 1481 tests, types, and lint green.
+
+   Notes for the next steps:
+   - The harness uses `process.cwd()` as the dev-server cwd, matching
+     the convention of `scripts/smoke-test.ts` ("Run from the app/
+     directory"). Document this in the spec close-out.
+   - The dynamic `import(scriptPath)` resolves TypeScript files because
+     the harness itself runs under `tsx`; nothing extra needed for the
+     script loader.
+   - `ANTHROPIC_API_KEY` and other env vars pass through untouched — the
+     harness only sets `HAPPYHQ_ROOT` and `PORT` on the spawned dev
+     server. Exercises that fire real runs (rename-stream onwards) get a
+     working SDK without further wiring.
+   - `next dev` cold-start cost is ~17s on an M-series Mac for a fresh
+     compile; subsequent runs against the same `--root` are faster
+     because the user's parent `~/HappyHQ/` sandbox is unrelated to the
+     `.next` build cache (which lives in the workspace, not the root).
+
 5. **Smoke exercise + selector hooks** (`scripts/exercises/smoke.ts`,
    `aria-label="Message"` on composer, `data-role="assistant-message"`,
    custom Sonner toast for `data-role="auth-error"`). PR title:
