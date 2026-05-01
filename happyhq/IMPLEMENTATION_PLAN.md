@@ -49,7 +49,7 @@ These are _not_ harness work; flagging so the next loop can pick them up if aske
 
 These are the things future-me would have to re-discover. Worth preserving past close-out.
 
-- **`data-role` is the harness-selector convention.** Distinct from `data-testid` (which the codebase uses ad-hoc). `data-role` describes _semantic role_ — `assistant-message`, `auth-error`, `stream-row-menu`, `stream-row-menu-trigger` — and is intended to be reused by exercises long-term. Keep the count small; add only when an exercise needs one.
+- **`data-role` is the harness-selector convention.** Distinct from `data-testid` (which the codebase uses ad-hoc). `data-role` describes _semantic role_ — currently `assistant-message`, `auth-error`, and `stream-row-menu` — and is intended to be reused by exercises long-term. Keep the count small; add only when an exercise needs one. The stream-row dropdown trigger is located via its aria-label (`getByRole('button', { name: 'Stream actions for <slug>' })`), not a `data-role`.
 - **Sandbox isolation is at the env-var boundary only.** `HAPPYHQ_ROOT` is read once in `lib/constants.server.ts` and threaded through every `lib/fs/paths.ts` helper. Never reach into agent factories or `canUseTool` to "fix" sandboxing — the constants layer is the only valid hook.
 - **Wire-slice = `listdir(.runs)` diff before/after.** Scoped to one exercise at a time per `HAPPYHQ_ROOT`; concurrent invocations against the same root cross-contaminate. Spec §725 (Constraints) makes this explicit.
 - **Selector lessons** (baked into `scripts/exercises/rename-stream.ts` comments):
