@@ -334,7 +334,6 @@ async function runLoop(
 
   // Billing: start a task run record if billing is enabled and user is known
   let taskRunId: string | null = null
-  const runStartMs = Date.now()
   if (userId) {
     try {
       const { isBillingEnabled } = await import('@/ee/lib/billing/config')
