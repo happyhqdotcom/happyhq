@@ -14,19 +14,9 @@ export async function ensureDirectory(dirPath: string): Promise<void> {
 /**
  * Remove all contents of a directory and recreate it empty.
  * Idempotent — succeeds silently if the directory doesn't exist.
- * Used for fresh-run cleanup of working/ and outputs/. Path must end in
- * `tasks/{slug}/working` or `tasks/{slug}/outputs` — anything else throws.
- * The inline regex match is also a sanitiser barrier CodeQL recognises.
+ * Used for fresh-run cleanup of working/ and outputs/.
  */
 export async function clearDirectory(dirPath: string): Promise<void> {
-  const normalized = dirPath.replace(/\\/g, '/')
-  if (
-    !/\/tasks\/[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\/(working|outputs)$/.test(
-      normalized,
-    )
-  ) {
-    throw new Error('Invalid clearDirectory path')
-  }
   const safe = safePath(dirPath)
   await rm(safe, { recursive: true, force: true })
   await mkdir(safe, { recursive: true })

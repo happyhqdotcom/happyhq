@@ -1,5 +1,7 @@
 import { setChatMode } from '@/lib/actions'
+import { HAPPYHQ_ROOT } from '@/lib/constants.server'
 import { log } from '@/lib/log.server'
+import path from 'path'
 
 interface ModeRequest {
   streamSlug?: string
@@ -28,8 +30,10 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
+  const chatDir = path.join(HAPPYHQ_ROOT, '.chats', sessionId)
+
   try {
-    await setChatMode(sessionId, mode, modeStreamSlug)
+    await setChatMode(chatDir, mode, modeStreamSlug)
     return Response.json({ ok: true })
   } catch (err) {
     log('api.error', {
