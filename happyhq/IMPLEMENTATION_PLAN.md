@@ -771,6 +771,41 @@ message"`, and the user message "hello from the harness". Pollution
    `NameInputDialog` to each stream row, call `renameStream` on
    submit). Standalone improvement; exercise depends on it. PR title:
    `feat(sidebar): wire rename gesture for streams`.
+   ✅ **Done** — extracted `StreamRow` molecule
+   (`components/features/sidebar/molecules/stream-row.tsx`) so per-row
+   dialog state stays out of `sidebar.tsx`. Each row renders the existing
+   `ItemDropdownMenu` (rename + delete), `NameInputDialog`, and shared
+   `DeleteAlert`. The dropdown trigger lives inside a wrapper with
+   `data-role="stream-row-menu"` (so the rename-stream exercise can
+   address it) and reveals on hover/focus-within (`group-hover` /
+   `group-focus-within` on the absolute-positioned wrapper); the
+   attention-count badge fades out on hover so the two right-anchored
+   elements don't visually collide. On rename submit the row calls
+   `renameStream(old, new)`, then `invalidateStream(old)` +
+   `invalidateStream(new)` + `mutateStreams()`; if the user is currently
+   viewing this stream (pathname matches `/tasks/<slug>` or `/<slug>`
+   prefix) the row navigates to `/tasks/<new>`. On delete confirm the
+   row calls `deleteStream(slug)`, invalidates + refreshes the list, and
+   navigates to `/tasks` if currently viewing this stream. Same-name
+   submits are skipped (no server roundtrip, dialog closes); thrown
+   errors propagate to the dialog (which already renders them inline).
+   10 new tests in `stream-row.test.tsx` cover the contract: rename
+   default value, rename action + invalidate + mutate + navigate (when
+   viewing this stream), no-navigation when on a different stream,
+   same-name skip, error path side-effect suppression, delete confirm,
+   delete navigation rules, and badge rendering. The tests mock
+   `NameInputDialog`/`DeleteAlert`/`ItemDropdownMenu` (their own
+   contracts are tested separately) plus next/navigation, server
+   actions, `invalidateStream`, and `useStreamsMutate`.
+
+   Confirmed live against `pnpm dev`: `curl /tasks` HTML contains
+   `data-role="stream-row-menu"` and `aria-label="Stream actions for
+…"` on each stream row. All 1491 tests, types, and lint green.
+
+   Note: the actual #24 fix (rewriting `windowStore` state on rename)
+   is still out of scope here — this delivers the gesture; #26 catches
+   the regression once the fix lands.
+
 7. **Rename-stream exercise** (`scripts/exercises/rename-stream.ts`).
    First exercise that catches a real bug; the artifact dir is the
    evidence whether #24 is fixed or still reproducing. PR title:

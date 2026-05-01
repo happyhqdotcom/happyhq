@@ -16,7 +16,6 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
@@ -29,15 +28,14 @@ import {
 } from '@/components/common/ui/tooltip'
 import { AccountFooter } from '@/components/features/sidebar/atoms/account-footer'
 import { ActionButtons } from '@/components/features/sidebar/atoms/action-buttons'
+import { StreamRow } from '@/components/features/sidebar/molecules/stream-row'
 import { TaskCreateDialog } from '@/components/features/tasks/create/dialog'
-import { displayTitle } from '@/lib/format'
 import type { StreamEntry, TaskItem } from '@/lib/fs/types'
 import { fetcher } from '@/lib/swr'
 import { taskItemsKey } from '@/lib/swr-keys'
 import { useStreams } from '@/stores/streamsStore'
 import {
   FerrisWheel,
-  Hash,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -126,21 +124,12 @@ export function GlobalSidebar({
                 pathname === `/${s.name}` ||
                 pathname.startsWith(`/${s.name}/`)
               return (
-                <SidebarMenuItem key={s.name}>
-                  <SidebarMenuButton asChild isActive={isActive}>
-                    <Link href={`/tasks/${s.name}`}>
-                      <Hash className="size-4" />
-                      <span className="truncate">
-                        {displayTitle(s.title, s.name)}
-                      </span>
-                    </Link>
-                  </SidebarMenuButton>
-                  {(attentionCounts.get(s.name) ?? 0) > 0 && (
-                    <SidebarMenuBadge className="rounded-full bg-[#F95F7C] px-2.5 text-[11px] font-semibold text-white! dark:bg-zinc-100 dark:text-zinc-900!">
-                      {attentionCounts.get(s.name)}
-                    </SidebarMenuBadge>
-                  )}
-                </SidebarMenuItem>
+                <StreamRow
+                  key={s.name}
+                  stream={s}
+                  isActive={isActive}
+                  attentionCount={attentionCounts.get(s.name) ?? 0}
+                />
               )
             })}
             {streams.length === 0 && (
