@@ -19,7 +19,7 @@
     "@anthropic-ai/claude-agent-sdk": "^0.2.92",
     "@headlessui/react": "^2.2.9",
     "@hyzyla/pdfium": "^2.1.6",
-    "@instantdb/admin": "^0.22.155",
+    "@instantdb/admin": "^1.0.22",
     "@instantdb/core": "^0.22.155",
     "@instantdb/react": "^0.22.155",
     "@radix-ui/react-accordion": "^1.2.8",
