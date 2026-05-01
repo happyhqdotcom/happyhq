@@ -30,8 +30,21 @@ WORKDIR /build
 # Copy happyhq source (other apps excluded by .dockerignore)
 COPY happyhq/ ./happyhq/
 
-# Use Docker-specific env for build (no accounts/billing baked in)
-COPY happyhq/.env.docker ./happyhq/.env.local
+# Build-time public values. NEXT_PUBLIC_* are inlined into the JS bundle
+# at next build, so they need to be present here, not at runtime.
+# Defaults are empty — the image builds CE-style (no accounts, no billing).
+# To build an EE-enabled image, pass `--build-arg` for each value, e.g.:
+#   docker build --build-arg NEXT_PUBLIC_ACCOUNTS_ENABLED=true ...
+ARG NEXT_PUBLIC_ACCOUNTS_ENABLED=""
+ARG NEXT_PUBLIC_BILLING_ENABLED=""
+ARG NEXT_PUBLIC_INSTANT_APP_ID=""
+ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID=""
+ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=""
+ENV NEXT_PUBLIC_ACCOUNTS_ENABLED=$NEXT_PUBLIC_ACCOUNTS_ENABLED \
+    NEXT_PUBLIC_BILLING_ENABLED=$NEXT_PUBLIC_BILLING_ENABLED \
+    NEXT_PUBLIC_INSTANT_APP_ID=$NEXT_PUBLIC_INSTANT_APP_ID \
+    NEXT_PUBLIC_GOOGLE_CLIENT_ID=$NEXT_PUBLIC_GOOGLE_CLIENT_ID \
+    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 
 RUN cd happyhq && pnpm build
 
