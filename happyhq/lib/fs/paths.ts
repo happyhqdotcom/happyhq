@@ -2,6 +2,7 @@ import { HAPPYHQ_ROOT } from '@/lib/constants.server'
 import path from 'path'
 
 export function streamPath(streamName: string): string {
+  assertSafeStreamName(streamName)
   return path.join(HAPPYHQ_ROOT, streamName)
 }
 
@@ -17,11 +18,13 @@ export function tasksDir(): string {
 
 /** Path to a specific task directory (~/HappyHQ/tasks/{slug}). */
 export function taskPath(taskSlug: string): string {
+  assertSafeTaskSlug(taskSlug)
   return path.join(HAPPYHQ_ROOT, 'tasks', taskSlug)
 }
 
 /** Resolve chat directory path — always at root. */
 export function chatPath(sessionId: string): string {
+  assertSafeSessionId(sessionId)
   return path.join(HAPPYHQ_ROOT, '.chats', sessionId)
 }
 
@@ -38,8 +41,10 @@ export function logsDir(): string {
  * (CodeQL flags this as `js/path-injection` for that reason).
  */
 export function safePath(targetPath: string): string {
-  const resolved = path.resolve(targetPath)
   const root = path.resolve(HAPPYHQ_ROOT)
+  const resolved = path.isAbsolute(targetPath)
+    ? path.resolve(targetPath)
+    : path.resolve(root, targetPath)
   if (resolved !== root && !resolved.startsWith(root + path.sep)) {
     throw new Error(`Path ${targetPath} is outside ~/HappyHQ/`)
   }
@@ -63,5 +68,27 @@ const SESSION_ID_RE = /^[a-zA-Z0-9-]{1,64}$/
 export function assertSafeSessionId(sessionId: string): void {
   if (!SESSION_ID_RE.test(sessionId)) {
     throw new Error('Invalid session id')
+  }
+}
+
+/**
+ * Reject path segments that aren't a plain identifier. Stream names and task
+ * slugs are user-supplied identifiers that get joined into filesystem paths,
+ * so the character class is locked to alnum + `._-` with a leading-alnum rule
+ * (rejects `.hidden` / `..` / traversal). The character-class regex is also
+ * what CodeQL recognises as a `js/path-injection` sanitiser barrier — the
+ * semantic `safePath()` resolve+startsWith check isn't modelled as one.
+ */
+const SAFE_PATH_SEGMENT_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/
+
+export function assertSafeStreamName(streamName: string): void {
+  if (!SAFE_PATH_SEGMENT_RE.test(streamName)) {
+    throw new Error('Invalid stream name')
+  }
+}
+
+export function assertSafeTaskSlug(taskSlug: string): void {
+  if (!SAFE_PATH_SEGMENT_RE.test(taskSlug)) {
+    throw new Error('Invalid task slug')
   }
 }

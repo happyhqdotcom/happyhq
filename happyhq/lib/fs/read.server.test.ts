@@ -355,9 +355,9 @@ describe('streamExists', () => {
     await expect(streamExists('my-stream')).rejects.toThrow('EACCES')
   })
 
-  it('rejects paths outside ~/HappyHQ/', async () => {
+  it('rejects traversal in stream name', async () => {
     await expect(streamExists('../../etc')).rejects.toThrow(
-      'outside ~/HappyHQ/',
+      'Invalid stream name',
     )
   })
 })

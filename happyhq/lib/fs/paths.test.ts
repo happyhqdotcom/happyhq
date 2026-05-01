@@ -6,7 +6,13 @@ vi.mock('@/lib/constants.server', () => ({
   HAPPYHQ_ROOT: '/mock/home/HappyHQ',
 }))
 
-import { safePath, streamPath, validatePath } from './paths'
+import {
+  assertSafeStreamName,
+  assertSafeTaskSlug,
+  safePath,
+  streamPath,
+  validatePath,
+} from './paths'
 
 describe('streamPath', () => {
   it('returns the full path for a stream', () => {
@@ -72,5 +78,79 @@ describe('safePath', () => {
 
   it('returns the root itself unchanged', () => {
     expect(safePath('/mock/home/HappyHQ')).toBe('/mock/home/HappyHQ')
+  })
+})
+
+describe('assertSafeStreamName', () => {
+  it('accepts a typical slug', () => {
+    expect(() => assertSafeStreamName('my-stream')).not.toThrow()
+  })
+
+  it('accepts dotted and underscored alnum slugs', () => {
+    expect(() => assertSafeStreamName('my_stream.v2')).not.toThrow()
+  })
+
+  it('rejects an empty string', () => {
+    expect(() => assertSafeStreamName('')).toThrow('Invalid stream name')
+  })
+
+  it('rejects a leading dot (hidden)', () => {
+    expect(() => assertSafeStreamName('.hidden')).toThrow('Invalid stream name')
+  })
+
+  it('rejects parent-traversal `..`', () => {
+    expect(() => assertSafeStreamName('..')).toThrow('Invalid stream name')
+  })
+
+  it('rejects values containing `/`', () => {
+    expect(() => assertSafeStreamName('foo/bar')).toThrow('Invalid stream name')
+  })
+
+  it('rejects values containing `\\`', () => {
+    expect(() => assertSafeStreamName('foo\\bar')).toThrow(
+      'Invalid stream name',
+    )
+  })
+
+  it('rejects values longer than 128 characters', () => {
+    expect(() => assertSafeStreamName('a'.repeat(129))).toThrow(
+      'Invalid stream name',
+    )
+  })
+})
+
+describe('assertSafeTaskSlug', () => {
+  it('accepts a typical dated slug', () => {
+    expect(() => assertSafeTaskSlug('2026-04-30-feature-x')).not.toThrow()
+  })
+
+  it('accepts dotted and underscored alnum slugs', () => {
+    expect(() => assertSafeTaskSlug('task_1.draft')).not.toThrow()
+  })
+
+  it('rejects an empty string', () => {
+    expect(() => assertSafeTaskSlug('')).toThrow('Invalid task slug')
+  })
+
+  it('rejects a leading dot (hidden)', () => {
+    expect(() => assertSafeTaskSlug('.hidden')).toThrow('Invalid task slug')
+  })
+
+  it('rejects parent-traversal `..`', () => {
+    expect(() => assertSafeTaskSlug('..')).toThrow('Invalid task slug')
+  })
+
+  it('rejects values containing `/`', () => {
+    expect(() => assertSafeTaskSlug('foo/bar')).toThrow('Invalid task slug')
+  })
+
+  it('rejects values containing `\\`', () => {
+    expect(() => assertSafeTaskSlug('foo\\bar')).toThrow('Invalid task slug')
+  })
+
+  it('rejects values longer than 128 characters', () => {
+    expect(() => assertSafeTaskSlug('a'.repeat(129))).toThrow(
+      'Invalid task slug',
+    )
   })
 })
