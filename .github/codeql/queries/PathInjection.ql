@@ -1,13 +1,15 @@
 /**
  * @name Uncontrolled data used in path expression
  * @description Same analysis as the standard js/path-injection, with HappyHQ's
- *              local sanitisers recognised:
- *                - `safePath()` return value (Sanitizer)
+ *              local path-helpers recognised as sanitisers — their return
+ *              values are validated paths:
+ *                - `safePath()` — canonical resolve + root-bounded
  *                - `assertSafeTaskSlug` / `assertSafeStreamName` /
- *                  `assertSafeSessionId` / `assertSafePathSegment` —
- *                  void-returning, throw-on-bad-input regex validators; we
- *                  mark the call's argument node so taint flowing into the
- *                  validator is sanitised at the use site.
+ *                  `assertSafeSessionId` / `assertSafePathSegment` — regex
+ *                  validators that return their input on success, throw on
+ *                  bad input
+ *                - `streamPath` / `taskPath` / `chatPath` — build paths
+ *                  through the assertSafe* validators
  *              Replaces the default query (excluded via query-filters in
  *              codeql-config.yml).
  * @kind path-problem
@@ -28,28 +30,17 @@ import semmle.javascript.security.dataflow.TaintedPathCustomizations
 import semmle.javascript.security.dataflow.TaintedPathQuery
 import DataFlow::DeduplicatePathGraph<TaintedPathFlow::PathNode, TaintedPathFlow::PathGraph>
 
-private class HappyHQSafePathSanitizer extends TaintedPath::Sanitizer {
-  HappyHQSafePathSanitizer() {
+private class HappyHQPathHelperSanitizer extends TaintedPath::Sanitizer {
+  HappyHQPathHelperSanitizer() {
     exists(DataFlow::CallNode call |
-      call.getCalleeName() = "safePath" and
+      call.getCalleeName() =
+        [
+          "safePath", "assertSafeTaskSlug", "assertSafeStreamName",
+          "assertSafeSessionId", "assertSafePathSegment", "streamPath", "taskPath",
+          "chatPath"
+        ] and
       this = call
     )
-  }
-}
-
-private class HappyHQAssertSafeBarrierGuard extends TaintedPath::BarrierGuard instanceof DataFlow::CallNode
-{
-  HappyHQAssertSafeBarrierGuard() {
-    this.(DataFlow::CallNode).getCalleeName() =
-      [
-        "assertSafeTaskSlug", "assertSafeStreamName", "assertSafeSessionId",
-        "assertSafePathSegment"
-      ]
-  }
-
-  override predicate blocksExpr(boolean outcome, Expr e) {
-    outcome = true and
-    e = this.(DataFlow::CallNode).getArgument(0).asExpr()
   }
 }
 

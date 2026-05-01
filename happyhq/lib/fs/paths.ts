@@ -3,8 +3,7 @@ import path from 'path'
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
 
 export function streamPath(streamName: string): string {
-  assertSafeStreamName(streamName)
-  return path.join(HAPPYHQ_ROOT, streamName)
+  return path.join(HAPPYHQ_ROOT, assertSafeStreamName(streamName))
 }
 
 /** Q's memory directory. */
@@ -19,14 +18,12 @@ export function tasksDir(): string {
 
 /** Path to a specific task directory (~/HappyHQ/tasks/{slug}). */
 export function taskPath(taskSlug: string): string {
-  assertSafeTaskSlug(taskSlug)
-  return path.join(HAPPYHQ_ROOT, 'tasks', taskSlug)
+  return path.join(HAPPYHQ_ROOT, 'tasks', assertSafeTaskSlug(taskSlug))
 }
 
 /** Resolve chat directory path — always at root. */
 export function chatPath(sessionId: string): string {
-  assertSafeSessionId(sessionId)
-  return path.join(HAPPYHQ_ROOT, '.chats', sessionId)
+  return path.join(HAPPYHQ_ROOT, '.chats', assertSafeSessionId(sessionId))
 }
 
 /** Daily log files directory (~/HappyHQ/.logs/). */
@@ -66,10 +63,11 @@ export function validatePath(targetPath: string): void {
  * malformed (or hostile) request — refuse before the value reaches `path.join`.
  */
 const SESSION_ID_RE = /^[a-zA-Z0-9-]{1,64}$/
-export function assertSafeSessionId(sessionId: string): void {
+export function assertSafeSessionId(sessionId: string): string {
   if (!SESSION_ID_RE.test(sessionId)) {
     throw new Error('Invalid session id')
   }
+  return sessionId
 }
 
 /**
@@ -82,16 +80,18 @@ export function assertSafeSessionId(sessionId: string): void {
  */
 const SAFE_PATH_SEGMENT_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/
 
-export function assertSafeStreamName(streamName: string): void {
+export function assertSafeStreamName(streamName: string): string {
   if (!SAFE_PATH_SEGMENT_RE.test(streamName)) {
     throw new Error('Invalid stream name')
   }
+  return streamName
 }
 
-export function assertSafeTaskSlug(taskSlug: string): void {
+export function assertSafeTaskSlug(taskSlug: string): string {
   if (!SAFE_PATH_SEGMENT_RE.test(taskSlug)) {
     throw new Error('Invalid task slug')
   }
+  return taskSlug
 }
 
 /**
@@ -102,8 +102,9 @@ export function assertSafeTaskSlug(taskSlug: string): void {
 export function assertSafePathSegment(
   value: string,
   label = 'path segment',
-): void {
+): string {
   if (!SAFE_PATH_SEGMENT_RE.test(value)) {
     throw new Error(`Invalid ${label}`)
   }
+  return value
 }
