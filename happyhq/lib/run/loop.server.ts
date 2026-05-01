@@ -39,6 +39,7 @@ import type { ChatStreamEvent } from '@/lib/chat/types'
 import { log } from '@/lib/log.server'
 
 import { encodeEvent, filterMessage } from './filter.server'
+import { appendWireEvent } from './wire-tee.server'
 
 // ---------------------------------------------------------------------------
 // Module-level state — one run at a time
@@ -56,6 +57,10 @@ interface RunLoopState {
   starting: boolean
   activeRunStream: string | null
   activeRunTask: string | null
+  // Per-startRun() UUID — addresses .runs/<runId>/wire.jsonl for the
+  // wire-event tee. Independent of per-iteration session IDs (which stay
+  // inside iteration metrics for billing/log correlation).
+  activeRunId: string | null
   heartbeatInterval: ReturnType<typeof setInterval> | null
   selfPingInterval: ReturnType<typeof setInterval> | null
 }
@@ -73,6 +78,7 @@ function getState(): RunLoopState {
       starting: false,
       activeRunStream: null,
       activeRunTask: null,
+      activeRunId: null,
       heartbeatInterval: null,
       selfPingInterval: null,
     }
@@ -141,6 +147,7 @@ export async function startRun(
     s.subscribers = new Set()
     s.activeRunStream = streamName
     s.activeRunTask = taskName
+    s.activeRunId = crypto.randomUUID()
     startKeepalives(s)
 
     // Defer heavy work (commitGitState shells out to git synchronously) with
@@ -225,6 +232,7 @@ export async function startRun(
             s.abortController = null
             s.activeRunStream = null
             s.activeRunTask = null
+            s.activeRunId = null
             return
           }
 
@@ -443,6 +451,7 @@ async function runLoop(
     s.abortController = null
     s.activeRunStream = null
     s.activeRunTask = null
+    s.activeRunId = null
   }
 }
 
@@ -470,7 +479,7 @@ async function runPlanningIteration(
 
   try {
     const notifyClient = (event: ChatStreamEvent) => {
-      broadcast(encodeEvent(event))
+      broadcast(event)
     }
     const options = await planningAgentOptions(
       streamName,
@@ -500,7 +509,7 @@ async function runPlanningIteration(
       peakInputTokens = trackPeakInputTokens(msg, peakInputTokens)
       const event = filterMessage(msg)
       if (event) {
-        broadcast(encodeEvent(event))
+        broadcast(event)
         if (event.type === 'result') {
           iterationCost = event.costUsd
           resultSubtype = event.subtype
@@ -741,7 +750,7 @@ async function runWorkingLoop(
 
     try {
       const notifyClient = (event: ChatStreamEvent) => {
-        broadcast(encodeEvent(event))
+        broadcast(event)
       }
       const options = await workingAgentOptions(
         streamName,
@@ -771,7 +780,7 @@ async function runWorkingLoop(
         peakInputTokens = trackPeakInputTokens(msg, peakInputTokens)
         const event = filterMessage(msg)
         if (event) {
-          broadcast(encodeEvent(event))
+          broadcast(event)
           if (event.type === 'result') {
             iterationCost = event.costUsd
             resultSubtype = event.subtype
@@ -1104,16 +1113,31 @@ async function runWorkingLoop(
 // ---------------------------------------------------------------------------
 
 /**
- * Broadcast a chunk to all subscriber streams — fire-and-forget.
+ * Broadcast an event to all subscriber streams and durably tee it to
+ * .runs/<runId>/wire.jsonl — fire-and-forget for both.
  *
  * Each subscriber is a WritableStreamDefaultWriter for an independent
  * TransformStream created per GET /api/run/stream request. Failed writes
  * (client disconnected, backpressure) remove the dead subscriber so future
  * broadcasts skip it. Events may be dropped under backpressure, which is
  * acceptable because the stream is a liveness signal, not a durable log.
+ *
+ * The wire-tee call writes the event to disk so Ralphie and the exercise
+ * harness can inspect or replay any past run. A failed tee must never
+ * break the live broadcast, so it's awaited with .catch and the failure
+ * is logged but swallowed.
  */
-function broadcast(chunk: Uint8Array): void {
+function broadcast(event: ChatStreamEvent): void {
   const s = getState()
+  const chunk = encodeEvent(event)
+
+  if (s.activeRunId) {
+    appendWireEvent(s.activeRunId, event).catch((err) => {
+      log('wire.tee.error', {
+        err: err instanceof Error ? err.message : String(err),
+      })
+    })
+  }
 
   for (const writer of s.subscribers) {
     writer.write(chunk).catch(() => {
@@ -1135,7 +1159,7 @@ const SELF_PING_INTERVAL_MS = 30_000
 function startKeepalives(s: RunLoopState): void {
   s.heartbeatInterval = setInterval(() => {
     if (s.subscribers.size === 0) return
-    broadcast(encodeEvent({ type: 'heartbeat', t: new Date().toISOString() }))
+    broadcast({ type: 'heartbeat', t: new Date().toISOString() })
   }, HEARTBEAT_INTERVAL_MS)
 
   const appName = process.env.FLY_APP_NAME

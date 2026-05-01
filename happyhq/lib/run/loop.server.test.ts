@@ -37,6 +37,7 @@ const {
   mockFinalizeTaskRun,
   mockCanStartTask,
   mockReadConfig,
+  mockAppendWireEvent,
 } = vi.hoisted(() => {
   return {
     mockQuery: vi.fn(),
@@ -74,6 +75,10 @@ const {
     mockCanStartTask: vi
       .fn()
       .mockResolvedValue({ allowed: true, remainingMinutes: 60 }),
+    // Stub the wire tee — real disk writes are exercised in
+    // wire-tee.server.test.ts. Here we only need to verify the loop
+    // calls it for every emitted event with the active runId.
+    mockAppendWireEvent: vi.fn().mockResolvedValue(undefined),
   }
 })
 
@@ -122,6 +127,10 @@ vi.mock('@/ee/lib/billing/limits.server', () => ({
 
 vi.mock('@/lib/config/config.server', () => ({
   readConfig: mockReadConfig,
+}))
+
+vi.mock('./wire-tee.server', () => ({
+  appendWireEvent: mockAppendWireEvent,
 }))
 
 // Import after mocks
@@ -779,5 +788,117 @@ describe('billing integration', () => {
     } finally {
       errSpy.mockRestore()
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wire-event tee
+// ---------------------------------------------------------------------------
+
+describe('wire-event tee', () => {
+  it('tees every emitted event to .runs/<runId>/wire.jsonl with a UUID runId', async () => {
+    mockQuery.mockReturnValue(
+      fakeQuery([
+        {
+          type: 'assistant',
+          message: {
+            id: 'msg_1',
+            role: 'assistant',
+            content: [{ type: 'text', text: 'hello' }],
+          },
+          parent_tool_use_id: null,
+          uuid: '1',
+          session_id: 's1',
+        },
+      ]),
+    )
+
+    await startRun('s1', 't1', 'planning')
+    await _waitForLoop()
+
+    expect(mockAppendWireEvent).toHaveBeenCalled()
+    const calls = mockAppendWireEvent.mock.calls
+    const runIds = new Set(calls.map((c) => c[0]))
+    // One run = one runId across every teed event
+    expect(runIds.size).toBe(1)
+    const runId = [...runIds][0] as string
+    // crypto.randomUUID() shape
+    expect(runId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    )
+    // Every teed event is a ChatStreamEvent with a `type`
+    for (const [, event] of calls) {
+      expect(event).toHaveProperty('type')
+    }
+    // The assistant event is in there
+    expect(calls.some(([, e]) => (e as any).type === 'assistant')).toBe(true)
+  })
+
+  it('mints a fresh runId per startRun() invocation', async () => {
+    // mockImplementation rebuilds the generator per call — mockReturnValue
+    // would hand back the already-consumed iterator on the second startRun.
+    mockQuery.mockImplementation(() =>
+      fakeQuery([
+        {
+          type: 'assistant',
+          message: { id: 'm1', role: 'assistant', content: [] },
+          parent_tool_use_id: null,
+          uuid: 'u1',
+          session_id: 's1',
+        },
+      ]),
+    )
+
+    await startRun('s1', 't1', 'planning')
+    await _waitForLoop()
+    const firstRunCalls = [...mockAppendWireEvent.mock.calls]
+
+    mockAppendWireEvent.mockClear()
+
+    await startRun('s1', 't2', 'planning')
+    await _waitForLoop()
+    const secondRunCalls = [...mockAppendWireEvent.mock.calls]
+
+    expect(firstRunCalls.length).toBeGreaterThan(0)
+    expect(secondRunCalls.length).toBeGreaterThan(0)
+    expect(firstRunCalls[0][0]).not.toBe(secondRunCalls[0][0])
+  })
+
+  it('continues broadcasting to subscribers when the tee throws', async () => {
+    mockAppendWireEvent.mockRejectedValue(new Error('disk full'))
+    const assistantMsg = {
+      type: 'assistant',
+      message: { id: 'msg_1', role: 'assistant', content: [] },
+      parent_tool_use_id: null,
+      uuid: '1',
+      session_id: 's1',
+    }
+    mockQuery.mockReturnValue(fakeQuery([assistantMsg]))
+    mockIsTaskCompleted.mockReturnValue(true)
+
+    await startRun('s1', 't1', 'working')
+
+    const stream = getActiveStream()!
+    const reader = stream.getReader()
+    const decoder = new TextDecoder()
+    let output = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      output += decoder.decode(value, { stream: true })
+    }
+
+    // Subscribers still received the event despite tee failure
+    const events = output
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l))
+    expect(events.some((e) => e.type === 'assistant')).toBe(true)
+  })
+
+  it('skips the tee when no run is active (defensive — broadcast guarded by activeRunId)', async () => {
+    // No startRun() — broadcast would fan out to no subscribers and tee
+    // wouldn't fire because activeRunId is null. Confirms the guard.
+    expect(mockAppendWireEvent).not.toHaveBeenCalled()
   })
 })

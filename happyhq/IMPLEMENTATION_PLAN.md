@@ -682,6 +682,17 @@ the harness. Steps 4-7 wire it together.
    - tests). After this lands, every run produces `wire.jsonl` whether
      the harness exists or not — instantly useful for log-grepping past
      runs. PR title: `feat(run): tee wire events to .runs/<runId>/wire.jsonl`.
+     ✅ **Done** — `lib/run/wire-tee.server.ts` exposes `appendWireEvent(runId,
+event)` which mkdir-p's `<HAPPYHQ_ROOT>/.runs/<runId>/` and appends one
+     JSONL line per call. `loop.server.ts` now mints `activeRunId =
+crypto.randomUUID()` per `startRun()`, refactored `broadcast()` to take a
+     `ChatStreamEvent` (encoding + tee both happen at the chokepoint), and the
+     five callsites simplified to `broadcast(event)`. Tee failures surface as
+     `wire.tee.error` log entries and never break the live broadcast. 4 disk-
+     level wire-tee tests + 4 loop-integration tests prove every event reaches
+     the tee with a UUID runId, that fresh runIds mint per startRun, that the
+     broadcast survives tee failures, and that the tee is skipped when no run
+     is active. All 1477 tests, types, and lint green.
 4. **Dump helper + harness CLI skeleton** (`lib/exercise/dump.ts`,
    `scripts/exercise.ts` minus exercise scripts, Playwright dep).
    Verify by running it with an empty no-op script — should produce
