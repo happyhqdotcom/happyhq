@@ -273,7 +273,7 @@ export async function deleteFile(
   for (const segment of relativePath.split('/').filter(Boolean)) {
     assertSafePathSegment(segment)
   }
-  const abs = path.join(HAPPYHQ_ROOT, relativePath)
+  const abs = safePath(path.join(HAPPYHQ_ROOT, relativePath))
   await deleteFileItem(abs, commitMessage ?? `Remove ${relativePath}`)
   log('file.deleted', { path: relativePath })
 }

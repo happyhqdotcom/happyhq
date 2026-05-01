@@ -98,7 +98,7 @@ export async function deleteSample(
   assertSafePathSegment(sampleName, 'sample name')
   assertSafePathSegment(category, 'sample category')
   const samplesRoot = path.join(streamPath(streamName), 'samples')
-  const sampleDir = path.join(samplesRoot, category, sampleName)
+  const sampleDir = safePath(path.join(samplesRoot, category, sampleName))
 
   await deleteFileItem(sampleDir, `[${streamName}] Delete sample ${sampleName}`)
 

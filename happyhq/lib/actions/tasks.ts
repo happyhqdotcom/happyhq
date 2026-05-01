@@ -89,7 +89,7 @@ export async function deleteTaskInput(
 ): Promise<void> {
   assertSafeTaskSlug(taskSlug)
   assertSafePathSegment(inputName, 'input name')
-  const inputDir = path.join(taskPath(taskSlug), 'inputs', inputName)
+  const inputDir = safePath(path.join(taskPath(taskSlug), 'inputs', inputName))
   await deleteFileItem(
     inputDir,
     `[tasks/${taskSlug}] Remove input ${inputName}`,
