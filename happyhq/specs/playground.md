@@ -616,15 +616,16 @@ is enough for a dev tool, and skipping them keeps the install lean.
 
 Each exercise run produces `<HAPPYHQ_ROOT>/.exercises/<id>/`:
 
-| File            | Purpose                                                           |
-| --------------- | ----------------------------------------------------------------- |
-| `meta.json`     | `{ id, script, root, started, ended, exit, error?, durationMs }`  |
-| `dom.html`      | Final DOM snapshot (or named snapshots from `dump('name')` calls) |
-| `console.jsonl` | Every browser console message (level, text, url, line)            |
-| `network.jsonl` | Every browser request/response (method, url, status, timing)      |
-| `screenshots/`  | PNGs from `dump('name')` (optional)                               |
-| `logs.jsonl`    | Slice of `<root>/.logs/<date>.jsonl` covering the exercise window |
-| `wire.jsonl`    | `ChatStreamEvent`s from any run that fired during the exercise    |
+| File            | Purpose                                                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `meta.json`     | `{ id, script, root, port, baseUrl, started, ended, durationMs, exit, error?, runIds: string[] }`                                    |
+| `dom.html`      | Final DOM snapshot (or named snapshots from `dump('name')` calls)                                                                    |
+| `console.jsonl` | Every browser console message (level, text, url, line)                                                                               |
+| `network.jsonl` | Every browser request/response (method, url, status, timing)                                                                         |
+| `screenshots/`  | PNGs from `dump('name')` (optional)                                                                                                  |
+| `logs.jsonl`    | Slice of `<root>/.logs/<date>.jsonl` covering the exercise window                                                                    |
+| `wire.jsonl`    | `ChatStreamEvent`s from any run that fired during the exercise (concatenated across `runIds`, separated by `{"_runId":"..."}` lines) |
+| `server.log`    | stdout/stderr from the spawned `next dev` child (useful for debugging dev-server start failures)                                     |
 
 The directory is the artifact — no separate viewer needed for the MVP.
 Ralphie greps `console.jsonl` for errors, opens `dom.html` to inspect
@@ -683,8 +684,12 @@ harness adapts to the app, not the other way around.
 
 1. `pnpm install` pulls Playwright.
 2. `pnpm tsx scripts/exercise.ts --root /tmp/exercise-smoke --script scripts/exercises/smoke.ts`
-   — minimal smoke (open `/`, send a chat message, dump). Exit 0;
-   `dom.html` shows the assistant message; `wire.jsonl` exists.
+   — minimal smoke (open `/chat`, fill the home composer, submit, wait
+   for any of three terminal signals: `[data-role="assistant-message"]`,
+   `[data-role="auth-error"]`, or `/setup` redirect). Exit 0;
+   `dom.html` is captured; the artifact dir round-trips. (`/` redirects
+   to `/tasks`, which renders the task quick-add gesture, not the home
+   composer — the smoke navigates directly to `/chat`.)
 3. **Pollution audit:** the user's real `~/HappyHQ/` is untouched
    after the smoke. Only `/tmp/exercise-smoke/` got artifacts.
 4. `pnpm tsx scripts/exercise.ts --root /tmp/exercise-rename --script scripts/exercises/rename-stream.ts`
@@ -693,8 +698,10 @@ harness adapts to the app, not the other way around.
    artifacts (DOM snapshot of broken window, console error log,
    screenshot). The human reads the artifact dir and trusts it without
    re-running by hand.
-5. `pnpm test` — `activity-reducer.test.ts` passes against a captured
-   `wire.jsonl` fixture.
+5. `pnpm test` — `lib/run/wire-replay.test.ts` replays the captured
+   `lib/run/__fixtures__/wire-issue-26.jsonl` fixture through
+   `reduceActivity` and pins the subagent rendering guarantees that
+   regressed in issue #26.
 
 ## Testing
 
@@ -713,7 +720,8 @@ The fixture browser is a dev tool — no automated tests. Verification is visual
 
 The Exercise Harness adds programmatic test surface for the running app:
 
-- `lib/run/activity-reducer.test.ts` — replay captured `wire.jsonl` fixtures through `reduceActivity`, snapshot the resulting `ActivityStep[]`. Issues like #26 become pinned regression tests once a wire transcript is captured.
+- `lib/run/activity-reducer.test.ts` — unit-level reducer tests (purity, parity with the prior hook implementation, deterministic `now` injection).
+- `lib/run/wire-replay.test.ts` — replays captured `wire.jsonl` fixtures from `lib/run/__fixtures__/` through `reduceActivity` and pins the visible activity-rendering guarantees. Issues like #26 (subagent activity rendering) become pinned regression tests once a wire transcript is captured.
 - `scripts/exercises/*.ts` — Playwright-driven flows; exit code is the verdict, the artifact dir is the evidence. Run on demand by Ralphie or as a battery after merges.
 
 ## Constraints
