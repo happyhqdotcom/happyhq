@@ -13,7 +13,7 @@ Dev-only — returns 404 in production.
 - [Chat](chat.md) — Chat components, message rendering, interaction cards
 - [Home](home.md) — Composer component, animated placeholder
 - [Desktop](desktop.md) — Window system, canvas layout
-- [Observability](observability.md) — Sessions are observability for live SDK behavior; sibling to debug-bundle export
+- [Observability](observability.md) — debug-bundle export for user-reported bugs; the Exercise Harness below is its dev-loop sibling
 
 ## Layout
 
@@ -518,84 +518,117 @@ Sync `selectedComponent` and `selectedVariant` to URL search params via `useSear
 
 **Apple pie theme** is maintained across all fixtures for coherence. Every mock message, tool call, and question relates to baking.
 
-## Sessions
+## Exercise Harness
 
-The component registry covers fixtures with pre-built data. Sessions cover the
-opposite shape: real `query()` invocations against the SDK, sandboxed, with
-every wire event recorded so the result is observable to both Ralphie
-(programmatically, via CLI) and a human (visually, via a stable URL).
+The fixture browser covers components in isolation. The Exercise Harness
+covers the opposite shape: Ralphie (or a human) drives the **real
+running app** through a headless browser, with the system's filesystem
+state isolated to a sandbox directory and every observable signal
+captured to disk. The artifact directory is the deliverable — Ralphie
+inspects it to verify a fix; a human can read the same files to follow
+along.
 
-The motivation: when Ralphie is iterating on UI surfaces during an autonomous
-loop (run activity panel, chat, task cards), it can't easily verify whether a
-fix actually worked without running the real product — but real runs pollute
-task data, leave git commits, and write to billing. Sessions are the sandbox.
+The motivation: most "logical but not quite there" bugs land on the FE
+(rendering, panels, components, data shapes Ralphie can't see). Without
+a way to drive and observe the real UI, Ralphie ships guesses and the
+human re-verifies by hand. The harness closes that loop.
 
-Dev-only — same `(playground)` route group, same 404-in-prod constraint as the
-fixture browser.
+Dev-only — same 404-in-prod constraint as the fixture browser.
 
-### Container
+### How Ralphie uses it
 
-A session is a directory: `~/HappyHQ/.playground/<YYYYMMDD-HHMMSS>-<shortUuid>/`
-(sibling to `.logs/`, `.chats/`, `.q/` — distinct from user-config and real
-user content, easy to nuke wholesale).
+Three workflows, same machinery:
 
-| File               | Purpose                                                              |
-| ------------------ | -------------------------------------------------------------------- |
-| `meta.json`        | `{ sessionId, createdAt, kind, preset, prompt, status, durationMs }` |
-| `transcript.jsonl` | Every `ChatStreamEvent` emitted on the wire                          |
-| `result.json`      | Final result event + computed `ActivityStep[]` snapshot              |
-| `cwd/`             | Sandbox dir tools see, seeded with a tiny throwaway tree             |
+1. **Building a feature.** Write `scripts/exercises/<feature>.ts`,
+   drive the UI through the new behavior, assert the expected outcome,
+   iterate code until the exercise passes. The exercise stays in the
+   repo as a permanent regression test.
+2. **Post-merge regression.** Run the existing exercise battery
+   (`scripts/exercises/smoke/*.ts` plus per-feature exercises that
+   have accumulated). Each produces a clean artifact dir; red ones
+   surface concrete defects with reproducible artifacts.
+3. **Bug verification.** Write an exercise that reproduces the bug,
+   fix the code, re-run until pass. The exercise stays as the
+   regression test for that bug.
 
-`status` transitions `running` → `succeeded` / `failed` / `aborted`. No
-cleanup — the dir is the artifact. Ralphie or the human can `cat`/`ls` into
-any session afterward.
+The script format, artifact directory, and exit-code contract are
+uniform across all three modes. The library compounds — every new
+feature or fixed bug adds an exercise; coverage grows over time
+without new infrastructure.
 
-### Endpoints
+### Sandbox via env-var
 
-- `POST /api/playground/sessions` — body `{ kind: 'query', preset: 'chat' | 'planning' | 'working', prompt: string }`. Creates the session, runs `query()` with the production agent-options factory, pipes events through `filterMessage` + `encodeEvent`, tees to `transcript.jsonl`, streams NDJSON to caller. Response headers carry `X-Playground-Session-Id` and `X-Playground-Viewer-Url` so callers can surface the URL before the body finishes.
-- `GET /api/playground/sessions/[sessionId]/stream` — replays `transcript.jsonl` if terminal, tails it if running. Same NDJSON wire as `/api/run/stream` so the same hook consumes it.
+Filesystem isolation is solved at the constants layer:
+`lib/constants.server.ts` reads `HAPPYHQ_ROOT` from `process.env` with
+a default of `~/HappyHQ`. Every path in `lib/fs/paths.ts` (`tasks/`,
+`.chats/`, `.logs/`, `.q/`, streams) routes through this.
 
-Pollution avoidance — sessions explicitly do NOT call any of `writeRunInfo`,
-`syncTaskMdFromRun`, `startTaskRun`, `commitGitState`, the `loop.server.ts`
-`broadcast()` subscriber set, or any `.chats/` writer. Auth reuses
-`getAuthEnv()`.
+The harness spawns the dev server with `HAPPYHQ_ROOT=/tmp/exercise-<id>/`.
+The whole app — agent runs, chat history, file uploads, logs —
+operates against that root. The user's real `~/HappyHQ/` is never
+touched. No `cwd` overrides on agent factories, no `canUseTool`
+substitutions, no per-session contortions inside production code.
+Sandboxing happens at the env boundary only.
 
-### CLI (Ralphie's primary interface)
+### CLI
 
-`pnpm tsx scripts/playground.ts query [--preset=chat|planning|working] "<prompt>"`
+```
+pnpm tsx scripts/exercise.ts \
+  --root /tmp/exercise-XYZ \         # sets HAPPYHQ_ROOT for the spawned dev server
+  --script scripts/exercises/<x>.ts  # what to do once the page is up
+  [--keep]                           # keep the sandbox dir after exit (default: keep)
+```
 
-Behavior:
+The harness:
 
-1. POST to the sessions endpoint (default preset `chat`).
-2. Print viewer URL, sandbox cwd, and session id to stderr immediately (from response headers, before the body finishes).
-3. Stream NDJSON; for each event, log compactly to stderr and feed into `reduceActivity`.
-4. On `result`: print the final `ActivityStep[]` table (or JSON with `--json`) to stdout, plus cost / subtype / denials.
-5. Exit 0 on `subtype === 'success'`, non-zero otherwise — Ralphie's autonomous loop branches on exit code.
+1. Starts the dev server as a child process with `HAPPYHQ_ROOT` set.
+2. Waits for `/api/auth/status` to respond.
+3. Launches Playwright, opens a page.
+4. Calls the script's exported `run({ page, dump, root })` function.
+5. On exit (clean or thrown), captures final artifacts, kills the
+   dev server, writes `meta.json`, exits 0/non-zero.
 
-`--json` mode emits one machine-readable object on stdout:
-`{ sessionId, viewerUrl, cwd, finalSteps, result, transcriptPath }`.
+Exercise scripts are TypeScript modules that export `run`. They
+receive a Playwright `page`, a `dump(name?)` helper that takes
+on-demand snapshots, and the sandbox `root` path. They do whatever
+they need: navigate, click, type, upload, wait for selectors, assert.
+A thrown error fails the exercise (non-zero exit) with the error
+recorded in `meta.json`.
 
-The CLI never accumulates anything across runs — each invocation = one session.
+### Artifact directory
 
-### Viewer page (human's primary interface)
+Each exercise run produces `<HAPPYHQ_ROOT>/.exercises/<id>/`:
 
-`/playground/sessions/[sessionId]/page.tsx` — three panes driven by the
-session's stream URL:
+| File            | Purpose                                                           |
+| --------------- | ----------------------------------------------------------------- |
+| `meta.json`     | `{ id, script, root, started, ended, exit, error?, durationMs }`  |
+| `dom.html`      | Final DOM snapshot (or named snapshots from `dump('name')` calls) |
+| `console.jsonl` | Every browser console message (level, text, url, line)            |
+| `network.jsonl` | Every browser request/response (method, url, status, timing)      |
+| `screenshots/`  | PNGs from `dump('name')` (optional)                               |
+| `logs.jsonl`    | Slice of `<root>/.logs/<date>.jsonl` covering the exercise window |
+| `wire.jsonl`    | `ChatStreamEvent`s from any run that fired during the exercise    |
 
-- **Top**: `ConnectedActivityDebugContent` from the desktop island — the real production panel, driven by `useRunActivity` pointed at the session stream.
-- **Right**: live-updating `ActivityStep[]` JSON snapshot — what data the panel is rendering against. Discrepancy between this and the panel = FE bug; between this and the wire log = reducer bug.
-- **Bottom**: collapsible NDJSON wire log, type-colored.
+The directory is the artifact — no separate viewer needed for the MVP.
+Ralphie greps `console.jsonl` for errors, opens `dom.html` to inspect
+state, reads `wire.jsonl` to verify backend behavior. A web viewer
+can come later if browsing the dir gets painful.
 
-Header carries prompt, preset, status, elapsed, cost, denials, sandbox cwd
-path (click-to-copy). The URL works the same whether the session is live
-(tailing) or finished (replay) — Ralphie hands the same URL to the human in
-both cases, and the human can't tell which mode it's in.
+### Wire-event tee
+
+A small writer in `lib/run/loop.server.ts` appends every emitted
+`ChatStreamEvent` to `<HAPPYHQ_ROOT>/.runs/<runId>/wire.jsonl` as it
+flows through the existing fan-out. Cheap, additive, no behavior
+change. Lets Ralphie inspect or replay any past run, in or out of an
+exercise. Inside an exercise, the harness copies the relevant
+`wire.jsonl` slice into `.exercises/<id>/wire.jsonl`.
 
 ### Reducer extraction
 
-`useRunActivity` today inlines the wire-events-to-`ActivityStep[]` reducer as
-`useEffect` + refs. Sessions require the same logic to run outside React (the
-CLI, deterministic tests, replay), so it's extracted to a pure function:
+`useRunActivity` today inlines the wire-events-to-`ActivityStep[]`
+reducer as `useEffect` + refs. Extract it to a pure function so
+the same logic works outside React (deterministic tests, replay
+tools, future CLI inspectors):
 
 ```ts
 // lib/run/activity-reducer.ts
@@ -607,66 +640,44 @@ export function reduceActivity(
 ```
 
 The hook rewrites to wrap `useReducer(reduceActivity, initialActivityState())` —
-production behavior unchanged. The CLI imports `reduceActivity` directly. A
-captured `transcript.jsonl` becomes a deterministic regression fixture for
-issues like #26 (subagent activity rendering).
-
-### Presets
-
-Each preset is a thin wrapper around an existing production agent-options
-factory — sessions exercise the actual production tool surface, in the
-sandbox cwd:
-
-```ts
-export const PRESETS = {
-  chat:     (cwd) => chatAgentOptions(...),
-  planning: (cwd) => planningAgentOptions(...),
-  working:  (cwd) => workingAgentOptions(...),
-}
-```
-
-No new options shape. If a factory has hard dependencies on session/task ids
-that can't be stripped cleanly for the sandbox, that's the one place a small
-adapter goes — discovered during implementation.
+production behavior unchanged. A captured `wire.jsonl` becomes a
+deterministic regression fixture for issues like #26 (subagent
+activity rendering).
 
 ### Files
 
-- New: `lib/run/activity-reducer.ts` (+ `.test.ts`)
-- New: `lib/playground/session.server.ts`, `lib/playground/presets.server.ts`
-- New: `app/api/playground/sessions/route.ts`, `app/api/playground/sessions/[sessionId]/stream/route.ts`
-- New: `app/(playground)/playground/sessions/[sessionId]/page.tsx`
-- New: `scripts/playground.ts`
-- Edit: `components/features/desktop/hooks/use-run-activity.ts` — useReducer + optional `streamUrl` arg
+- New: `scripts/exercise.ts` — harness CLI
+- New: `scripts/exercises/` — directory; first exercise verifies #24
+  (rename stream while windows open)
+- New: `lib/exercise/dump.ts` — `dump()` helper used by exercise scripts
+- New: `lib/run/activity-reducer.ts` (+ `.test.ts`) — pure reducer
+- New: `lib/run/wire-tee.server.ts` — appender used by the run loop
+- Edit: `lib/fs/paths.ts` — add `exerciseDir(id)`, `runWirePath(runId)`
+- Edit: `lib/run/loop.server.ts` — call the wire tee at the fan-out emit point
+- Edit: `components/features/desktop/hooks/use-run-activity.ts` — `useReducer(reduceActivity, ...)`
+- Edit: `package.json` — add `playwright` (or `@playwright/test`)
 
-Reused unchanged: `filterMessage`, `encodeEvent`, `getAuthEnv`,
-`chatAgentOptions` / `planningAgentOptions` / `workingAgentOptions`,
-`ConnectedActivityDebugContent`. The `_registry/` fixture set is untouched —
-the session viewer is a sibling route, not another fixture entry.
+Reused unchanged: `filterMessage`, `encodeEvent`, `getAuthEnv`, all
+agent-options factories. The `_registry/` fixture set is untouched.
+**No production agent code is reshaped to fit the harness** — the
+harness adapts to the app, not the other way around.
 
 ### Verification
 
-CLI path:
-
-1. `pnpm dev` (separate shell).
-2. `pnpm tsx scripts/playground.ts query "Read README.md and tell me what's in it"` — stderr prints viewer URL; stdout shows final `ActivityStep[]` with a Read step; exit 0.
-3. `cat ~/HappyHQ/.playground/<latest>/result.json` — matches.
-4. Working-preset prompt that spawns a subagent — stdout timeline contains `Delegating: …` step (#26 surface).
-
-Viewer path:
-
-5. Open the URL printed in step 2 _while_ the CLI streams — three panes update in real time.
-6. Refresh after completion — same view, replay-mode.
-7. Open an old session URL — replay still works.
-
-Pollution audit (must remain clean after any session):
-
-- `git status` clean.
-- No new files under `~/HappyHQ/tasks/`.
-- No new `.chats/*/chat.json`.
-- InstantDB `taskRun` count unchanged.
-- `~/HappyHQ/.logs/<today>.jsonl` may contain `playground.*` events but no `run.*`, `task.*`, or `chat.*`.
-
-The only filesystem residue is under `~/HappyHQ/.playground/`.
+1. `pnpm install` pulls Playwright.
+2. `pnpm tsx scripts/exercise.ts --root /tmp/exercise-smoke --script scripts/exercises/smoke.ts`
+   — minimal smoke (open `/`, send a chat message, dump). Exit 0;
+   `dom.html` shows the assistant message; `wire.jsonl` exists.
+3. **Pollution audit:** the user's real `~/HappyHQ/` is untouched
+   after the smoke. Only `/tmp/exercise-smoke/` got artifacts.
+4. `pnpm tsx scripts/exercise.ts --root /tmp/exercise-rename --script scripts/exercises/rename-stream.ts`
+   — runs the verification for #24. Either produces a green report
+   ("rename works, windows rebind") or red defects with concrete
+   artifacts (DOM snapshot of broken window, console error log,
+   screenshot). The human reads the artifact dir and trusts it without
+   re-running by hand.
+5. `pnpm test` — `activity-reducer.test.ts` passes against a captured
+   `wire.jsonl` fixture.
 
 ## Testing
 
@@ -683,24 +694,25 @@ The fixture browser is a dev tool — no automated tests. Verification is visual
 - Verify URL search params update and are shareable (copy URL -> paste in new tab -> same component and variant load)
 - Verify peekaboo panels: hover rail triggers slide-in, mouse leave auto-hides, Escape dismisses, lock/unlock transitions smoothly
 
-Sessions add deterministic test surface via the extracted reducer:
+The Exercise Harness adds programmatic test surface for the running app:
 
-- `lib/run/activity-reducer.test.ts` — replay captured `transcript.jsonl` fixtures through `reduceActivity`, snapshot the resulting `ActivityStep[]`. Issues like #26 become pinned regression tests once a transcript is captured.
-- Session endpoints, CLI, and viewer follow the existing observability verification pattern (see [Sessions § Verification](#verification-1)).
+- `lib/run/activity-reducer.test.ts` — replay captured `wire.jsonl` fixtures through `reduceActivity`, snapshot the resulting `ActivityStep[]`. Issues like #26 become pinned regression tests once a wire transcript is captured.
+- `scripts/exercises/*.ts` — Playwright-driven flows; exit code is the verdict, the artifact dir is the evidence. Run on demand by Ralphie or as a battery after merges.
 
 ## Constraints
 
 - Dev-only (production returns 404)
 - Light mode only (per foundation spec)
 - No external dependencies — built with existing UI primitives
-- Sessions never write to production state surfaces (`.run.json`, `task.md`, billing, git, `.chats/`); the only filesystem residue is `~/HappyHQ/.playground/`
+- Exercise Harness never writes to the user's real `~/HappyHQ/` — sandboxing is via `HAPPYHQ_ROOT` set on the spawned dev server; all filesystem residue (runs, chats, logs, exercise artifacts) lands under the sandbox root
 
 ## Future Enhancements
 
-- **More session kinds** — extend `kind` beyond `'query'` to cover the chat, task creation, and plan-approval surfaces. Same session container and viewer infrastructure; additive only.
-- **Multi-turn sessions** — today each session is one `query()`. Multi-turn comes when sessions extend to the chat surface.
-- **Windows** — register desktop window components (MarkdownWindow, PdfWindow, etc.) with their own canvas treatment
-- **Side-by-side** — render two variants of the same component next to each other for comparison
-- **Theme testing** — when dark mode is added, toggle light/dark in the playground
-- **Viewport simulation** — render components at different container widths to test responsive behavior
-- **Playwright DOM capture** — for visual/CSS regressions, optionally snapshot rendered DOM at the viewer URL. Strictly additive on top of the data-level observability sessions already provide.
+- **Web viewer for exercise artifacts** — once the artifact-dir-as-deliverable pattern shows friction, add a `/playground/exercises/<id>` page that renders `meta.json` + `dom.html` + the JSONL files in panes. Strictly additive.
+- **Machine-readable fixture render endpoint** — `GET /api/playground/render?component=…&variant=…` returning `{ html, firedEvents, consoleErrors }` so Ralphie can verify atomic component changes without spinning up Playwright. Small extension of the existing fixture browser.
+- **Smoke battery / pre-merge gate** — once a few exercises exist, wire `scripts/exercises/smoke/*.ts` into a single command Ralphie runs after every merge.
+- **Replay viewer for past runs** — point a viewer page at `<root>/.runs/<runId>/wire.jsonl` to walk through any historical run without re-running it. Reuses the production `ActivityDebugContent` driven by the pure reducer.
+- **Windows** — register desktop window components (MarkdownWindow, PdfWindow, etc.) in the fixture browser with their own canvas treatment.
+- **Side-by-side** — render two variants of the same component next to each other in the fixture browser for comparison.
+- **Theme testing** — when dark mode is added, toggle light/dark in the playground.
+- **Viewport simulation** — render components at different container widths to test responsive behavior.
