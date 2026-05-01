@@ -66,9 +66,11 @@ export async function addWebInput(
     `url: ${normalizedUrl}`,
     `saved: ${new Date().toISOString()}`,
   ]
-  if (title) lines.push(`title: "${title.replace(/"/g, '\\"')}"`)
+  const yamlEscape = (s: string) =>
+    s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  if (title) lines.push(`title: "${yamlEscape(title)}"`)
   if (unfurl?.description)
-    lines.push(`description: "${unfurl.description.replace(/"/g, '\\"')}"`)
+    lines.push(`description: "${yamlEscape(unfurl.description)}"`)
   if (unfurl?.image) lines.push(`image: ${unfurl.image}`)
   if (unfurl?.favicon) lines.push(`favicon: ${unfurl.favicon}`)
   lines.push('---', '')
