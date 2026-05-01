@@ -18,6 +18,7 @@ import {
   assertSafeSessionId,
   assertSafeStreamName,
   assertSafeTaskSlug,
+  chatPath,
   safePath,
   streamPath,
   taskPath,
@@ -49,7 +50,7 @@ export async function uploadFile(
   token?: string,
   streamSlug?: string | null,
 ): Promise<string> {
-  assertSafeSessionId(sessionId)
+  const safeSessionId = assertSafeSessionId(sessionId)
 
   const file = formData.get('file') as File
   if (!file) {
@@ -92,7 +93,7 @@ export async function uploadFile(
   if (!slug) slug = 'upload'
 
   // Handle slug collisions within this chat session
-  const chatDir = path.join(HAPPYHQ_ROOT, '.chats', sessionId)
+  const chatDir = chatPath(safeSessionId)
   const uploadsDir = path.join(chatDir, 'uploads')
   let finalSlug = slug
   let counter = 2
@@ -221,9 +222,9 @@ export async function setupTaskFromChat(
   textContext: string,
   files: string[],
 ): Promise<void> {
-  assertSafeTaskSlug(taskSlug)
-  assertSafeSessionId(sessionId)
-  const taskDir = taskPath(taskSlug)
+  const safeTaskSlug = assertSafeTaskSlug(taskSlug)
+  const safeSessionId = assertSafeSessionId(sessionId)
+  const taskDir = taskPath(safeTaskSlug)
 
   await Promise.all([
     ensureDirectory(path.join(taskDir, 'inputs')),
@@ -232,7 +233,7 @@ export async function setupTaskFromChat(
   ])
 
   // Move upload directories from root .chats/{sessionId}/uploads/ to inputs/
-  const uploadsDir = path.join(HAPPYHQ_ROOT, '.chats', sessionId, 'uploads')
+  const uploadsDir = path.join(chatPath(safeSessionId), 'uploads')
   const validFiles: { from: string; to: string }[] = []
   const seen = new Set<string>()
   for (const fileRef of files) {
