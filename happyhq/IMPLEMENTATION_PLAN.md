@@ -810,6 +810,43 @@ message"`, and the user message "hello from the harness". Pollution
    First exercise that catches a real bug; the artifact dir is the
    evidence whether #24 is fixed or still reproducing. PR title:
    `feat(harness): rename-stream exercise (verifies #24)`.
+   ✅ **Done** — `scripts/exercises/rename-stream.ts` pre-seeds
+   `<root>/acme/specs/` and `<root>/acme/samples/` (matching the layout
+   `createStream` writes), navigates to `/acme` (desktop view) where
+   `StreamPanelView` auto-opens an interactive chat window into an empty
+   stream, dumps `before-rename`, walks to `/tasks/acme` (the (app) route
+   group's `GlobalSidebar` is mounted there, not under `(desktop)`),
+   hovers + clicks the `[aria-label="Stream actions for acme"]` trigger,
+   clicks the Rename menuitem, fills `acme-renamed` into the autofocused
+   input, dumps `rename-dialog`, presses Enter to submit, waits for the
+   StreamRow's `router.push('/tasks/acme-renamed')`, dumps `after-rename`,
+   navigates to `/acme-renamed` (desktop view), waits for the chat window
+   to mount (best-effort — its absence is itself evidence), then dumps
+   `back-on-renamed-desktop`. Exit-code clean (0); the artifact set is
+   the deliverable.
+
+   End-to-end smoke against a fresh sandbox `/tmp/exercise-rename-test`:
+   exercise exits 0 in ~23s; produces six DOM snapshots, four
+   screenshots, plus the standard meta/console/network/wire/logs/server
+   files; pollution audit clean (`find ~/HappyHQ -newer
+…/meta.json` empty). Final desktop dump shows nine `acme-renamed`
+   references and zero stale `acme` references in the post-rename DOM —
+   meaningful for a future #24 fix landing as a regression sentinel.
+
+   Selector lessons baked into comments in the script:
+   - HeadlessUI's outer `<div role="dialog">` has zero bbox (its panels
+     are `position: fixed`), so `getByRole('dialog').waitFor({state:
+'visible'})` fails Playwright's visibility check. Wait on the
+     autofocused input instead.
+   - `Input` is controlled — `fill()` triggers a React re-render that
+     updates the `value` attribute, invalidating any selector keyed on
+     the original value. After fill, dispatch `page.keyboard.press
+('Enter')` (the input still has focus) instead of chasing a fresh
+     locator for the submit button.
+   - The stream-row dropdown trigger has `opacity-0` until
+     hover/focus-within. `hover()` before `click()` keeps the dropdown
+     anchored to the trigger so the menuitem is in the DOM after click.
+
 8. **Wire-replay regression test for #26** (drop a captured
    `wire.jsonl` fixture into `lib/run/__fixtures__/`, snapshot
    `reduceActivity` output). PR title:
