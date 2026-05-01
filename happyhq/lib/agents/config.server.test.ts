@@ -111,17 +111,36 @@ describe('learningAgentOptions', () => {
     expect(opts.allowedTools).toContain('mcp__q__CreateTask')
   })
 
-  it('passes env override to SDK when provided', async () => {
-    const env = { ANTHROPIC_API_KEY: 'sk-test-123' }
-    const opts = await learningAgentOptions('my-stream', 'session-uuid-1', {
-      env,
+  it('disables CLI harness auto-memory and tool-search by default', async () => {
+    const opts = await learningAgentOptions('my-stream', 'session-uuid-1')
+    expect(opts.env).toMatchObject({
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+      ENABLE_TOOL_SEARCH: 'false',
     })
-    expect(opts.env).toBe(env)
   })
 
-  it('omits env from SDK options when not provided', async () => {
-    const opts = await learningAgentOptions('my-stream', 'session-uuid-1')
-    expect(opts.env).toBeUndefined()
+  it('merges env override with the harness flags', async () => {
+    const opts = await learningAgentOptions('my-stream', 'session-uuid-1', {
+      env: { ANTHROPIC_API_KEY: 'sk-test-123' },
+    })
+    expect(opts.env).toMatchObject({
+      ANTHROPIC_API_KEY: 'sk-test-123',
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+      ENABLE_TOOL_SEARCH: 'false',
+    })
+  })
+
+  it('does not let env override re-enable the harness flags', async () => {
+    const opts = await learningAgentOptions('my-stream', 'session-uuid-1', {
+      env: {
+        CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
+        ENABLE_TOOL_SEARCH: 'true',
+      },
+    })
+    expect(opts.env).toMatchObject({
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+      ENABLE_TOOL_SEARCH: 'false',
+    })
   })
 
   describe('canUseTool', () => {
@@ -341,24 +360,119 @@ describe('planningAgentOptions', () => {
     expect(opts.mcpServers).toBeUndefined()
   })
 
-  it('passes env override to SDK when provided', async () => {
-    const env = { ANTHROPIC_API_KEY: 'sk-test-123' }
+  it('disables CLI harness auto-memory and tool-search by default', async () => {
     const opts = await planningAgentOptions(
       'my-stream',
       'my-task',
       new AbortController(),
-      { env },
     )
-    expect(opts.env).toBe(env)
+    expect(opts.env).toMatchObject({
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+      ENABLE_TOOL_SEARCH: 'false',
+    })
   })
 
-  it('omits env from SDK options when not provided', async () => {
+  it('merges env override with the harness flags', async () => {
     const opts = await planningAgentOptions(
       'my-stream',
       'my-task',
       new AbortController(),
+      { env: { ANTHROPIC_API_KEY: 'sk-test-123' } },
     )
-    expect(opts.env).toBeUndefined()
+    expect(opts.env).toMatchObject({
+      ANTHROPIC_API_KEY: 'sk-test-123',
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+      ENABLE_TOOL_SEARCH: 'false',
+    })
+  })
+
+  describe('PreToolUse Write/Edit gate', () => {
+    type PreHookResult = {
+      continue?: boolean
+      hookSpecificOutput?: {
+        hookEventName: string
+        permissionDecision?: string
+        permissionDecisionReason?: string
+      }
+    }
+
+    const callPreHook = async (
+      toolName: string,
+      filePath?: string,
+    ): Promise<PreHookResult> => {
+      const opts = await planningAgentOptions(
+        'my-stream',
+        'my-task',
+        new AbortController(),
+      )
+      const hook = opts.hooks!.PreToolUse![0].hooks[0]
+      const result = await hook(
+        {
+          hook_event_name: 'PreToolUse',
+          tool_name: toolName,
+          tool_input: filePath !== undefined ? { file_path: filePath } : {},
+        } as any,
+        undefined,
+        { signal: new AbortController().signal },
+      )
+      return result as PreHookResult
+    }
+
+    it('allows Write to plan.md (relative path)', async () => {
+      const result = await callPreHook('Write', 'tasks/my-task/plan.md')
+      expect(result.hookSpecificOutput).toBeUndefined()
+      expect(result.continue).toBe(true)
+    })
+
+    it('allows Write to plan.md (absolute path)', async () => {
+      const result = await callPreHook(
+        'Write',
+        '/data/happyhq/tasks/my-task/plan.md',
+      )
+      expect(result.hookSpecificOutput).toBeUndefined()
+      expect(result.continue).toBe(true)
+    })
+
+    it('denies Write to outputs/', async () => {
+      const result = await callPreHook(
+        'Write',
+        '/data/happyhq/tasks/my-task/outputs/crm-note.md',
+      )
+      expect(result.hookSpecificOutput).toMatchObject({
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+      })
+      expect(result.hookSpecificOutput!.permissionDecisionReason).toMatch(
+        /plan\.md/,
+      )
+    })
+
+    it('denies Write to a different task', async () => {
+      const result = await callPreHook(
+        'Write',
+        '/data/happyhq/tasks/other-task/plan.md',
+      )
+      expect(result.hookSpecificOutput).toMatchObject({
+        permissionDecision: 'deny',
+      })
+    })
+
+    it('denies Edit always — even on plan.md', async () => {
+      const result = await callPreHook('Edit', 'tasks/my-task/plan.md')
+      expect(result.hookSpecificOutput).toMatchObject({
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+      })
+      expect(result.hookSpecificOutput!.permissionDecisionReason).toMatch(
+        /may not Edit/,
+      )
+    })
+
+    it('passes through non-Write/Edit tools', async () => {
+      const result = await callPreHook('Read', '/anything')
+      expect(result.hookSpecificOutput).toBeUndefined()
+      expect(result.continue).toBe(true)
+    })
   })
 
   it('includes PostToolUse hook that notifies on Write/Edit', async () => {
@@ -484,24 +598,30 @@ describe('workingAgentOptions', () => {
     expect(opts.settingSources).toEqual([])
   })
 
-  it('passes env override to SDK when provided', async () => {
-    const env = { ANTHROPIC_API_KEY: 'sk-test-123' }
+  it('disables CLI harness auto-memory and tool-search by default', async () => {
     const opts = await workingAgentOptions(
       'my-stream',
       'my-task',
       new AbortController(),
-      { env },
     )
-    expect(opts.env).toBe(env)
+    expect(opts.env).toMatchObject({
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+      ENABLE_TOOL_SEARCH: 'false',
+    })
   })
 
-  it('omits env from SDK options when not provided', async () => {
+  it('merges env override with the harness flags', async () => {
     const opts = await workingAgentOptions(
       'my-stream',
       'my-task',
       new AbortController(),
+      { env: { ANTHROPIC_API_KEY: 'sk-test-123' } },
     )
-    expect(opts.env).toBeUndefined()
+    expect(opts.env).toMatchObject({
+      ANTHROPIC_API_KEY: 'sk-test-123',
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+      ENABLE_TOOL_SEARCH: 'false',
+    })
   })
 
   it('includes PostToolUse hook that notifies on Write/Edit', async () => {
