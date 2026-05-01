@@ -39,6 +39,11 @@ const SAFE_PREFIXES = new Set([
  * canUseTool callback for automated agents (planning, working).
  * Auto-approves safe bash commands; denies everything else immediately.
  * No user is present, so we never block for confirmation.
+ *
+ * Note: Write/Edit travel through `permissionMode: 'acceptEdits'` and never
+ * reach this callback. The deny message is intentionally generic — any
+ * tool-specific suggestion would be wrong for at least one agent (planning
+ * may not Write outside plan.md; working may).
  */
 export async function automatedCanUseTool(
   toolName: string,
@@ -57,7 +62,7 @@ export async function automatedCanUseTool(
 
   return {
     behavior: 'deny',
-    message: `Tool "${toolName}" is not auto-approved for automated agents. Use Write/Edit for file changes, or safe Bash commands (git, ls, cd, mkdir, etc.).`,
+    message: `Tool "${toolName}" is not available to this agent. Proceed with the work you can do using the tools that are available.`,
   }
 }
 
