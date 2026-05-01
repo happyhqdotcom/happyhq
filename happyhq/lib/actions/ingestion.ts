@@ -237,11 +237,17 @@ export async function setupTaskFromChat(
   const validFiles: { from: string; to: string }[] = []
   const seen = new Set<string>()
   for (const fileRef of files) {
-    const slug = fileRef
+    const rawSlug = fileRef
       .replace(/^\.?\/?\.chats\/[^/]+\/uploads\//, '')
       .replace(/^\.?\/?uploads\//, '')
       .replace(/\/$/, '')
       .split('/')[0]
+    let slug: string
+    try {
+      slug = assertSafePathSegment(rawSlug, 'upload slug')
+    } catch {
+      continue
+    }
     if (seen.has(slug)) continue
     seen.add(slug)
     const from = safePath(path.join(uploadsDir, slug))
