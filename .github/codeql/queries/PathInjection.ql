@@ -1,8 +1,14 @@
 /**
  * @name Uncontrolled data used in path expression
  * @description Same analysis as the standard js/path-injection, with HappyHQ's
- *              `safePath()` recognised as a sanitiser barrier. Replaces the
- *              default query (the default is excluded via query-filters in
+ *              local sanitisers recognised:
+ *                - `safePath()` return value (Sanitizer)
+ *                - `assertSafeTaskSlug` / `assertSafeStreamName` /
+ *                  `assertSafeSessionId` / `assertSafePathSegment` —
+ *                  void-returning, throw-on-bad-input regex validators; we
+ *                  mark the call's argument node so taint flowing into the
+ *                  validator is sanitised at the use site.
+ *              Replaces the default query (excluded via query-filters in
  *              codeql-config.yml).
  * @kind path-problem
  * @problem.severity error
@@ -28,6 +34,22 @@ private class HappyHQSafePathSanitizer extends TaintedPath::Sanitizer {
       call.getCalleeName() = "safePath" and
       this = call
     )
+  }
+}
+
+private class HappyHQAssertSafeBarrierGuard extends TaintedPath::BarrierGuard instanceof DataFlow::CallNode
+{
+  HappyHQAssertSafeBarrierGuard() {
+    this.(DataFlow::CallNode).getCalleeName() =
+      [
+        "assertSafeTaskSlug", "assertSafeStreamName", "assertSafeSessionId",
+        "assertSafePathSegment"
+      ]
+  }
+
+  override predicate blocksExpr(boolean outcome, Expr e) {
+    outcome = true and
+    e = this.(DataFlow::CallNode).getArgument(0).asExpr()
   }
 }
 
