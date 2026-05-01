@@ -2,7 +2,7 @@ name: HappyHQ CodeQL config
 
 queries:
   - uses: security-and-quality
-  - uses: ./queries
+  - uses: ./.github/codeql/queries
 
 # Replace the default `js/path-injection` with our custom version
 # (`./queries/PathInjection.ql`, id `js/happyhq/path-injection`) which
