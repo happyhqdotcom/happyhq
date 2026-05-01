@@ -595,6 +595,23 @@ they need: navigate, click, type, upload, wait for selectors, assert.
 A thrown error fails the exercise (non-zero exit) with the error
 recorded in `meta.json`.
 
+### Setup — browser binaries
+
+Playwright ships as a JS package; the actual browser binary
+(Chromium for our purposes) installs separately. Ralphie's autonomous
+loop has to work from a fresh checkout, so:
+
+1. `package.json` adds a `postinstall` script that runs
+   `playwright install chromium` after `pnpm install` completes.
+   First-time install is a one-time cost (~150 MB); subsequent
+   installs no-op once the cache is warm.
+2. The harness fails fast with a clear error message if Chromium is
+   missing at launch time — print the install command and exit
+   non-zero rather than throwing a Playwright internal stack trace.
+
+WebKit and Firefox are intentionally not installed — a single browser
+is enough for a dev tool, and skipping them keeps the install lean.
+
 ### Artifact directory
 
 Each exercise run produces `<HAPPYHQ_ROOT>/.exercises/<id>/`:
@@ -705,6 +722,7 @@ The Exercise Harness adds programmatic test surface for the running app:
 - Light mode only (per foundation spec)
 - No external dependencies — built with existing UI primitives
 - Exercise Harness never writes to the user's real `~/HappyHQ/` — sandboxing is via `HAPPYHQ_ROOT` set on the spawned dev server; all filesystem residue (runs, chats, logs, exercise artifacts) lands under the sandbox root
+- Exercises run sequentially within a single `HAPPYHQ_ROOT` — concurrent harness invocations against the same root are not supported. The wire-slice algorithm (snapshot `.runs/` before/after the exercise window) depends on this. Parallelism is achieved by giving each invocation its own `HAPPYHQ_ROOT`, not by sharing one.
 
 ## Future Enhancements
 
