@@ -6,8 +6,8 @@ import path from 'node:path'
 import {
   assertSafePathSegment,
   assertSafeStreamName,
+  safePath,
   streamPath,
-  validatePath,
 } from '@/lib/fs/paths'
 import { readTextFile } from '@/lib/fs/read.server'
 import { ensureDirectory } from '@/lib/fs/write.server'
@@ -20,8 +20,8 @@ import { deleteFileItem } from './shared'
  * Creates or updates the file, preserving any future fields.
  */
 async function writeMeta(dirPath: string, title: string): Promise<void> {
-  validatePath(dirPath)
-  const metaPath = path.join(dirPath, '.meta.json')
+  const safeDir = safePath(dirPath)
+  const metaPath = path.join(safeDir, '.meta.json')
   let existing: Record<string, unknown> = {}
   const raw = await readTextFile(metaPath)
   if (raw) {
@@ -58,11 +58,8 @@ export async function moveSampleCategory(
   if (targetCategory === fromCategory) return
 
   const samplesRoot = path.join(streamPath(streamName), 'samples')
-  const fromDir = path.join(samplesRoot, fromCategory, sampleName)
-  const toDir = path.join(samplesRoot, targetCategory, sampleName)
-
-  validatePath(fromDir)
-  validatePath(toDir)
+  const fromDir = safePath(path.join(samplesRoot, fromCategory, sampleName))
+  const toDir = safePath(path.join(samplesRoot, targetCategory, sampleName))
 
   // Verify source exists
   await access(fromDir)
@@ -101,7 +98,7 @@ export async function deleteSample(
   assertSafePathSegment(sampleName, 'sample name')
   assertSafePathSegment(category, 'sample category')
   const samplesRoot = path.join(streamPath(streamName), 'samples')
-  const sampleDir = path.join(samplesRoot, category, sampleName)
+  const sampleDir = safePath(path.join(samplesRoot, category, sampleName))
 
   await deleteFileItem(sampleDir, `[${streamName}] Delete sample ${sampleName}`)
 
@@ -155,8 +152,7 @@ export async function deleteSampleType(
     throw new Error('Cannot delete the "other" type')
 
   const samplesRoot = path.join(streamPath(streamName), 'samples')
-  const categoryDir = path.join(samplesRoot, categorySlug)
-  validatePath(categoryDir)
+  const categoryDir = safePath(path.join(samplesRoot, categorySlug))
 
   if (!deleteSamples) {
     // Move any remaining samples to "other" — must succeed before we delete

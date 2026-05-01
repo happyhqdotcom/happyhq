@@ -7,8 +7,8 @@ import { formatSlug } from '@/lib/format'
 import {
   assertSafePathSegment,
   assertSafeStreamName,
+  safePath,
   streamPath,
-  validatePath,
 } from '@/lib/fs/paths'
 import { readPlaybookMd, writePlaybookMd } from '@/lib/fs/playbook-md.server'
 import { RESERVED_ROOT_DIRS, streamExists } from '@/lib/fs/read.server'
@@ -32,8 +32,7 @@ export async function createStream(
     throw new Error(
       `"${slug}" is a reserved name and cannot be used as a stream.`,
     )
-  const root = streamPath(slug)
-  validatePath(root)
+  const root = safePath(streamPath(slug))
 
   // Billing limit check — dynamic import to keep core/EE separation.
   // Token is passed from the client (db.useAuth().user.refresh_token)
@@ -70,8 +69,7 @@ export async function createStream(
  */
 export async function deleteStream(slug: string): Promise<void> {
   assertSafeStreamName(slug)
-  const dir = streamPath(slug)
-  validatePath(dir)
+  const dir = safePath(streamPath(slug))
   await rm(dir, { recursive: true, force: true })
   commitGitState(`[${slug}] Delete stream`)
   log('stream.deleted', { stream: slug })
@@ -91,10 +89,8 @@ export async function renameStream(
     throw new Error(
       `"${toSlug}" is a reserved name and cannot be used as a stream.`,
     )
-  const from = streamPath(fromSlug)
-  const to = streamPath(toSlug)
-  validatePath(from)
-  validatePath(to)
+  const from = safePath(streamPath(fromSlug))
+  const to = safePath(streamPath(toSlug))
   await rename(from, to)
   commitGitState(`[${toSlug}] Rename stream from ${fromSlug}`)
   log('stream.renamed', { stream: toSlug, from: fromSlug })
@@ -164,8 +160,9 @@ export async function deleteSpec(
 ): Promise<void> {
   assertSafeStreamName(streamName)
   assertSafePathSegment(specName, 'spec name')
-  const specFile = path.join(streamPath(streamName), 'specs', specName)
-  validatePath(specFile)
+  const specFile = safePath(
+    path.join(streamPath(streamName), 'specs', specName),
+  )
   await access(specFile)
   await rm(specFile)
   commitGitState(`[${streamName}] Delete spec ${specName}`)

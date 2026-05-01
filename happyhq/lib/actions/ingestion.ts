@@ -18,9 +18,9 @@ import {
   assertSafeSessionId,
   assertSafeStreamName,
   assertSafeTaskSlug,
+  safePath,
   streamPath,
   taskPath,
-  validatePath,
 } from '@/lib/fs/paths'
 import { readTextFile } from '@/lib/fs/read.server'
 import { ensureDirectory, writeTextFile } from '@/lib/fs/write.server'
@@ -107,8 +107,7 @@ export async function uploadFile(
 
   // Create upload directory and write file as original.{ext}
   const uploadDir = path.join(uploadsDir, finalSlug)
-  const destPath = path.join(uploadDir, `original${ext}`)
-  validatePath(destPath)
+  const destPath = safePath(path.join(uploadDir, `original${ext}`))
   await ensureDirectory(uploadDir)
   const buffer = Buffer.from(await file.arrayBuffer())
   await writeFile(destPath, buffer)
@@ -180,13 +179,9 @@ async function recordUploadDisplayName(
   assertSafeSessionId(sessionId)
   const safeSessionId = path.basename(sessionId)
   if (safeSessionId !== sessionId) throw new Error('Invalid session id')
-  const chatJsonPath = path.join(
-    HAPPYHQ_ROOT,
-    '.chats',
-    safeSessionId,
-    'chat.json',
+  const chatJsonPath = safePath(
+    path.join(HAPPYHQ_ROOT, '.chats', safeSessionId, 'chat.json'),
   )
-  validatePath(chatJsonPath)
 
   let existing: Record<string, unknown> = {}
   const raw = await readTextFile(chatJsonPath)
@@ -248,10 +243,8 @@ export async function setupTaskFromChat(
       .split('/')[0]
     if (seen.has(slug)) continue
     seen.add(slug)
-    const from = path.join(uploadsDir, slug)
-    const to = path.join(taskDir, 'inputs', slug)
-    validatePath(from)
-    validatePath(to)
+    const from = safePath(path.join(uploadsDir, slug))
+    const to = safePath(path.join(taskDir, 'inputs', slug))
     if (existsSync(from)) {
       validFiles.push({ from, to })
     } else {
@@ -280,7 +273,7 @@ export async function deleteFile(
   for (const segment of relativePath.split('/').filter(Boolean)) {
     assertSafePathSegment(segment)
   }
-  const abs = path.join(HAPPYHQ_ROOT, relativePath)
+  const abs = safePath(path.join(HAPPYHQ_ROOT, relativePath))
   await deleteFileItem(abs, commitMessage ?? `Remove ${relativePath}`)
   log('file.deleted', { path: relativePath })
 }
@@ -352,8 +345,7 @@ async function ingestFile(
 
   // Create directory and write file
   const itemDir = path.join(destDir, finalSlug)
-  const destPath = path.join(itemDir, `original${ext}`)
-  validatePath(destPath)
+  const destPath = safePath(path.join(itemDir, `original${ext}`))
   await ensureDirectory(itemDir)
   const buffer = Buffer.from(await file.arrayBuffer())
   await writeFile(destPath, buffer)

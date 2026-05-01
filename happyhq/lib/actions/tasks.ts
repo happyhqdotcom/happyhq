@@ -7,8 +7,8 @@ import {
   assertSafePathSegment,
   assertSafeStreamName,
   assertSafeTaskSlug,
+  safePath,
   taskPath,
-  validatePath,
 } from '@/lib/fs/paths'
 import {
   readTaskMd,
@@ -89,7 +89,7 @@ export async function deleteTaskInput(
 ): Promise<void> {
   assertSafeTaskSlug(taskSlug)
   assertSafePathSegment(inputName, 'input name')
-  const inputDir = path.join(taskPath(taskSlug), 'inputs', inputName)
+  const inputDir = safePath(path.join(taskPath(taskSlug), 'inputs', inputName))
   await deleteFileItem(
     inputDir,
     `[tasks/${taskSlug}] Remove input ${inputName}`,
@@ -152,8 +152,7 @@ export async function toggleTaskDone(slug: string): Promise<void> {
  */
 export async function deleteTaskByLocation(slug: string): Promise<void> {
   assertSafeTaskSlug(slug)
-  const dir = taskPath(slug)
-  validatePath(dir)
+  const dir = safePath(taskPath(slug))
   await rm(dir, { recursive: true, force: true })
   commitGitState(`[tasks/${slug}] Delete task`)
   log('task.deleted', { task: slug })
