@@ -18,8 +18,9 @@
  */
 
 import javascript
+import semmle.javascript.security.dataflow.TaintedPathCustomizations
 import semmle.javascript.security.dataflow.TaintedPathQuery
-import TaintedPath::PathGraph
+import DataFlow::DeduplicatePathGraph<TaintedPathFlow::PathNode, TaintedPathFlow::PathGraph>
 
 private class HappyHQSafePathSanitizer extends TaintedPath::Sanitizer {
   HappyHQSafePathSanitizer() {
@@ -30,7 +31,8 @@ private class HappyHQSafePathSanitizer extends TaintedPath::Sanitizer {
   }
 }
 
-from TaintedPath::Configuration cfg, DataFlow::PathNode source, DataFlow::PathNode sink
-where cfg.hasFlowPath(source, sink)
+from PathNode source, PathNode sink
+where
+  TaintedPathFlow::flowPath(source.getAnOriginalPathNode(), sink.getAnOriginalPathNode())
 select sink.getNode(), source, sink, "This path depends on a $@.", source.getNode(),
   "user-provided value"
