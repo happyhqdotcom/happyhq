@@ -33,6 +33,23 @@ const claudeExecutable = process.env.Q_PASSWORD
   ? '/usr/local/bin/claude'
   : undefined
 
+/**
+ * Env vars that suppress Claude Code CLI harness behaviors we don't want
+ * leaking into our agents: project-memory auto-loading (MEMORY.md) and
+ * deferred tool loading (ToolSearch). Both default ON in CLI 2.1.59+ and
+ * are not covered by `settingSources: []`. Caller env merges first; the
+ * harness flags win to prevent an upstream caller from re-enabling them.
+ */
+function agentEnv(
+  override?: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  return {
+    ...(override ?? {}),
+    CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+    ENABLE_TOOL_SEARCH: 'false',
+  }
+}
+
 /** Map a ThinkingMode config value to the SDK thinking option shape. */
 /** Map a ThinkingMode config value to the SDK thinking option shape. */
 function thinkingOption(
@@ -201,6 +218,7 @@ export async function learningAgentOptions(
     includePartialMessages: true,
     mcpServers: { [MCP_SERVER_NAME]: qsMcp },
     settingSources: [],
+    env: agentEnv(opts?.env),
     agents: {
       Drafting: {
         description:
@@ -212,7 +230,6 @@ export async function learningAgentOptions(
       },
     },
     ...(claudeExecutable && { pathToClaudeCodeExecutable: claudeExecutable }),
-    ...(opts?.env && { env: opts.env }),
     ...(opts?.abortController && { abortController: opts.abortController }),
     // New session: set sessionId. Resume: set resume to the session ID.
     ...(opts?.resume ? { resume: sessionId } : { sessionId }),
@@ -385,6 +402,7 @@ export async function chatAgentOptions(params: {
     includePartialMessages: true,
     mcpServers: { [MCP_SERVER_NAME]: qsMcp },
     settingSources: [],
+    env: agentEnv(params.env),
     // Drafting subagent only in learning mode (for writing playbooks/specs)
     agents:
       mode === 'learning'
@@ -400,7 +418,6 @@ export async function chatAgentOptions(params: {
           }
         : {},
     ...(claudeExecutable && { pathToClaudeCodeExecutable: claudeExecutable }),
-    ...(params.env && { env: params.env }),
     ...(params.abortController && { abortController: params.abortController }),
     ...(params.resume ? { resume: sessionId } : { sessionId }),
   }
@@ -424,6 +441,10 @@ export async function planningAgentOptions(
   },
 ): Promise<Options> {
   const config = resolveConfig(await readConfig())
+  // Planning's only legitimate Write target. The hook below denies any
+  // Write outside this path and denies Edit entirely. CLI harness behavior
+  // changes (e.g. injected reminders, new auto-tools) cannot bypass this.
+  const planPath = `tasks/${taskName}/plan.md`
   return {
     model: MODEL_IDS[config.models.planning.model],
     thinking: thinkingOption(config.models.planning.thinking),
@@ -446,7 +467,46 @@ export async function planningAgentOptions(
     includePartialMessages: true,
     persistSession: true,
     settingSources: [],
+    env: agentEnv(opts?.env),
     hooks: {
+      PreToolUse: [
+        {
+          hooks: [
+            async (input) => {
+              if (input.hook_event_name !== 'PreToolUse') {
+                return { continue: true }
+              }
+              if (input.tool_name !== 'Write' && input.tool_name !== 'Edit') {
+                return { continue: true }
+              }
+              if (input.tool_name === 'Edit') {
+                return {
+                  hookSpecificOutput: {
+                    hookEventName: 'PreToolUse' as const,
+                    permissionDecision: 'deny' as const,
+                    permissionDecisionReason: `Planning may not Edit files. Write tasks/${taskName}/plan.md instead.`,
+                  },
+                }
+              }
+              const filePath = (input.tool_input as Record<string, unknown>)
+                ?.file_path as string | undefined
+              const isPlanMd =
+                typeof filePath === 'string' &&
+                (filePath === planPath || filePath.endsWith(`/${planPath}`))
+              if (isPlanMd) {
+                return { continue: true }
+              }
+              return {
+                hookSpecificOutput: {
+                  hookEventName: 'PreToolUse' as const,
+                  permissionDecision: 'deny' as const,
+                  permissionDecisionReason: `Planning may only Write tasks/${taskName}/plan.md. Stop and write the plan.`,
+                },
+              }
+            },
+          ],
+        },
+      ],
       PostToolUse: [
         {
           hooks: [
@@ -478,7 +538,6 @@ export async function planningAgentOptions(
       ],
     },
     ...(claudeExecutable && { pathToClaudeCodeExecutable: claudeExecutable }),
-    ...(opts?.env && { env: opts.env }),
     ...(opts?.sessionId && { sessionId: opts.sessionId }),
   }
 }
@@ -524,6 +583,7 @@ export async function workingAgentOptions(
     includePartialMessages: true,
     persistSession: true,
     settingSources: [],
+    env: agentEnv(opts?.env),
     hooks: {
       PostToolUse: [
         {
@@ -556,7 +616,6 @@ export async function workingAgentOptions(
       ],
     },
     ...(claudeExecutable && { pathToClaudeCodeExecutable: claudeExecutable }),
-    ...(opts?.env && { env: opts.env }),
     ...(opts?.sessionId && { sessionId: opts.sessionId }),
   }
 }

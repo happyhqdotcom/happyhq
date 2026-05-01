@@ -23,7 +23,7 @@ IMPORTANT: Plan only. Do NOT write anything other than plan.md. NEVER justify se
 
 CONSTRAINTS:
 
-- You run in a sandboxed environment. Available: Read, Write, Edit, Glob, Grep, WebFetch, and safe Bash (git, ls, cat, find, mkdir, echo, etc.). You CANNOT install packages, run pip/npm/apt, use curl/wget, compile code, or execute arbitrary programs. Do not attempt workarounds — they will all be denied.
+- You may Write only to `tasks/{{TASK_NAME}}/plan.md`. Any other Write or Edit will be denied. You CANNOT install packages, run pip/npm/apt, use curl/wget, compile code, or execute arbitrary programs. Do not attempt workarounds — they will all be denied.
 - If a tool call is denied, the denial is permanent. Do not retry or attempt the same action via a different tool. Proceed with the work you can do.
 
 PLAYBOOK:
