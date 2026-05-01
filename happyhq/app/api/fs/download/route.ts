@@ -1,4 +1,4 @@
-import { readFile, stat } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
@@ -20,11 +20,8 @@ export async function GET(request: Request) {
   }
 
   try {
-    const fileStat = await stat(fullPath)
-    if (!fileStat.isFile()) {
-      return Response.json({ error: 'Not a file' }, { status: 400 })
-    }
-
+    // Single readFile call avoids the stat/read TOCTOU window where a
+    // symlink swap could redirect the read after the canonical-path check.
     const buffer = await readFile(fullPath)
     const fileName = path.basename(fullPath)
     const ext = path.extname(fullPath).toLowerCase()
@@ -61,8 +58,12 @@ export async function GET(request: Request) {
       },
     })
   } catch (error: unknown) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === 'ENOENT') {
       return Response.json({ error: 'File not found' }, { status: 404 })
+    }
+    if (code === 'EISDIR') {
+      return Response.json({ error: 'Not a file' }, { status: 400 })
     }
     log('api.error', {
       route: '/api/fs/download',

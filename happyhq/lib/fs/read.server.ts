@@ -1,5 +1,5 @@
 import type { Dirent } from 'node:fs'
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { open, readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
@@ -178,10 +178,19 @@ async function listWebInputItems(webDir: string): Promise<FileItem[]> {
         continue
       }
       const filePath = path.join(domainPath, file)
-      const [fileStat, content] = await Promise.all([
-        stat(filePath),
-        readFile(filePath, 'utf-8'),
-      ])
+      // Open once and share the fd between stat and read so a symlink swap
+      // between operations cannot redirect one without the other.
+      const handle = await open(filePath, 'r')
+      let fileStat
+      let content
+      try {
+        ;[fileStat, content] = await Promise.all([
+          handle.stat(),
+          handle.readFile('utf-8'),
+        ])
+      } finally {
+        await handle.close()
+      }
       items.push({
         name: `web/${domainDir.name}`,
         title: extractTitle(content),

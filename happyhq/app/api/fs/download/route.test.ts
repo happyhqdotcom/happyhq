@@ -4,15 +4,13 @@ vi.mock('@/lib/constants.server', () => ({
   HAPPYHQ_ROOT: '/mock/home/HappyHQ',
 }))
 
-const { mockReadFile, mockStat } = vi.hoisted(() => ({
+const { mockReadFile } = vi.hoisted(() => ({
   mockReadFile: vi.fn(),
-  mockStat: vi.fn(),
 }))
 
 vi.mock('node:fs/promises', () => ({
-  default: { readFile: mockReadFile, stat: mockStat },
+  default: { readFile: mockReadFile },
   readFile: mockReadFile,
-  stat: mockStat,
 }))
 
 import { GET } from './route'
@@ -36,7 +34,6 @@ describe('GET /api/fs/download', () => {
 
   it('serves the raw file with Content-Disposition header', async () => {
     const fileContent = Buffer.from('Hello, world!')
-    mockStat.mockResolvedValue({ isFile: () => true })
     mockReadFile.mockResolvedValue(fileContent)
 
     const response = await GET(
@@ -57,7 +54,7 @@ describe('GET /api/fs/download', () => {
   it('returns 404 when file does not exist', async () => {
     const error = new Error('ENOENT') as NodeJS.ErrnoException
     error.code = 'ENOENT'
-    mockStat.mockRejectedValue(error)
+    mockReadFile.mockRejectedValue(error)
 
     const response = await GET(
       makeRequest({ path: 'my-stream/outputs/missing.md' }),
@@ -77,7 +74,9 @@ describe('GET /api/fs/download', () => {
   })
 
   it('returns 400 when path points to a directory', async () => {
-    mockStat.mockResolvedValue({ isFile: () => false })
+    const error = new Error('EISDIR') as NodeJS.ErrnoException
+    error.code = 'EISDIR'
+    mockReadFile.mockRejectedValue(error)
 
     const response = await GET(makeRequest({ path: 'my-stream/outputs' }))
     const body = await response.json()
