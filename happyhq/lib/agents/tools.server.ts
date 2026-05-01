@@ -181,15 +181,20 @@ export function createQsMcpServer(
           }
           const categoryDir = path.join(streamRoot, 'samples', category)
           fs.mkdirSync(categoryDir, { recursive: true })
-          // Write category display title if provided and no .meta.json exists yet
+          // Write category display title if provided and no .meta.json exists yet.
+          // The 'wx' flag fails atomically with EEXIST if the file already exists,
+          // closing the existsSync/writeFileSync TOCTOU window where a concurrent
+          // writer could have created the file between the two calls.
           if (categoryTitle) {
             const metaPath = path.join(categoryDir, '.meta.json')
-            if (!fs.existsSync(metaPath)) {
+            try {
               fs.writeFileSync(
                 metaPath,
                 JSON.stringify({ title: categoryTitle }),
-                'utf-8',
+                { encoding: 'utf-8', flag: 'wx' },
               )
+            } catch (err) {
+              if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
             }
           }
           try {

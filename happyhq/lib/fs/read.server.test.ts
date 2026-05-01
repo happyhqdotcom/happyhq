@@ -9,21 +9,37 @@ vi.mock('@/lib/constants.server', () => ({
 const MOCK_ROOT = '/mock/home/HappyHQ'
 
 // vi.hoisted() runs before vi.mock hoisting, so these are available in the factory
-const { mockAccess, mockReadFile, mockReaddir, mockStat } = vi.hoisted(() => ({
-  mockAccess: vi.fn(),
-  mockReadFile: vi.fn(),
-  mockReaddir: vi.fn(),
-  mockStat: vi.fn(),
-}))
+const { mockAccess, mockOpen, mockReadFile, mockReaddir, mockStat } =
+  vi.hoisted(() => {
+    const mockReadFile = vi.fn()
+    const mockStat = vi.fn()
+    // open() returns a FileHandle — fake one whose stat/readFile/close delegate
+    // to the same mocks the rest of the suite drives, so listWebInputItems'
+    // open+stat+readFile+close flow works without separate mock plumbing.
+    const mockOpen = vi.fn(async (filePath: unknown) => ({
+      stat: () => mockStat(filePath),
+      readFile: (encoding: unknown) => mockReadFile(filePath, encoding),
+      close: vi.fn().mockResolvedValue(undefined),
+    }))
+    return {
+      mockAccess: vi.fn(),
+      mockOpen,
+      mockReadFile,
+      mockReaddir: vi.fn(),
+      mockStat,
+    }
+  })
 
 vi.mock('node:fs/promises', () => ({
   default: {
     access: mockAccess,
+    open: mockOpen,
     readFile: mockReadFile,
     readdir: mockReaddir,
     stat: mockStat,
   },
   access: mockAccess,
+  open: mockOpen,
   readFile: mockReadFile,
   readdir: mockReaddir,
   stat: mockStat,
