@@ -317,7 +317,7 @@ export function createQsMcpServer(
           setSessionMode(sessionId, 'learning', slug)
 
           if (opts?.chatDir) {
-            setChatMode(opts.chatDir, 'learning', slug).catch(console.error)
+            setChatMode(sessionId, 'learning', slug).catch(console.error)
           }
 
           opts?.notifyClient?.({
@@ -345,7 +345,7 @@ export function createQsMcpServer(
           setSessionMode(sessionId, 'general')
 
           if (opts?.chatDir) {
-            setChatMode(opts.chatDir, 'general').catch(console.error)
+            setChatMode(sessionId, 'general').catch(console.error)
           }
 
           opts?.notifyClient?.({

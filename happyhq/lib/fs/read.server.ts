@@ -5,7 +5,13 @@ import path from 'node:path'
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
 
 import { assessTextQuality } from './assess-quality.server'
-import { safePath, streamPath, taskPath, tasksDir } from './paths'
+import {
+  assertSafePathSegment,
+  safePath,
+  streamPath,
+  taskPath,
+  tasksDir,
+} from './paths'
 import { parsePlaybookMd, readPlaybookMd } from './playbook-md.server'
 import { readTaskMd } from './task-md.server'
 import type {
@@ -157,10 +163,20 @@ async function listWebInputItems(webDir: string): Promise<FileItem[]> {
   const items: FileItem[] = []
   for (const domainDir of domainDirs) {
     if (!domainDir.isDirectory() || domainDir.name.startsWith('.')) continue
+    try {
+      assertSafePathSegment(domainDir.name, 'web domain')
+    } catch {
+      continue
+    }
     const domainPath = path.join(safeWebDir, domainDir.name)
     const files = await readdir(domainPath)
     for (const file of files) {
       if (!file.endsWith('.md') || file.startsWith('.')) continue
+      try {
+        assertSafePathSegment(file, 'web page filename')
+      } catch {
+        continue
+      }
       const filePath = path.join(domainPath, file)
       const [fileStat, content] = await Promise.all([
         stat(filePath),
@@ -211,6 +227,11 @@ export async function listFileItems(dir: string): Promise<FileItem[]> {
         return listWebInputItems(path.join(safeDir, 'web'))
       }
 
+      try {
+        assertSafePathSegment(folder.name, 'input folder')
+      } catch {
+        return null
+      }
       const folderPath = path.join(safeDir, folder.name)
       const files = await readdir(folderPath)
 
@@ -264,6 +285,11 @@ export async function listFileItems(dir: string): Promise<FileItem[]> {
   )
   const looseEntries = await Promise.all(
     looseFiles.map(async (file) => {
+      try {
+        assertSafePathSegment(file.name, 'input file')
+      } catch {
+        return null
+      }
       const filePath = path.join(safeDir, file.name)
       const fileStat = await stat(filePath)
       const baseName = file.name.replace(/\.[^.]+$/, '')
@@ -316,6 +342,11 @@ export async function listSamples(
   const sampleTypes: SampleType[] = []
   const nested = await Promise.all(
     categories.map(async (cat) => {
+      try {
+        assertSafePathSegment(cat.name, 'sample category')
+      } catch {
+        return []
+      }
       const catDir = path.join(safeSamplesDir, cat.name)
 
       const [indexMd, metaRaw, fileItems] = await Promise.all([

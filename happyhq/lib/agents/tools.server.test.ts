@@ -346,7 +346,7 @@ describe('EnterLearningMode', () => {
       'client-reports',
     )
     expect(mockSetChatMode).toHaveBeenCalledWith(
-      '/tmp/chat-dir',
+      'session-1',
       'learning',
       'client-reports',
     )
@@ -395,7 +395,7 @@ describe('ExitLearningMode', () => {
 
     expect(result.content[0].text).toBe('Exited learning mode.')
     expect(mockSetSessionMode).toHaveBeenCalledWith('session-1', 'general')
-    expect(mockSetChatMode).toHaveBeenCalledWith('/tmp/chat-dir', 'general')
+    expect(mockSetChatMode).toHaveBeenCalledWith('session-1', 'general')
     expect(notifyClient).toHaveBeenCalledWith({
       type: 'mode_changed',
       mode: 'general',

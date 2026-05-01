@@ -1,7 +1,5 @@
 import { setChatSelectedStream } from '@/lib/actions'
-import { HAPPYHQ_ROOT } from '@/lib/constants.server'
 import { log } from '@/lib/log.server'
-import path from 'path'
 
 interface StreamSelectRequest {
   /** The stream where the chat directory physically lives (origin stream). */
@@ -30,10 +28,8 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  const chatDir = path.join(HAPPYHQ_ROOT, '.chats', sessionId)
-
   try {
-    await setChatSelectedStream(chatDir, selectedStreamSlug)
+    await setChatSelectedStream(sessionId, selectedStreamSlug)
     return Response.json({ ok: true })
   } catch (err) {
     log('api.error', {

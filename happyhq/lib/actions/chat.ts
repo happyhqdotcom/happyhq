@@ -84,11 +84,12 @@ export async function setChatName(
  * Same read-merge-write pattern as setChatMode / setChatName.
  */
 export async function setChatSelectedStream(
-  chatDir: string,
+  sessionId: string,
   selectedStreamSlug: string | null,
 ): Promise<void> {
+  assertSafeSessionId(sessionId)
+  const chatDir = path.join(HAPPYHQ_ROOT, '.chats', sessionId)
   const chatJsonPath = path.join(chatDir, 'chat.json')
-  validatePath(chatJsonPath)
 
   let existing: Record<string, unknown> = {}
   const raw = await readTextFile(chatJsonPath)
@@ -118,12 +119,13 @@ export async function setChatSelectedStream(
  * Optionally records the streamSlug when entering learning mode.
  */
 export async function setChatMode(
-  chatDir: string,
+  sessionId: string,
   mode: 'general' | 'learning',
   streamSlug?: string,
 ): Promise<void> {
+  assertSafeSessionId(sessionId)
+  const chatDir = path.join(HAPPYHQ_ROOT, '.chats', sessionId)
   const chatJsonPath = path.join(chatDir, 'chat.json')
-  validatePath(chatJsonPath)
 
   let existing: Record<string, unknown> = {}
   const raw = await readTextFile(chatJsonPath)

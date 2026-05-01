@@ -104,19 +104,38 @@ describe('writeTextFile', () => {
 // --- clearDirectory ---
 
 describe('clearDirectory', () => {
-  it('succeeds when the directory does not exist', async () => {
+  it('succeeds for tasks/{slug}/working when the directory does not exist', async () => {
     // rm with force: true does not throw for nonexistent directories
     mockRm.mockResolvedValue(undefined)
     mockMkdir.mockResolvedValue(undefined)
 
     await expect(
-      clearDirectory(path.join(MOCK_ROOT, 'nonexistent')),
+      clearDirectory(path.join(MOCK_ROOT, 'tasks/some-task/working')),
     ).resolves.toBeUndefined()
   })
 
+  it('succeeds for tasks/{slug}/outputs', async () => {
+    mockRm.mockResolvedValue(undefined)
+    mockMkdir.mockResolvedValue(undefined)
+
+    await expect(
+      clearDirectory(path.join(MOCK_ROOT, 'tasks/some-task/outputs')),
+    ).resolves.toBeUndefined()
+  })
+
+  it('rejects paths that do not match tasks/{slug}/(working|outputs)', async () => {
+    await expect(
+      clearDirectory(path.join(MOCK_ROOT, 'nonexistent')),
+    ).rejects.toThrow('Invalid clearDirectory path')
+    expect(mockRm).not.toHaveBeenCalled()
+    expect(mockMkdir).not.toHaveBeenCalled()
+  })
+
   it('rejects paths outside ~/HappyHQ/', async () => {
+    // The regex barrier rejects anything that doesn't end in
+    // /tasks/{slug}/(working|outputs) — covers the outside-root case too.
     await expect(clearDirectory('/etc/evil')).rejects.toThrow(
-      'outside ~/HappyHQ/',
+      'Invalid clearDirectory path',
     )
     expect(mockRm).not.toHaveBeenCalled()
     expect(mockMkdir).not.toHaveBeenCalled()
