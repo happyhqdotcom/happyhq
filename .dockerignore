@@ -1,0 +1,25 @@
+# Dependencies (installed inside the build stage from lockfile)
+**/node_modules
+
+# Build outputs
+**/.next
+**/dist
+
+# Local env files — production builds receive values via --build-arg.
+# Keeping these out of the build context prevents stray dev secrets from
+# influencing the image.
+.env.local
+.env.*.local
+**/.env.local
+**/.env.*.local
+
+# Git, IDE, OS
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+
+# Logs
+*.log
+**/*.log
