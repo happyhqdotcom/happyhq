@@ -2,7 +2,7 @@ import { stat } from 'node:fs/promises'
 import path from 'node:path'
 
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
-import { assertSafePathSegment, validatePath } from '@/lib/fs/paths'
+import { assertSafePathSegment, safePath } from '@/lib/fs/paths'
 import { log } from '@/lib/log.server'
 
 export async function POST(request: Request) {
@@ -29,10 +29,9 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Invalid path' }, { status: 400 })
   }
 
-  const fullPath = path.join(HAPPYHQ_ROOT, filePath)
-
+  let fullPath: string
   try {
-    validatePath(fullPath)
+    fullPath = safePath(path.join(HAPPYHQ_ROOT, filePath))
   } catch {
     return Response.json({ error: 'Invalid path' }, { status: 403 })
   }

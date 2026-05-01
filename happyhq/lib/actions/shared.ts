@@ -1,6 +1,6 @@
 import { access, rm } from 'node:fs/promises'
 
-import { validatePath } from '@/lib/fs/paths'
+import { safePath } from '@/lib/fs/paths'
 import { commitGitState } from '@/lib/git/sync.server'
 
 /**
@@ -30,8 +30,8 @@ export async function deleteFileItem(
   dir: string,
   commitMessage: string,
 ): Promise<void> {
-  validatePath(dir)
-  await access(dir)
-  await rm(dir, { recursive: true, force: true })
+  const safeDir = safePath(dir)
+  await access(safeDir)
+  await rm(safeDir, { recursive: true, force: true })
   commitGitState(commitMessage)
 }

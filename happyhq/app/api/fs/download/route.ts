@@ -2,7 +2,7 @@ import { readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
-import { validatePath } from '@/lib/fs/paths'
+import { safePath } from '@/lib/fs/paths'
 import { log } from '@/lib/log.server'
 
 export async function GET(request: Request) {
@@ -12,10 +12,9 @@ export async function GET(request: Request) {
     return Response.json({ error: 'Missing path parameter' }, { status: 400 })
   }
 
-  const fullPath = path.join(HAPPYHQ_ROOT, filePath)
-
+  let fullPath: string
   try {
-    validatePath(fullPath)
+    fullPath = safePath(path.join(HAPPYHQ_ROOT, filePath))
   } catch {
     return Response.json({ error: 'Invalid path' }, { status: 403 })
   }
