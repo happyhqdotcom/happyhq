@@ -1,6 +1,10 @@
 import path from 'path'
 
-import { assertSafeTaskSlug, taskPath } from '@/lib/fs/paths'
+import {
+  assertSafeStreamName,
+  assertSafeTaskSlug,
+  taskPath,
+} from '@/lib/fs/paths'
 import { readTaskContent } from '@/lib/fs/read.server'
 import type { RunInfo } from '@/lib/fs/types'
 import { writeTextFile } from '@/lib/fs/write.server'
@@ -34,13 +38,17 @@ export async function POST(request: Request) {
       { status: 400 },
     )
   }
-  // Regex barrier on the original user-supplied task slug — sits between the
-  // request body and every downstream fs op so CodeQL recognises it as a
-  // sanitiser on the taint source rather than only on a derived segment.
+  // Regex barriers on the original user-supplied identifiers — sit between
+  // the request body and every downstream fs op so CodeQL recognises them as
+  // sanitisers on the taint source rather than only on derived segments.
   try {
     assertSafeTaskSlug(task)
+    assertSafeStreamName(stream)
   } catch {
-    return Response.json({ error: 'Invalid task slug' }, { status: 400 })
+    return Response.json(
+      { error: 'Invalid task or stream slug' },
+      { status: 400 },
+    )
   }
   const planAcceptedMessage = `[${stream}/${task}] Plan accepted`
 

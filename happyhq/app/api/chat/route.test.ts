@@ -50,6 +50,7 @@ vi.mock('@/lib/constants.server', () => ({
 vi.mock('@/lib/fs/paths', () => ({
   streamPath: (name: string) => `/mock/happyhq/${name}`,
   assertSafeSessionId: () => {},
+  assertSafeStreamName: () => {},
 }))
 
 import { POST } from './route'
