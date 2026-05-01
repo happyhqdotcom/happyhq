@@ -1,4 +1,3 @@
-import { realpathSync } from 'node:fs'
 import path from 'path'
 
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
@@ -43,39 +42,14 @@ export function logsDir(): string {
  * (CodeQL flags this as `js/path-injection` for that reason).
  */
 export function safePath(targetPath: string): string {
-  // Resolve symlinks on the parent so a symlinked subdirectory can't escape
-  // the root after path.resolve. realpathSync requires the path to exist, so
-  // walk up to the closest existing ancestor and re-attach the descendant
-  // segments. Falls back to plain resolve when no ancestor exists (test
-  // environments using non-existent mock paths).
-  const rootResolved = path.resolve(HAPPYHQ_ROOT)
-  const root = canonicalize(rootResolved)
+  const root = path.resolve(HAPPYHQ_ROOT)
   const resolved = path.isAbsolute(targetPath)
     ? path.resolve(targetPath)
     : path.resolve(root, targetPath)
-  const canonical = canonicalize(resolved)
-  if (canonical !== root && !canonical.startsWith(root + path.sep)) {
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
     throw new Error(`Path ${targetPath} is outside ~/HappyHQ/`)
   }
-  return canonical
-}
-
-function canonicalize(absolutePath: string): string {
-  // Walk up to the nearest realpath-able ancestor, then re-attach the
-  // descendant tail. realpathSync throws ENOENT for missing paths — catch
-  // and walk up. If no ancestor is realpath-able (e.g. test mock paths),
-  // return the resolved input unchanged.
-  const tail: string[] = []
-  let current = absolutePath
-  while (current !== path.dirname(current)) {
-    try {
-      return path.join(realpathSync.native(current), ...tail.reverse())
-    } catch {
-      tail.push(path.basename(current))
-      current = path.dirname(current)
-    }
-  }
-  return absolutePath
+  return resolved
 }
 
 /**

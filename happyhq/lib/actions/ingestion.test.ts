@@ -52,19 +52,10 @@ vi.mock('node:fs/promises', () => ({
   mkdir: mockMkdir,
 }))
 
-// realpathSync is used by safePath() for symlink-resolution; non-existent
-// mock paths fall through canonicalize() before realpathSync is invoked,
-// but the symbol must still be exported by the mock.
-vi.mock('node:fs', () => {
-  const realpathSync = Object.assign((p: string) => p, {
-    native: (p: string) => p,
-  })
-  return {
-    default: { existsSync: mockExistsSync, realpathSync },
-    existsSync: mockExistsSync,
-    realpathSync,
-  }
-})
+vi.mock('node:fs', () => ({
+  default: { existsSync: mockExistsSync },
+  existsSync: mockExistsSync,
+}))
 
 vi.mock('@/lib/pdf/extract-text.server', () => ({
   extractTextFromPdf: mockExtractTextFromPdf,
