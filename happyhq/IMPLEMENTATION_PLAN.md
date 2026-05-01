@@ -665,6 +665,19 @@ the harness. Steps 4-7 wire it together.
    `use-run-activity.ts` rewrite + reducer tests). Existing hook tests
    stay green; reducer tests prove parity. PR title:
    `refactor(run): extract activity reducer for replay`.
+   ✅ **Done** — `lib/run/activity-reducer.ts` exports
+   `reduceActivity(prev, event, now)` plus `ActivityState`,
+   `initialActivityState`, and `ActivityStep`. Hook rewritten as a thin
+   wrapper using `useReducer(rootReducer, …)`; statusLine /
+   lastResultAt / lastContentChangeAt / isConnected stay hook-owned, and
+   the hook keeps a local subagent-start map purely for the
+   "Subagent... (Xs)" statusLine (the reducer keeps its own copy for
+   activity-step elapsed). 4 hook tests audited as clock-clean and
+   stayed green; 15 new reducer tests cover subagent parity, thinking →
+   tool transition, parallel-tool merging, fallback step on missing
+   partial, assistant-detail enrichment, purity (no mutation of prev),
+   and `now`-injection determinism. All 1469 tests, types, and lint
+   green.
 3. **Wire tee** (`lib/run/wire-tee.server.ts` + `loop.server.ts` edit
    - tests). After this lands, every run produces `wire.jsonl` whether
      the harness exists or not — instantly useful for log-grepping past

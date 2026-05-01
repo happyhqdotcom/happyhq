@@ -1,26 +1,18 @@
 'use client'
 
-import { getToolDetail, getToolLabel } from '@/lib/chat/tool-labels'
-import type {
-  ChatStreamEvent,
-  ContentBlock,
-  StreamEvent,
-} from '@/lib/chat/types'
+import type { ChatStreamEvent } from '@/lib/chat/types'
 import { readNDJSON } from '@/lib/ndjson'
-import { useEffect, useRef, useState } from 'react'
+import {
+  initialActivityState,
+  reduceActivity,
+  type ActivityState,
+  type ActivityStep,
+} from '@/lib/run/activity-reducer'
+import { useEffect, useReducer, useRef, useState } from 'react'
+
+export type { ActivityStep } from '@/lib/run/activity-reducer'
 
 const RECONNECT_DELAY_MS = 2000
-const THINKING_ID = '__thinking__'
-
-export interface ActivityStep {
-  toolUseId: string
-  toolName: string
-  label: string
-  detail: string | null
-  linesAdded: number | null
-  elapsedSeconds: number
-  isActive: boolean
-}
 
 interface RunActivityState {
   statusLine: string | null
@@ -30,72 +22,13 @@ interface RunActivityState {
   activitySteps: ActivityStep[]
 }
 
-/**
- * Try to extract a human-readable detail from partial (possibly incomplete) JSON.
- * Uses regex to find common tool input fields that appear early in the JSON stream.
- * Returns null on failure — the `assistant` event provides authoritative detail.
- */
-function extractPartialDetail(json: string): string | null {
-  // file_path for Read/Write/Edit
-  const fileMatch = json.match(/"file_path"\s*:\s*"([^"]+)"/)
-  if (fileMatch) {
-    const parts = fileMatch[1].split('/')
-    return parts[parts.length - 1] || fileMatch[1]
-  }
-  // pattern for Glob/Grep
-  const patternMatch = json.match(/"pattern"\s*:\s*"([^"]+)"/)
-  if (patternMatch) return patternMatch[1]
-  // description for Bash (before command — more human-readable)
-  const descMatch = json.match(/"description"\s*:\s*"([^"]{1,50})/)
-  if (descMatch) return descMatch[1]
-  // command for Bash
-  const cmdMatch = json.match(/"command"\s*:\s*"([^"]{1,50})/)
-  if (cmdMatch) return cmdMatch[1]
-  // query for WebSearch
-  const queryMatch = json.match(/"query"\s*:\s*"([^"]+)"/)
-  if (queryMatch) return `"${queryMatch[1]}"`
-  // url for WebFetch
-  const urlMatch = json.match(/"url"\s*:\s*"([^"]+)"/)
-  if (urlMatch) {
-    try {
-      return new URL(urlMatch[1]).hostname
-    } catch {
-      return null
-    }
-  }
-  return null
-}
+type Action =
+  | { type: 'event'; event: ChatStreamEvent; now: number }
+  | { type: 'reset' }
 
-/**
- * Count lines being written from partial JSON.
- * Detects Write (content field) or Edit (new_string field) and counts
- * JSON-escaped newline sequences (\n) in the value.
- */
-function extractLineCount(json: string): number | null {
-  const contentIdx = json.indexOf('"content":"')
-  const newStringIdx = json.indexOf('"new_string":"')
-  const fieldKey =
-    contentIdx >= 0
-      ? '"content":"'
-      : newStringIdx >= 0
-        ? '"new_string":"'
-        : null
-  if (!fieldKey) return null
-  const start = json.indexOf(fieldKey) + fieldKey.length
-  let count = 0
-  for (let i = start; i < json.length - 1; i++) {
-    if (json[i] === '\\' && json[i + 1] === 'n') {
-      count++
-      i++
-    }
-  }
-  return count
-}
-
-/** Strip MCP prefix (mcp__q__Task → Task). Same logic as chatStore / filter.server. */
-function stripMcpPrefix(name: string): string {
-  const idx = name.lastIndexOf('__')
-  return idx > 0 && name.startsWith('mcp__') ? name.slice(idx + 2) : name
+function rootReducer(prev: ActivityState, action: Action): ActivityState {
+  if (action.type === 'reset') return initialActivityState()
+  return reduceActivity(prev, action.event, action.now)
 }
 
 export function useRunActivity(isActive: boolean): RunActivityState {
@@ -105,44 +38,21 @@ export function useRunActivity(isActive: boolean): RunActivityState {
     null,
   )
   const [isConnected, setIsConnected] = useState(false)
-  const [activitySteps, setActivitySteps] = useState<ActivityStep[]>([])
+  const [state, dispatch] = useReducer(
+    rootReducer,
+    undefined,
+    initialActivityState,
+  )
   const controllerRef = useRef<AbortController | null>(null)
-
-  // Partial event tracking — set eagerly in the for-await loop body,
-  // NOT inside setActivitySteps callbacks (React batching caveat).
-  const blockIndexMapRef = useRef<Map<number, string>>(new Map())
-  const partialJsonRef = useRef<Map<number, string>>(new Map())
-  // Per-step accumulated details for merged parallel tools (toolUseId → detail strings)
-  const mergedDetailsRef = useRef<Map<string, string[]>>(new Map())
-  // toolUseIds that have received tool_progress (confirmed running)
-  const confirmedRunningRef = useRef<Set<string>>(new Set())
-  // Per-block line counts for Write/Edit tools
-  const blockLineCountRef = useRef<Map<number, number>>(new Map())
-  // Last created tool step — set eagerly so merge decisions don't read stale state
-  const lastToolStepRef = useRef<{
-    toolName: string
-    toolUseId: string
-  } | null>(null)
-  // Per-subagent start timestamps — used to compute elapsedSeconds on progress
-  // events, since subagent_event payloads don't carry elapsed time.
-  const subagentStartedAtRef = useRef<Map<string, number>>(new Map())
 
   useEffect(() => {
     if (!isActive) {
-      // Clean up and clear status when not active
       controllerRef.current?.abort()
       controllerRef.current = null
       setStatusLine(null)
       setLastContentChangeAt(null)
-      setActivitySteps([])
       setIsConnected(false)
-      blockIndexMapRef.current.clear()
-      partialJsonRef.current.clear()
-      mergedDetailsRef.current.clear()
-      confirmedRunningRef.current.clear()
-      blockLineCountRef.current.clear()
-      lastToolStepRef.current = null
-      subagentStartedAtRef.current.clear()
+      dispatch({ type: 'reset' })
       return
     }
 
@@ -154,6 +64,12 @@ export function useRunActivity(isActive: boolean): RunActivityState {
 
       const controller = new AbortController()
       controllerRef.current = controller
+
+      // Local mirror of subagent start times — used only to compute the
+      // statusLine "Subagent... (Xs)" message. The reducer keeps its own
+      // copy for activity-step elapsed tracking; both are fed by the same
+      // wire so they stay in sync without sharing state.
+      const subagentStartedAt = new Map<string, number>()
 
       try {
         // Note: This endpoint is globally unscoped — it streams whatever run
@@ -181,338 +97,31 @@ export function useRunActivity(isActive: boolean): RunActivityState {
 
         for await (const event of readNDJSON<ChatStreamEvent>(response)) {
           if (!mounted) break
+          const now = Date.now()
+          dispatch({ type: 'event', event, now })
 
-          if (event.type === 'partial') {
-            const streamEvent = event.event as StreamEvent
-
-            if (streamEvent.type === 'content_block_start') {
-              const block = streamEvent.content_block
-
-              if (block.type === 'thinking' || block.type === 'text') {
-                // Show "Thinking" step with a stable ID (never regenerated)
-                setActivitySteps((prev) => {
-                  const idx = prev.findIndex((s) => s.toolUseId === THINKING_ID)
-                  const step: ActivityStep = {
-                    toolUseId: THINKING_ID,
-                    toolName: '__thinking__',
-                    label: 'Thinking',
-                    detail: null,
-                    linesAdded: null,
-                    elapsedSeconds: 0,
-                    isActive: true,
-                  }
-                  if (idx >= 0) {
-                    return prev.map((s, i) => (i === idx ? step : s))
-                  }
-                  return [...prev, step]
-                })
-              } else if (block.type === 'tool_use') {
-                const toolBlock = block as Extract<
-                  ContentBlock,
-                  { type: 'tool_use' }
-                >
-                const toolName = stripMcpPrefix(toolBlock.name)
-                const toolUseId = toolBlock.id
-                const label = getToolLabel(toolName)
-
-                // Set refs eagerly BEFORE the state updater
-                partialJsonRef.current.set(streamEvent.index, '')
-
-                if (label !== null) {
-                  // Check if the last tool step has the same tool name and
-                  // hasn't started executing yet (parallel calls, e.g. 3 Reads).
-                  // Merge into it instead of creating a new step that would flash.
-                  const last = lastToolStepRef.current
-                  const mergeInto =
-                    last &&
-                    last.toolName === toolName &&
-                    !confirmedRunningRef.current.has(last.toolUseId)
-                      ? last.toolUseId
-                      : null
-
-                  if (mergeInto) {
-                    // Route this block's partial JSON to the existing step
-                    blockIndexMapRef.current.set(streamEvent.index, mergeInto)
-                  } else {
-                    // New step — route to its own toolUseId
-                    blockIndexMapRef.current.set(streamEvent.index, toolUseId)
-                    mergedDetailsRef.current.set(toolUseId, [])
-                    lastToolStepRef.current = { toolName, toolUseId }
-
-                    setActivitySteps((prev) => {
-                      // Mark thinking step inactive, add new tool step
-                      const next = prev.map((s) =>
-                        s.toolUseId === THINKING_ID
-                          ? { ...s, isActive: false }
-                          : s,
-                      )
-                      // Guard against duplicates
-                      if (next.some((s) => s.toolUseId === toolUseId))
-                        return next
-                      return [
-                        ...next,
-                        {
-                          toolUseId,
-                          toolName,
-                          label,
-                          detail: null,
-                          linesAdded: null,
-                          elapsedSeconds: 0,
-                          isActive: true,
-                        },
-                      ]
-                    })
-                  }
-                } else {
-                  // Hidden tool — still track block index for completeness
-                  blockIndexMapRef.current.set(streamEvent.index, toolUseId)
-                }
-              }
-            } else if (streamEvent.type === 'content_block_delta') {
-              const delta = streamEvent.delta
-              if (delta.partial_json) {
-                const index = streamEvent.index
-                // Accumulate JSON eagerly in ref
-                const accumulated =
-                  (partialJsonRef.current.get(index) ?? '') + delta.partial_json
-                partialJsonRef.current.set(index, accumulated)
-
-                const toolUseId = blockIndexMapRef.current.get(index)
-                if (toolUseId) {
-                  const detail = extractPartialDetail(accumulated)
-                  const lineCount = extractLineCount(accumulated)
-
-                  // Update line count ref
-                  if (lineCount !== null && lineCount > 0) {
-                    blockLineCountRef.current.set(index, lineCount)
-                  }
-
-                  // Compute merged linesAdded for this step
-                  let linesAdded: number | null = null
-                  if (lineCount !== null && lineCount > 0) {
-                    let total = 0
-                    for (const [bIdx, count] of blockLineCountRef.current) {
-                      if (blockIndexMapRef.current.get(bIdx) === toolUseId) {
-                        total += count
-                      }
-                    }
-                    linesAdded = total
-                  }
-
-                  if (detail !== null || linesAdded !== null) {
-                    // Track per-block details and join for merged steps
-                    const details = mergedDetailsRef.current.get(toolUseId)
-                    if (details && detail !== null) {
-                      // Replace detail for this block index, or add it
-                      const blockKey = `__block_${index}`
-                      const existing = details.findIndex((d) =>
-                        d.startsWith(blockKey + ':'),
-                      )
-                      if (existing >= 0) {
-                        details[existing] = `${blockKey}:${detail}`
-                      } else {
-                        details.push(`${blockKey}:${detail}`)
-                      }
-                      // Join the actual detail values (strip block keys)
-                      const joined = details
-                        .map((d) => d.slice(d.indexOf(':') + 1))
-                        .join(', ')
-                      setActivitySteps((prev) =>
-                        prev.map((s) =>
-                          s.toolUseId === toolUseId
-                            ? {
-                                ...s,
-                                detail: joined,
-                                ...(linesAdded !== null && { linesAdded }),
-                              }
-                            : s,
-                        ),
-                      )
-                    } else {
-                      setActivitySteps((prev) =>
-                        prev.map((s) =>
-                          s.toolUseId === toolUseId
-                            ? {
-                                ...s,
-                                ...(detail !== null && { detail }),
-                                ...(linesAdded !== null && { linesAdded }),
-                              }
-                            : s,
-                        ),
-                      )
-                    }
-                  }
-                }
-              }
-            }
-            // content_block_stop: no action needed — assistant event finalizes
-          } else if (event.type === 'tool_progress') {
-            confirmedRunningRef.current.add(event.toolUseId)
+          // Hook-owned UI state derived from the same wire events.
+          if (event.type === 'tool_progress') {
             setStatusLine(`${event.toolName}... (${event.elapsedSeconds}s)`)
-
-            setActivitySteps((prev) => {
-              const label = getToolLabel(event.toolName)
-              if (label === null) return prev // hidden tool
-
-              // For merged steps, tool_progress may arrive for a toolUseId
-              // that was merged into another step. Check if any step owns it.
-              const idx = prev.findIndex((s) => s.toolUseId === event.toolUseId)
-
-              if (idx >= 0) {
-                // Step exists — update elapsed time, keep siblings active
-                // (parallel tools run concurrently, don't deactivate each other)
-                return prev.map((s, i) =>
-                  i === idx
-                    ? {
-                        ...s,
-                        elapsedSeconds: Math.max(
-                          s.elapsedSeconds,
-                          event.elapsedSeconds,
-                        ),
-                        isActive: true,
-                      }
-                    : s,
-                )
-              }
-
-              // Fallback: create step if partial event was missed
-              return [
-                ...prev.map((s) => ({ ...s, isActive: false })),
-                {
-                  toolUseId: event.toolUseId,
-                  toolName: event.toolName,
-                  label,
-                  detail: null,
-                  linesAdded: null,
-                  elapsedSeconds: event.elapsedSeconds,
-                  isActive: true,
-                },
-              ]
-            })
-          } else if (event.type === 'assistant') {
-            const toolUseBlocks = (event.message.content ?? []).filter(
-              (b: ContentBlock) => b.type === 'tool_use',
-            ) as Array<{
-              type: 'tool_use'
-              id: string
-              name: string
-              input: Record<string, unknown>
-            }>
-
-            if (toolUseBlocks.length > 0) {
-              setActivitySteps((prev) => {
-                let next = [...prev]
-                for (const block of toolUseBlocks) {
-                  const label = getToolLabel(block.name)
-                  if (label === null) continue // hidden tool
-
-                  const detail = getToolDetail({
-                    id: block.id,
-                    name: block.name,
-                    input: block.input,
-                  })
-                  const idx = next.findIndex((s) => s.toolUseId === block.id)
-
-                  if (idx >= 0) {
-                    // Enrich detail only — don't change isActive
-                    // (activation is handled by content_block_start + tool_progress)
-                    next[idx] = { ...next[idx], detail }
-                  } else {
-                    next.push({
-                      toolUseId: block.id,
-                      toolName: block.name,
-                      label,
-                      detail,
-                      linesAdded: null,
-                      elapsedSeconds: 0,
-                      isActive: false,
-                    })
-                  }
-                }
-                return next
-              })
-            }
           } else if (event.type === 'subagent_event') {
-            // Subagents (Task tool) emit lifecycle events while running.
-            // Without surfacing them here the activity panel goes silent
-            // for the duration of each subagent's work — see issue #26.
-            const subagentStepId = `subagent:${event.taskId}`
-
             if (event.subtype === 'started') {
-              subagentStartedAtRef.current.set(event.taskId, Date.now())
-              setActivitySteps((prev) => {
-                if (prev.some((s) => s.toolUseId === subagentStepId)) {
-                  return prev
-                }
-                return [
-                  ...prev.map((s) =>
-                    s.toolUseId === THINKING_ID ? { ...s, isActive: false } : s,
-                  ),
-                  {
-                    toolUseId: subagentStepId,
-                    toolName: '__subagent__',
-                    label: event.description
-                      ? `Delegating: ${event.description}`
-                      : 'Delegating',
-                    detail: null,
-                    linesAdded: null,
-                    elapsedSeconds: 0,
-                    isActive: true,
-                  },
-                ]
-              })
+              subagentStartedAt.set(event.taskId, now)
             } else if (event.subtype === 'progress') {
-              const startedAt = subagentStartedAtRef.current.get(event.taskId)
+              const startedAt = subagentStartedAt.get(event.taskId)
               const elapsed = startedAt
-                ? Math.floor((Date.now() - startedAt) / 1000)
+                ? Math.floor((now - startedAt) / 1000)
                 : 0
-              const detail = event.description ?? event.lastToolName ?? null
               setStatusLine(
                 `${event.description ?? event.lastToolName ?? 'Subagent'}... (${elapsed}s)`,
               )
-              setActivitySteps((prev) =>
-                prev.map((s) =>
-                  s.toolUseId === subagentStepId
-                    ? {
-                        ...s,
-                        detail: detail ?? s.detail,
-                        elapsedSeconds: Math.max(s.elapsedSeconds, elapsed),
-                        isActive: true,
-                      }
-                    : s,
-                ),
-              )
             } else if (event.subtype === 'completed') {
-              const startedAt = subagentStartedAtRef.current.get(event.taskId)
-              const elapsed = startedAt
-                ? Math.floor((Date.now() - startedAt) / 1000)
-                : 0
-              subagentStartedAtRef.current.delete(event.taskId)
-              setActivitySteps((prev) =>
-                prev.map((s) =>
-                  s.toolUseId === subagentStepId
-                    ? {
-                        ...s,
-                        detail: event.summary ?? s.detail,
-                        elapsedSeconds: Math.max(s.elapsedSeconds, elapsed),
-                        isActive: false,
-                      }
-                    : s,
-                ),
-              )
+              subagentStartedAt.delete(event.taskId)
             }
           } else if (event.type === 'task_content_changed') {
             setLastContentChangeAt(Date.now())
           } else if (event.type === 'result') {
             setLastResultAt(Date.now())
-            setActivitySteps([]) // iteration boundary — reset
-            blockIndexMapRef.current.clear()
-            partialJsonRef.current.clear()
-            mergedDetailsRef.current.clear()
-            confirmedRunningRef.current.clear()
-            blockLineCountRef.current.clear()
-            lastToolStepRef.current = null
-            subagentStartedAtRef.current.clear()
+            subagentStartedAt.clear()
           }
         }
       } catch (err) {
@@ -549,6 +158,6 @@ export function useRunActivity(isActive: boolean): RunActivityState {
     lastResultAt,
     lastContentChangeAt,
     isConnected,
-    activitySteps,
+    activitySteps: state.steps,
   }
 }
