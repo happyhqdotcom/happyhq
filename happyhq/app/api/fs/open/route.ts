@@ -2,7 +2,7 @@ import { stat } from 'node:fs/promises'
 import path from 'node:path'
 
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
-import { validatePath } from '@/lib/fs/paths'
+import { assertSafePathSegment, validatePath } from '@/lib/fs/paths'
 import { log } from '@/lib/log.server'
 
 export async function POST(request: Request) {
@@ -16,6 +16,17 @@ export async function POST(request: Request) {
   const filePath = body.path
   if (!filePath) {
     return Response.json({ error: 'Missing path parameter' }, { status: 400 })
+  }
+
+  // Regex barrier on every segment of the user-supplied relative path —
+  // sits on the original taint source so CodeQL sees a sanitiser before
+  // the value reaches `path.join` and the fs op.
+  try {
+    for (const segment of filePath.split('/').filter(Boolean)) {
+      assertSafePathSegment(segment)
+    }
+  } catch {
+    return Response.json({ error: 'Invalid path' }, { status: 400 })
   }
 
   const fullPath = path.join(HAPPYHQ_ROOT, filePath)

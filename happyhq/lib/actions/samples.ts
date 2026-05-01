@@ -3,7 +3,12 @@
 import { access, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { streamPath, validatePath } from '@/lib/fs/paths'
+import {
+  assertSafePathSegment,
+  assertSafeStreamName,
+  streamPath,
+  validatePath,
+} from '@/lib/fs/paths'
 import { readTextFile } from '@/lib/fs/read.server'
 import { ensureDirectory } from '@/lib/fs/write.server'
 import { commitGitState } from '@/lib/git/sync.server'
@@ -41,6 +46,9 @@ export async function moveSampleCategory(
   toCategory: string,
   token?: string,
 ): Promise<void> {
+  assertSafeStreamName(streamName)
+  assertSafePathSegment(sampleName, 'sample name')
+  assertSafePathSegment(fromCategory, 'sample category')
   // Slugify the target type
   const targetCategory = toCategory
     .toLowerCase()
@@ -89,6 +97,9 @@ export async function deleteSample(
   category: string,
   token?: string,
 ): Promise<void> {
+  assertSafeStreamName(streamName)
+  assertSafePathSegment(sampleName, 'sample name')
+  assertSafePathSegment(category, 'sample category')
   const samplesRoot = path.join(streamPath(streamName), 'samples')
   const sampleDir = path.join(samplesRoot, category, sampleName)
 
@@ -119,6 +130,9 @@ export async function writeSampleTitle(
   title: string,
   token?: string,
 ): Promise<void> {
+  assertSafeStreamName(streamName)
+  assertSafePathSegment(sampleName, 'sample name')
+  assertSafePathSegment(category, 'sample category')
   const sampleDir = path.join(
     streamPath(streamName),
     'samples',
@@ -135,6 +149,8 @@ export async function deleteSampleType(
   deleteSamples: boolean,
   token?: string,
 ): Promise<void> {
+  assertSafeStreamName(streamName)
+  assertSafePathSegment(categorySlug, 'sample category')
   if (categorySlug === 'other')
     throw new Error('Cannot delete the "other" type')
 
@@ -172,6 +188,8 @@ export async function renameSampleCategory(
   title: string,
   token?: string,
 ): Promise<void> {
+  assertSafeStreamName(streamName)
+  assertSafePathSegment(categorySlug, 'sample category')
   const categoryDir = path.join(streamPath(streamName), 'samples', categorySlug)
   await writeMeta(categoryDir, title)
 }
@@ -182,6 +200,7 @@ export async function createSampleType(
   typeName: string,
   token?: string,
 ): Promise<string> {
+  assertSafeStreamName(streamName)
   const slug = typeName
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')

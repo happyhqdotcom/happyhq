@@ -92,3 +92,17 @@ export function assertSafeTaskSlug(taskSlug: string): void {
     throw new Error('Invalid task slug')
   }
 }
+
+/**
+ * Generic single-segment asserter for identifiers that aren't specifically a
+ * stream name, task slug, or session id — e.g. spec names, sample names,
+ * sample-category slugs, file slugs. Same regex as the others.
+ */
+export function assertSafePathSegment(
+  value: string,
+  label = 'path segment',
+): void {
+  if (!SAFE_PATH_SEGMENT_RE.test(value)) {
+    throw new Error(`Invalid ${label}`)
+  }
+}

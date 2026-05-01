@@ -53,11 +53,14 @@ describe('POST /api/fs/reveal', () => {
     expect(body).toEqual({ error: 'Missing path parameter' })
   })
 
-  it('returns 403 for path traversal attempts', async () => {
+  it('rejects path traversal attempts at the regex barrier (400)', async () => {
+    // The per-segment regex barrier sits on the original taint source and
+    // rejects `..` before the path is joined with HAPPYHQ_ROOT. CodeQL needs
+    // this character-class barrier on the source to model the sanitiser.
     const response = await POST(makeRequest({ path: '../../etc/passwd' }))
     const body = await response.json()
 
-    expect(response.status).toBe(403)
+    expect(response.status).toBe(400)
     expect(body).toEqual({ error: 'Invalid path' })
   })
 
@@ -97,14 +100,17 @@ describe('POST /api/fs/reveal', () => {
   it('spawns open without a shell, passing the path as a discrete argv element', async () => {
     // Security contract: the path must reach `open` as its own argv slot so
     // shell metacharacters in a filename can never be interpreted as a command.
+    // The path-segment regex barrier now rejects shell metacharacters before
+    // they reach execFileSync — but execFileSync's argv-isolation remains the
+    // last line of defence, so we still verify the path is passed positionally.
     mockStat.mockResolvedValue({ isFile: () => true })
     mockExecFileSync.mockReturnValue(undefined)
     const originalPlatform = process.platform
     Object.defineProperty(process, 'platform', { value: 'darwin' })
 
     try {
-      const hostile = 'my-stream/outputs/"; touch /tmp/pwn; "weird.md'
-      const response = await POST(makeRequest({ path: hostile }))
+      const safeFilename = 'my-stream/outputs/quarterly-report.md'
+      const response = await POST(makeRequest({ path: safeFilename }))
       const body = await response.json()
 
       expect(response.status).toBe(200)
@@ -112,9 +118,23 @@ describe('POST /api/fs/reveal', () => {
       expect(mockExecFileSync).toHaveBeenCalledTimes(1)
       const [file, args] = mockExecFileSync.mock.calls[0]
       expect(file).toBe('open')
-      expect(args).toEqual(['-R', `/mock/home/HappyHQ/${hostile}`])
+      expect(args).toEqual(['-R', `/mock/home/HappyHQ/${safeFilename}`])
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform })
     }
+  })
+
+  it('rejects shell metacharacters in path segments at the regex barrier', async () => {
+    // Shell metacharacters can't appear in any segment — the regex barrier
+    // matches `^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$` and rejects spaces, quotes,
+    // and `;`. This is the layer that closes the CodeQL `js/path-injection`
+    // alert; execFileSync's argv-isolation is the last-line backstop.
+    const response = await POST(
+      makeRequest({ path: 'my-stream/outputs/"; touch /tmp/pwn; "weird.md' }),
+    )
+    const body = await response.json()
+
+    expect(response.status).toBe(400)
+    expect(body).toEqual({ error: 'Invalid path' })
   })
 })

@@ -7,6 +7,7 @@ vi.mock('@/lib/constants.server', () => ({
 }))
 
 import {
+  assertSafePathSegment,
   assertSafeStreamName,
   assertSafeTaskSlug,
   safePath,
@@ -151,6 +152,42 @@ describe('assertSafeTaskSlug', () => {
   it('rejects values longer than 128 characters', () => {
     expect(() => assertSafeTaskSlug('a'.repeat(129))).toThrow(
       'Invalid task slug',
+    )
+  })
+})
+
+describe('assertSafePathSegment', () => {
+  it('accepts a typical segment', () => {
+    expect(() => assertSafePathSegment('quarterly-report.md')).not.toThrow()
+  })
+
+  it('uses the supplied label in the error message', () => {
+    expect(() => assertSafePathSegment('', 'spec name')).toThrow(
+      'Invalid spec name',
+    )
+  })
+
+  it('rejects an empty string', () => {
+    expect(() => assertSafePathSegment('')).toThrow('Invalid path segment')
+  })
+
+  it('rejects a leading dot (hidden)', () => {
+    expect(() => assertSafePathSegment('.env')).toThrow('Invalid path segment')
+  })
+
+  it('rejects parent-traversal `..`', () => {
+    expect(() => assertSafePathSegment('..')).toThrow('Invalid path segment')
+  })
+
+  it('rejects values containing `/`', () => {
+    expect(() => assertSafePathSegment('foo/bar')).toThrow(
+      'Invalid path segment',
+    )
+  })
+
+  it('rejects values longer than 128 characters', () => {
+    expect(() => assertSafePathSegment('a'.repeat(129))).toThrow(
+      'Invalid path segment',
     )
   })
 })

@@ -10,7 +10,13 @@ import type { ChatStreamEvent } from '@/lib/chat/types'
 import { extractContentFromDocx } from '@/lib/docx/extract-text.server'
 import { extractContentFromEml } from '@/lib/eml/extract-text.server'
 import { isAllowedInputExtension } from '@/lib/file-types'
-import { chatPath, streamPath } from '@/lib/fs/paths'
+import {
+  assertSafePathSegment,
+  assertSafeSessionId,
+  assertSafeStreamName,
+  chatPath,
+  streamPath,
+} from '@/lib/fs/paths'
 import { listDirectory, readStreamContent } from '@/lib/fs/read.server'
 import { extractTextFromPdf } from '@/lib/pdf/extract-text.server'
 
@@ -38,6 +44,10 @@ export function createQsMcpServer(
     chatDir?: string
   },
 ): McpSdkServerConfigWithInstance {
+  // sessionId is captured by every tool below for path construction —
+  // assert once here so the regex barrier sits between the caller's input
+  // and the `path.join(...)` inside the tools (CodeQL taint source).
+  assertSafeSessionId(sessionId)
   return createSdkMcpServer({
     name: MCP_SERVER_NAME,
     tools: [
@@ -99,6 +109,22 @@ export function createQsMcpServer(
             ),
         },
         async ({ slug, category, name, categoryTitle }) => {
+          // Agent-supplied identifiers flow into path.join below — assert
+          // each segment up-front so the regex barrier sits on the source.
+          try {
+            assertSafePathSegment(slug, 'upload slug')
+            assertSafePathSegment(category, 'sample category')
+            assertSafePathSegment(name, 'sample name')
+          } catch (err) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+                },
+              ],
+            }
+          }
           // Uploads live at root chat path, not under stream
           const uploadDir = path.join(chatPath(sessionId), 'uploads', slug)
 
@@ -258,6 +284,18 @@ export function createQsMcpServer(
             .describe('Stream to learn in (directory name)'),
         },
         async ({ streamSlug: slug }) => {
+          try {
+            assertSafeStreamName(slug)
+          } catch (err) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+                },
+              ],
+            }
+          }
           const streamDir = streamPath(slug)
           if (!fs.existsSync(streamDir)) {
             return {
