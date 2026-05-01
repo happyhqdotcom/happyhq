@@ -10,6 +10,10 @@ import {
   assertSafePathSegment,
   assertSafeStreamName,
   assertSafeTaskSlug,
+  exerciseDir,
+  exercisesDir,
+  runsDir,
+  runWirePath,
   safePath,
   streamPath,
   validatePath,
@@ -153,6 +157,55 @@ describe('assertSafeTaskSlug', () => {
     expect(() => assertSafeTaskSlug('a'.repeat(129))).toThrow(
       'Invalid task slug',
     )
+  })
+})
+
+describe('runsDir', () => {
+  it('points at .runs under HAPPYHQ_ROOT', () => {
+    expect(runsDir()).toBe(path.join('/mock/home/HappyHQ', '.runs'))
+  })
+})
+
+describe('runWirePath', () => {
+  it('returns the wire.jsonl path for a UUID-shaped runId', () => {
+    const id = '550e8400-e29b-41d4-a716-446655440000'
+    expect(runWirePath(id)).toBe(
+      path.join('/mock/home/HappyHQ', '.runs', id, 'wire.jsonl'),
+    )
+  })
+
+  it('rejects a runId containing path separators', () => {
+    expect(() => runWirePath('foo/bar')).toThrow('Invalid run id')
+  })
+
+  it('rejects a runId with parent traversal', () => {
+    expect(() => runWirePath('..')).toThrow('Invalid run id')
+  })
+
+  it('rejects an empty runId', () => {
+    expect(() => runWirePath('')).toThrow('Invalid run id')
+  })
+})
+
+describe('exercisesDir', () => {
+  it('points at .exercises under HAPPYHQ_ROOT', () => {
+    expect(exercisesDir()).toBe(path.join('/mock/home/HappyHQ', '.exercises'))
+  })
+})
+
+describe('exerciseDir', () => {
+  it('returns the artifact dir for a typical exercise id', () => {
+    expect(exerciseDir('ex-abc12345')).toBe(
+      path.join('/mock/home/HappyHQ', '.exercises', 'ex-abc12345'),
+    )
+  })
+
+  it('rejects an exercise id with path separators', () => {
+    expect(() => exerciseDir('foo/bar')).toThrow('Invalid exercise id')
+  })
+
+  it('rejects an exercise id with parent traversal', () => {
+    expect(() => exerciseDir('..')).toThrow('Invalid exercise id')
   })
 })
 

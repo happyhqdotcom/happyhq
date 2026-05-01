@@ -31,6 +31,28 @@ export function logsDir(): string {
   return path.join(HAPPYHQ_ROOT, '.logs')
 }
 
+/** Per-run wire-event tee directory (~/HappyHQ/.runs/). */
+export function runsDir(): string {
+  return path.join(HAPPYHQ_ROOT, '.runs')
+}
+
+/** Path to wire.jsonl for a single run (~/HappyHQ/.runs/<runId>/wire.jsonl). */
+export function runWirePath(runId: string): string {
+  assertSafePathSegment(runId, 'run id')
+  return path.join(HAPPYHQ_ROOT, '.runs', runId, 'wire.jsonl')
+}
+
+/** Exercise harness artifact root (~/HappyHQ/.exercises/). */
+export function exercisesDir(): string {
+  return path.join(HAPPYHQ_ROOT, '.exercises')
+}
+
+/** Per-exercise artifact directory (~/HappyHQ/.exercises/<id>/). */
+export function exerciseDir(id: string): string {
+  assertSafePathSegment(id, 'exercise id')
+  return path.join(HAPPYHQ_ROOT, '.exercises', id)
+}
+
 /**
  * Resolve `targetPath` to a canonical absolute path under `HAPPYHQ_ROOT`,
  * throwing if it would escape the root. Callers MUST use the returned value

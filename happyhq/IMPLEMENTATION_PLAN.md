@@ -26,9 +26,9 @@ out in the spec:
   in `lib/fs/paths.ts` (`streamPath`, `taskPath`, `chatPath`, `qPath`,
   `logsDir`, `safePath`) routes through `HAPPYHQ_ROOT`. `loop.server.ts`
   uses `HAPPYHQ_ROOT` as the `cwd` for git ops (`loop.server.ts:1117,1122`).
-  No production code hardcodes `~/HappyHQ`. **The spec's "HAPPYHQ_ROOT
+  No production code hardcodes `~/HappyHQ`. **The spec's "HAPPYHQ*ROOT
   plumbing in lib/constants.server.ts + lib/fs/paths.ts" is largely
-  satisfied — only path _additions_ are needed**, not refactoring.
+  satisfied — only path \_additions* are needed**, not refactoring.
 
   Existing escape hatches that bypass `HAPPYHQ_ROOT` and need a smoke audit:
   - `scripts/smoke-test.ts:23` and `scripts/read-logs.ts:25` already honour
@@ -515,14 +515,9 @@ PORT: String(port) } })`. Log stdout/stderr to `<exDir>/server.log`.
     Inside try/catch.
 11. **Final dump** (always, even on throw): `await dump()` → writes
     `dom.html`. Capture `ended = Date.now()`.
-12. **Write artifacts**:
-    - `<exDir>/console.jsonl` (one event per line)
-    - `<exDir>/network.jsonl`
-    - `<exDir>/logs.jsonl` (sliced from `<root>/.logs/<date>.jsonl` by
-      `[started, ended]`)
-    - `<exDir>/wire.jsonl` (concatenated from new
-      `<root>/.runs/<runId>/wire.jsonl` files in `after \ before`)
-    - `<exDir>/meta.json`: `{ id, script, root, port, started, ended,
+12. **Write artifacts**: - `<exDir>/console.jsonl` (one event per line) - `<exDir>/network.jsonl` - `<exDir>/logs.jsonl` (sliced from `<root>/.logs/<date>.jsonl` by
+    `[started, ended]`) - `<exDir>/wire.jsonl` (concatenated from new
+    `<root>/.runs/<runId>/wire.jsonl` files in `after \ before`) - `<exDir>/meta.json`: `{ id, script, root, port, started, ended,
 durationMs, exit, error?, runIds: string[] }`
 13. **Tear down**: `await browser.close()`, `child.kill('SIGTERM')`,
     grace 2s, `child.kill('SIGKILL')` if still alive.
@@ -662,6 +657,10 @@ the harness. Steps 4-7 wire it together.
 
 1. **Path helpers** (`lib/fs/paths.ts` + tests). Trivial; unblocks
    everything else. PR title: `feat(fs): add exerciseDir/runWirePath helpers`.
+   ✅ **Done** — added `runsDir`, `runWirePath`, `exercisesDir`,
+   `exerciseDir` to `lib/fs/paths.ts`; added `'.runs'`/`'.exercises'`
+   to `RESERVED_ROOT_DIRS`; covered with positive + traversal-rejection
+   tests. All 1454 tests, types, and lint green.
 2. **Activity reducer extraction** (`lib/run/activity-reducer.ts` +
    `use-run-activity.ts` rewrite + reducer tests). Existing hook tests
    stay green; reducer tests prove parity. PR title:

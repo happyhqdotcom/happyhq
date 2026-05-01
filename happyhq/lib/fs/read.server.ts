@@ -29,7 +29,13 @@ import type {
 } from './types'
 
 /** Directory names at ~/HappyHQ/ root that are not streams. */
-export const RESERVED_ROOT_DIRS = new Set(['tasks', '.chats', 'task'])
+export const RESERVED_ROOT_DIRS = new Set([
+  'tasks',
+  '.chats',
+  'task',
+  '.runs',
+  '.exercises',
+])
 
 /** Parse the title field from a raw .meta.json string. Returns null on missing/malformed. */
 function parseTitle(raw: string | null): string | null {
