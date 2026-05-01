@@ -44,10 +44,18 @@ export async function writeConfig(update: AppConfig): Promise<AppConfig> {
   return merged
 }
 
+// Skipping these keys at every merge boundary keeps an attacker who controls
+// the source payload from reaching Object.prototype via __proto__ or
+// constructor.prototype.
+function isUnsafeKey(key: PropertyKey): boolean {
+  return key === '__proto__' || key === 'constructor' || key === 'prototype'
+}
+
 /** Two-level deep merge — handles the nested sections of AppConfig. */
 function deepMerge(target: AppConfig, source: AppConfig): AppConfig {
   const result = { ...target }
   for (const key of Object.keys(source) as (keyof AppConfig)[]) {
+    if (isUnsafeKey(key)) continue
     const sourceVal = source[key]
     if (sourceVal === undefined) continue
     const targetVal = result[key]
@@ -75,6 +83,7 @@ function deepMergeObject(
 ): Record<string, unknown> {
   const result = { ...target }
   for (const key of Object.keys(source)) {
+    if (isUnsafeKey(key)) continue
     const sourceVal = source[key]
     if (sourceVal === undefined) continue
     const targetVal = result[key]

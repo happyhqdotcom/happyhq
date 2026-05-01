@@ -101,6 +101,41 @@ describe('writeConfig', () => {
     expect(mockWriteTextFile).toHaveBeenCalledOnce()
   })
 
+  it('drops __proto__ keys so attackers cannot pollute the prototype chain', async () => {
+    mockReadTextFile.mockResolvedValue('{}')
+    mockWriteTextFile.mockResolvedValue(undefined)
+
+    // JSON.parse is the only way to get __proto__ as an own enumerable
+    // property — TS won't let us write the literal directly, but a server
+    // action receives parsed JSON.
+    const malicious = JSON.parse(
+      '{"__proto__":{"polluted":"top"},"models":{"learning":{"__proto__":{"polluted":"nested"}}}}',
+    )
+
+    const merged = await writeConfig(malicious)
+
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+    expect(Object.getPrototypeOf(merged)).toBe(Object.prototype)
+    expect(Object.getPrototypeOf(merged.models?.learning ?? {})).toBe(
+      Object.prototype,
+    )
+  })
+
+  it('drops constructor and prototype keys so attackers cannot reach Object.prototype via the constructor chain', async () => {
+    mockReadTextFile.mockResolvedValue('{}')
+    mockWriteTextFile.mockResolvedValue(undefined)
+
+    const malicious = JSON.parse(
+      '{"constructor":{"polluted":"yes"},"prototype":{"polluted":"yes"}}',
+    )
+
+    const merged = await writeConfig(malicious)
+
+    expect(Object.hasOwn(merged, 'constructor')).toBe(false)
+    expect(Object.hasOwn(merged, 'prototype')).toBe(false)
+    expect(Object.prototype.constructor).toBe(Object)
+  })
+
   it('deep-merges nested model config without losing sibling keys', async () => {
     mockReadTextFile.mockResolvedValue(
       JSON.stringify({
