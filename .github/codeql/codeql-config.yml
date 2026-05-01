@@ -1,12 +1,17 @@
 name: HappyHQ CodeQL config
 
-# Replaces "default setup" with a workflow we own (`.github/workflows/codeql.yml`)
-# so we can layer on custom sanitizer models for js/path-injection in a
-# follow-up. This file deliberately runs the same query suite default setup
-# was running — it's pure plumbing, no semantic change.
-
 queries:
   - uses: security-and-quality
+  - uses: ./queries
+
+# Replace the default `js/path-injection` with our custom version
+# (`./queries/PathInjection.ql`, id `js/happyhq/path-injection`) which
+# recognises `safePath()` as a sanitiser barrier. Without this exclude
+# we'd see two streams of alerts — the conservative default plus our
+# saner version.
+query-filters:
+  - exclude:
+      id: js/path-injection
 
 paths-ignore:
   - '**/node_modules/**'
