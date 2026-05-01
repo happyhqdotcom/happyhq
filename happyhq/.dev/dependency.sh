@@ -150,7 +150,7 @@ if [ $UPGRADE_ONLY -eq 0 ]; then
     fi
 fi
 
-# ── Phase 2: Upgrade loop (one session per PR; tier-1 first, then tier-2) ──
+# ── Phase 2: Upgrade loop (one session per eligible PR — oldest first) ──
 DEPS_DONE=0
 while [ $DEPS_DONE -lt $MAX_DEPS ]; do
     NEXT=$(gh pr list \
@@ -158,15 +158,7 @@ while [ $DEPS_DONE -lt $MAX_DEPS ]; do
         --state open \
         --limit 100 \
         --json number,labels,createdAt \
-        --jq '
-            [.[] | select(
-                ([.labels[].name | select(. == "ralphie:tier-1-safe" or . == "ralphie:tier-2-adapt")] | length > 0)
-                and
-                ([.labels[].name | select(startswith("ralphie:") and . != "ralphie:tier-1-safe" and . != "ralphie:tier-2-adapt")] | length == 0)
-            )]
-            | sort_by((.labels | map(.name) | if any(. == "ralphie:tier-1-safe") then 0 else 1 end), .createdAt)
-            | .[0].number // empty
-        ' 2>/dev/null)
+        --jq '[.[] | select(.labels | map(.name) | any(startswith("ralphie:")) | not)] | sort_by(.createdAt) | .[0].number // empty' 2>/dev/null)
 
     if [ -z "$NEXT" ]; then
         echo -e "\n  ${GREEN}✓${RESET} Queue empty. $DEPS_DONE PR(s) attempted. Exiting."
@@ -182,13 +174,14 @@ while [ $DEPS_DONE -lt $MAX_DEPS ]; do
         exit $SESSION_EXIT
     fi
 
-    # Verify the PR moved to a terminal state (merged/closed) OR got a non-tier ralphie:* label.
-    # Otherwise the next iteration would re-pick it forever.
+    # Verify the PR moved to a terminal state — either closed (merged or replaced)
+    # or labeled with a ralphie:skip-* / ralphie:replaced-by-* label. Otherwise the
+    # next iteration would re-pick it forever.
     PR_INFO=$(gh pr view "$NEXT" --json state,labels 2>/dev/null)
     STATE=$(echo "$PR_INFO" | jq -r '.state')
-    NON_TIER_RALPHIE=$(echo "$PR_INFO" | jq '[.labels[].name | select(startswith("ralphie:") and . != "ralphie:tier-1-safe" and . != "ralphie:tier-2-adapt")] | length')
-    if [ "$STATE" = "OPEN" ] && [ "$NON_TIER_RALPHIE" = "0" ]; then
-        echo -e "  ${RED}PR #$NEXT is still open with only its tier label after the session — aborting loop to avoid re-picking it.${RESET}"
+    HAS_RALPHIE_LABEL=$(echo "$PR_INFO" | jq '[.labels[].name | select(startswith("ralphie:"))] | length')
+    if [ "$STATE" = "OPEN" ] && [ "$HAS_RALPHIE_LABEL" = "0" ]; then
+        echo -e "  ${RED}PR #$NEXT is still open with no ralphie:* label after the session — aborting loop to avoid re-picking it.${RESET}"
         exit 1
     fi
 

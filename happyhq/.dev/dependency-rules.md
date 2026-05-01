@@ -5,39 +5,27 @@ Source of truth for how the deps loop processes open Dependabot PRs. Both `PROMP
 ## Queue contract
 
 - The queue is: open PRs authored by `app/dependabot` with no label starting with `ralphie:`.
-- A `ralphie:*` label is terminal for that phase: triage labels mark the PR as classified; Phase 2 advances tier-labeled PRs to a final state (merged, replaced, or skip).
-- One outcome per session.
+- A `ralphie:*` label is terminal — Ralphie never re-evaluates a labeled PR. The human removes the label to re-queue.
+- One outcome per session (a label, a merge, or a replacement PR).
 
-## Triage tiers (Phase 1)
+## Rules
 
-Apply in order — first match wins. Bail at the earliest stop.
+Apply in order — bail at the earliest stop. The first three are evaluable from the PR text alone (Phase 1 — triage). The last three only show up after attempting an upgrade (Phase 2).
 
-| #   | Condition                                                                                                                                                    | Label applied               | Phase 2 picks up?       |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------- | ----------------------- |
-| 1   | PR diff would touch `happyhq/ee/`, `.github/`, CI workflows, `dependabot.yml`, or licensing files                                                            | `ralphie:skip-out-of-scope` | No — human only         |
-| 2   | CI on the PR is red and the failure is unrelated to the version bump (infra flake, lint config drift, network timeout, etc.)                                 | `ralphie:skip-ci-red`       | No — human investigates |
-| 3   | Update is a major bump on a framework runtime (`next`, `react`, `react-dom`) — should have been ignored upstream by `dependabot.yml` but slipped through     | `ralphie:tier-3-manual`     | No — human upgrades     |
-| 4   | Update is a major bump on a security-sensitive runtime dep (auth, crypto, billing primitives — e.g., `stripe` ≥2 majors at once, `instantdb`, JWT/OIDC libs) | `ralphie:tier-3-manual`     | No                      |
-| 5   | Update is a pre-1.0 → 1.0 jump on a runtime dep (`dependencies`, not `devDependencies`)                                                                      | `ralphie:tier-3-manual`     | No                      |
-| 6   | Update is a major bump on a runtime dep (single-major, in `dependencies`) where the changelog identifies discrete breaking changes                           | `ralphie:tier-2-adapt`      | Yes — attempts fixups   |
-| 7   | Update is a major bump on a dev/types/tooling dep (`@types/*`, dev-only ESLint plugins, etc.)                                                                | `ralphie:tier-1-safe`       | Yes — verify and merge  |
-| 8   | Update is from an official-publisher GitHub Action (`actions/*`, `github/*`, `pnpm/*`, `docker/*`) with no input renames in the changelog                    | `ralphie:tier-1-safe`       | Yes                     |
-| 9   | Update is a minor/patch group PR with green CI                                                                                                               | `ralphie:tier-1-safe`       | Yes                     |
-| 10  | Anything else                                                                                                                                                | `ralphie:tier-2-adapt`      | Yes — best-effort       |
+| #   | Condition                                                                                                                                                                                                                      | Label applied                      | What unblocks it                                     |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- | ---------------------------------------------------- |
+| 1   | PR diff would touch `happyhq/ee/`, `.github/`, CI workflows, `dependabot.yml`, or licensing files                                                                                                                              | `ralphie:skip-out-of-scope`        | Maintainer scopes the change; remove label           |
+| 2   | CI on the PR is red and the failure is unrelated to the version bump (infra flake, lint config drift, network timeout, etc.)                                                                                                   | `ralphie:skip-ci-red`              | Investigate the CI failure; remove label             |
+| 3   | Update is one of: framework major (`next`, `react`, `react-dom`); security-sensitive runtime major (auth, crypto, billing — e.g., `stripe` ≥2 majors at once, `instantdb`, JWT/OIDC libs); pre-1.0 → 1.0 jump on a runtime dep | `ralphie:skip-manual-upgrade`      | Maintainer upgrades and reviews; remove label        |
+| 4   | (Phase 2) Fixups would exceed 10 files or 300 lines net added (`*.md`/`*.mdx` and lockfile/package.json excluded from the count)                                                                                               | `ralphie:skip-too-big`             | Scope it down or do it manually                      |
+| 5   | (Phase 2) `pnpm format` / `pnpm lint` / `pnpm check-types` / `pnpm --filter=happyhq test` / `npx tsx scripts/smoke-test.ts` failed twice                                                                                       | `ralphie:skip-verification-failed` | Read Ralphie's comment; fix locally                  |
+| 6   | (Phase 2) Replacement PR shipped (Tier 2 / breaking-change fixups path)                                                                                                                                                        | `ralphie:replaced-by-#<new>`       | Terminal — the linked replacement PR closes the loop |
 
-When the rules are ambiguous about a PR's tier, lean toward the higher tier (more human review). False tier-3 is cheaper than false tier-1.
-
-## Phase 2 outcomes
-
-| Condition                                                                                                                                                        | Final state                                       |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| Install + verify (`lint`, `check-types`, `test`) + smoke clean → merge Dependabot PR as-is                                                                       | PR merged; `ralphie:merged`                       |
-| Tier 2: verification fails. Breaking changes cited from changelog, fixups applied from a fresh `chore/upgrade-<pkg>-vN` branch off `main`, replacement PR opened | Original closed; `ralphie:replaced-by-#<new>`     |
-| Tier 2: fixups would exceed 10 files / 300 lines net added (`*.md`/`*.mdx` and lockfile/package.json excluded from the count)                                    | `ralphie:skip-too-big` on original PR             |
-| Verification (`pnpm format` / `lint` / `check-types` / `--filter=happyhq test` / `scripts/smoke-test.ts`) failed twice                                           | `ralphie:skip-verification-failed` on original PR |
-| Fixups would touch protected paths (`happyhq/ee/`, `.github/`, CI workflows, `dependabot.yml`, licensing)                                                        | `ralphie:skip-out-of-scope` on original PR        |
+A PR that passes rules 1–3 is **eligible** — it stays unlabeled and Phase 2 picks it up. Phase 2 either merges Dependabot's PR as-is (Path A — install + verify clean) or, when the bump introduces breaking changes that prevent verification, generates the smallest changelog-cited fixups on a fresh `chore/upgrade-<pkg>-vN` branch off `main` and opens a replacement PR for human review (Path B).
 
 ## Comment shape (skips)
+
+Every skip writes one comment, in this shape:
 
 ```
 Ralphie skipped this for: <rule name>
@@ -45,18 +33,6 @@ Ralphie skipped this for: <rule name>
 What I saw: <1–3 sentences — the specific evidence that triggered the rule>
 
 What would unblock it: <1 sentence — concrete action for the human>
-```
-
-## Comment shape (tier classifications, posted in triage)
-
-```
-Ralphie classified this as: <tier name>
-
-Update: <package> <from> → <to> (<dep type: runtime / dev / types / actions>, <semver category: major / minor / patch / group>)
-
-Changelog highlights: <2–4 bullets from the upstream changelog with links — only if relevant to behavior>
-
-Plan: <one sentence — what Phase 2 will do, or what the human should do for tier-3>
 ```
 
 ## Comment shape (replacement, posted on the original Dependabot PR)
@@ -81,9 +57,9 @@ Replacement: <link to new PR>
 
 ## Principles
 
-These tune _how_ allowed work gets done.
+These are guidance, not gates. The rules above are pass/fail; these tune _how_ allowed work gets done.
 
-**Cite the changelog.** Every Tier 2 fixup PR description must link to the upstream release notes / migration guide and quote the relevant breaking-change item(s). The reviewer should be able to trace each diff line back to a documented change. If the changelog doesn't mention something the fixup is reacting to, that's a signal to stop and skip.
+**Cite the changelog.** Every replacement PR description must link to the upstream release notes / migration guide and quote the relevant breaking-change item(s). The reviewer should be able to trace each diff line back to a documented change. If the changelog doesn't mention something the fixup is reacting to, that's a signal to stop and skip with `ralphie:skip-verification-failed`.
 
 **Smallest fixup that compiles + passes tests + smoke-tests clean.** Don't refactor adjacent code. Don't take on tech-debt cleanup. Don't update unrelated callers. Surface drift via comments in the PR body, not by widening the diff.
 
@@ -95,4 +71,4 @@ These tune _how_ allowed work gets done.
 
 ## Tuning signal
 
-When the loop gets it wrong — labels something `tier-1-safe` that should have been `tier-3-manual`, opens a replacement PR with bad fixups, misses a protected-path edit — that's a rule-tuning signal, not a one-off correction. Edit this file. The next run will pick up the change.
+When the loop gets it wrong — labels something `skip-manual-upgrade` that wasn't, opens a replacement PR with bad fixups, misses a protected-path edit — that's a rule-tuning signal, not a one-off correction. Edit this file. The next run will pick up the change.

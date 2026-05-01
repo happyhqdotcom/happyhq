@@ -1,6 +1,6 @@
 0a. Read @dependency-rules.md — this is the spec. Apply it literally.
 0b. Read @CLAUDE.md and @CONTRIBUTING.md (repo root) for repo conventions referenced by the rules.
-0c. The PR you are working: #${PR_NUMBER}. Read it: `gh pr view ${PR_NUMBER} --comments`. Note the tier label (`ralphie:tier-1-safe` or `ralphie:tier-2-adapt`) — Phase 2 only processes those two.
+0c. The PR you are working: #${PR_NUMBER}. Read it: `gh pr view ${PR_NUMBER} --comments`. Phase 2 only processes Dependabot PRs that passed triage (no `ralphie:*` label).
 
 1. **Checkout the PR branch.** From `main`: `git checkout main && git pull`. Then: `gh pr checkout ${PR_NUMBER}`. Capture the branch name (`git branch --show-current`) for later reference; you'll need it if you fall through to Path B.
 
@@ -15,14 +15,13 @@
 
 4. **Branch on the result:**
 
-   **Path A — clean (Tier 1, or Tier 2 where nothing actually broke):**
+   **Path A — clean (verification passed):**
    - Merge: `gh pr merge ${PR_NUMBER} --squash --delete-branch`.
    - Comment: `gh pr comment ${PR_NUMBER} --body "Ralphie merged this. Verification: lint/types/test/smoke clean."`
-   - Label: `gh pr edit ${PR_NUMBER} --add-label "ralphie:merged"`. (Post-merge labels are fine — they're just for searchability.)
    - Return to main: `git checkout main && git pull`.
-   - Exit.
+   - Exit. (No label needed — the merged state is the signal.)
 
-   **Path B — Tier 2 with breaking changes (verification step 3 failed):**
+   **Path B — verification failed (breaking-change fixups):**
    - **Plan from the changelog first.** Read the upstream release notes / migration guide for the version delta. Identify which breaking change(s) caused the failures. Quote the relevant entries in the work plan. If the failure mode isn't predicted by the changelog, **stop**: apply `ralphie:skip-verification-failed` to the original PR with the failure output included, return to main, exit.
    - Return to main: `git checkout main`. Note Dependabot's branch name from step 1 — you'll need to read files from it.
    - Create a fresh branch: `git checkout -b chore/upgrade-<package>-v<major>` (use the package name and target major, e.g., `chore/upgrade-stripe-v22`).
@@ -44,8 +43,8 @@
      - One bullet per fixup, mapping diff to changelog item (e.g., `- lib/billing.ts:42 — renamed stripe.charges.create → stripe.payments.create per migration guide`)
      - Verification summary (lint/types/test/smoke output, all green)
      - AI-assistance disclosure per @CONTRIBUTING.md (e.g., "Authored by Ralphie, the autonomous dependency-upgrade loop. Reviewed by maintainer before merge.")
-   - Capture the new PR number from the create output.
-   - Close the original Dependabot PR with the rules-shape replacement comment, then label it: `gh pr edit ${PR_NUMBER} --add-label "ralphie:replaced-by-#<new>"` (use the new PR number in the label name). Then close: `gh pr close ${PR_NUMBER}` (the comment + label go on first; closing is the last write).
+   - Capture the new PR number from the create output. Create the dynamic label if it doesn't exist: `gh label create "ralphie:replaced-by-#<new>" --color "5319E7" --description "Ralphie closed this in favor of replacement PR #<new>"` (ignore "already exists" errors).
+   - Close the original Dependabot PR with the rules-shape replacement comment, label it `ralphie:replaced-by-#<new>`, then close: `gh pr edit ${PR_NUMBER} --add-label "ralphie:replaced-by-#<new>"`, `gh pr comment ${PR_NUMBER} --body "..."`, `gh pr close ${PR_NUMBER}` (label + comment go on first; closing is the last write).
    - Return to main: `git checkout main`.
    - Exit.
 
@@ -57,7 +56,7 @@
 
 **[1]** ONE PR per session. Do not pick up other PRs, do not chain. The orchestrator handles the next one.
 **[2]** Hard constraints from @dependency-rules.md are non-negotiable: never push to `main`, never push to a Dependabot branch, never modify `happyhq/ee/`, `.github/`, CI workflows, `dependabot.yml`, or licensing files. If the fixup would require any of these, apply `ralphie:skip-out-of-scope` and exit.
-**[3]** Cite the changelog. Every Tier 2 fixup commit message and the replacement PR body must reference the upstream changelog / migration guide entry that justifies the change. If you can't find a changelog entry for what you're fixing, you've drifted off the rails — stop and skip.
+**[3]** Cite the changelog. Every fixup commit message and the replacement PR body must reference the upstream changelog / migration guide entry that justifies the change. If you can't find a changelog entry for what you're fixing, you've drifted off the rails — stop and skip with `ralphie:skip-verification-failed`.
 **[4]** Smallest fixup. Don't refactor adjacent code. Don't update unrelated callers. Surface drift via PR-body comments, not by widening the diff.
 **[5]** Stop when surprised. If a test failure isn't predicted by the changelog, or you can't trace a diff line to a documented change, apply `ralphie:skip-verification-failed` and let the human take it.
 **[6]** AI disclosure in the replacement PR body is required by @CONTRIBUTING.md.
