@@ -494,7 +494,6 @@ function processEvent(
               return { ...m, thinkingBlocks: blocks }
             }),
           }))
-          const msg = get().messages.find((m) => m.id === activeRef.id)
         }
         // Accumulate tool input JSON for AskUserQuestion so we can render
         // the question form on content_block_stop instead of waiting for assistant.
@@ -571,7 +570,6 @@ function processEvent(
               }
             }),
           }))
-          const msg = get().messages.find((m) => m.id === activeRef.id)
         }
         // Tool use blocks — add to toolProgress immediately so the UI shows
         // what Q is doing as soon as the model starts calling a tool.
