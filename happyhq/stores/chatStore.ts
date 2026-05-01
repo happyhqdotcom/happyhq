@@ -1,4 +1,4 @@
-import { toastError } from '@/components/common/ui/sonner'
+import { toastAuthError, toastError } from '@/components/common/ui/sonner'
 import { getToolLabel } from '@/lib/chat/tool-labels'
 import type {
   AskUserQuestionInput,
@@ -861,7 +861,7 @@ function processEvent(
     }
 
     case 'auth_error': {
-      toastError('API key is invalid. Redirecting to setup…')
+      toastAuthError('API key is invalid. Redirecting to setup…')
       set({ isStreaming: false })
       window.location.href = '/setup'
       break

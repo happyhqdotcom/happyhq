@@ -121,7 +121,7 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
     message.thinkingBlocks && message.thinkingBlocks.length > 0
 
   return (
-    <div className="relative space-y-3 px-0.5">
+    <div data-role="assistant-message" className="relative space-y-3 px-0.5">
       {hasThinking && (
         <ThinkingIndicator
           blocks={message.thinkingBlocks!}

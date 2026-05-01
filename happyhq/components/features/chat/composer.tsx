@@ -334,6 +334,7 @@ export const Composer = memo(function Composer({
                   placeholder={placeholder}
                   disabled={disabled}
                   rows={1}
+                  aria-label="Message"
                   className="w-full resize-none bg-transparent text-sm text-black/80 outline-none placeholder:text-black/40 disabled:cursor-not-allowed disabled:opacity-50"
                 />
               </div>
@@ -393,6 +394,7 @@ export const Composer = memo(function Composer({
               placeholder={placeholder}
               disabled={disabled}
               rows={1}
+              aria-label="Message"
               className="w-full resize-none bg-transparent p-2 text-base text-zinc-900 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-50"
             />
           </>

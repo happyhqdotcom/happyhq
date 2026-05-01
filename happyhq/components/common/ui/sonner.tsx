@@ -1,6 +1,6 @@
 'use client'
 
-import { Loader2Icon } from 'lucide-react'
+import { CircleAlertIcon, Loader2Icon } from 'lucide-react'
 import { Toaster as Sonner, toast, ToasterProps } from 'sonner'
 
 // Error toasts persist until dismissed
@@ -10,6 +10,25 @@ export const toastError = (message: string) =>
 // Warning toasts stay visible longer than the 4s default
 export const toastWarning = (message: string) =>
   toast.warning(message, { duration: 8000 })
+
+// Auth-error toast — same affordance as toastError, but rendered as a custom
+// JSX node so we can stamp `data-role="auth-error"` on the wrapper. The
+// exercise harness uses that selector to detect missing/invalid credentials
+// without reaching into Sonner-internal markup.
+export const toastAuthError = (message: string) =>
+  toast.custom(
+    () => (
+      <div
+        data-role="auth-error"
+        role="alert"
+        className="flex w-[var(--width)] items-center gap-3 rounded-xl bg-white/95 p-4 shadow-lg ring-1 ring-black/5 backdrop-blur-xl"
+      >
+        <CircleAlertIcon className="size-4 shrink-0 text-[#E83838]" />
+        <span className="text-sm text-[#a82020]">{message}</span>
+      </div>
+    ),
+    { duration: Infinity },
+  )
 
 // Light mode only — no next-themes dependency needed
 const Toaster = ({ ...props }: ToasterProps) => {

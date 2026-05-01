@@ -744,6 +744,29 @@ crypto.randomUUID()` per `startRun()`, refactored `broadcast()` to take a
    `aria-label="Message"` on composer, `data-role="assistant-message"`,
    custom Sonner toast for `data-role="auth-error"`). PR title:
    `feat(harness): smoke exercise + selector hooks`.
+   ✅ **Done** — `aria-label="Message"` added to both composer textareas
+   (compact + card mode); `data-role="assistant-message"` added to the
+   `AssistantMessage` wrapper; new `toastAuthError(message)` helper in
+   `components/common/ui/sonner.tsx` uses `toast.custom(...)` to render a
+   `<div data-role="auth-error" role="alert">` wrapper that the harness can
+   pick up without reaching into Sonner internals; `chatStore.ts` calls
+   `toastAuthError` instead of `toastError` in the `auth_error` case.
+   `scripts/exercises/smoke.ts` opens `/chat`, fills the home composer with
+   `getByRole('textbox', { name: /message/i })`, submits, dumps
+   `before-send`, then `waitForFunction` waits for any of three terminal
+   signals: `[data-role="assistant-message"]` (success), `[data-role=
+"auth-error"]` (toast surfaced), or URL prefix `/setup` (auth-error
+   redirect completed). 30s timeout, then dumps `after-send`.
+
+   Plan correction: the home composer (`HomeComposer`) lives at `/chat`,
+   not `/`. The `/` route redirects to `/tasks`, which renders
+   `TaskQuickAdd` (a different gesture). Smoke navigates to `/chat`
+   directly. End-to-end smoke against the live dev server exits 0; the
+   final DOM contains `aria-label="Message"`, `data-role="assistant-
+message"`, and the user message "hello from the harness". Pollution
+   audit clean — `~/HappyHQ/` untouched. All 1481 tests, types, and lint
+   green.
+
 6. **Sidebar rename gesture** (wire `ItemDropdownMenu` +
    `NameInputDialog` to each stream row, call `renameStream` on
    submit). Standalone improvement; exercise depends on it. PR title:
