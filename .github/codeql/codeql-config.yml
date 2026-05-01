@@ -1,0 +1,17 @@
+name: HappyHQ CodeQL config
+
+# Replaces "default setup" with a workflow we own (`.github/workflows/codeql.yml`)
+# so we can layer on custom sanitizer models for js/path-injection in a
+# follow-up. This file deliberately runs the same query suite default setup
+# was running — it's pure plumbing, no semantic change.
+
+queries:
+  - uses: security-and-quality
+
+paths-ignore:
+  - '**/node_modules/**'
+  - '**/.next/**'
+  - '**/dist/**'
+  - '**/build/**'
+  - '**/*.test.ts'
+  - '**/*.test.tsx'
