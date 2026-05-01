@@ -1,0 +1,18 @@
+{"type":"heartbeat","t":"2026-04-30T20:00:00.000Z"}
+{"type":"partial","event":{"type":"message_start","message":{"id":"msg_a","role":"assistant","model":"claude-sonnet-4-6"}}}
+{"type":"partial","event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}}
+{"type":"partial","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Need to dispatch a research subagent."}}}
+{"type":"partial","event":{"type":"content_block_stop","index":0}}
+{"type":"partial","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_01Task","name":"Task","input":{}}}}
+{"type":"partial","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"description\":\"Research auth\""}}}
+{"type":"partial","event":{"type":"content_block_stop","index":1}}
+{"type":"partial","event":{"type":"message_stop"}}
+{"type":"assistant","message":{"id":"msg_a","role":"assistant","model":"claude-sonnet-4-6","stop_reason":"tool_use","content":[{"type":"thinking","thinking":"Need to dispatch a research subagent."},{"type":"tool_use","id":"toolu_01Task","name":"Task","input":{"subagent_type":"general-purpose","description":"Research auth","prompt":"Look at the auth flow"}}]}}
+{"type":"subagent_event","subtype":"started","taskId":"task_abc","description":"Research auth"}
+{"type":"heartbeat","t":"2026-04-30T20:00:20.000Z"}
+{"type":"subagent_event","subtype":"progress","taskId":"task_abc","description":"Research auth","lastToolName":"Read"}
+{"type":"subagent_event","subtype":"progress","taskId":"task_abc","description":"Research auth","lastToolName":"Grep"}
+{"type":"heartbeat","t":"2026-04-30T20:00:40.000Z"}
+{"type":"subagent_event","subtype":"completed","taskId":"task_abc","status":"completed","summary":"Found 3 files","toolUses":5,"durationMs":42000}
+{"type":"tool_progress","toolName":"Task","toolUseId":"toolu_01Task","elapsedSeconds":42}
+{"type":"result","subtype":"success","result":"done","costUsd":0.05}

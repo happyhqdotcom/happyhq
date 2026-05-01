@@ -851,6 +851,35 @@ message"`, and the user message "hello from the harness". Pollution
    `wire.jsonl` fixture into `lib/run/__fixtures__/`, snapshot
    `reduceActivity` output). PR title:
    `test(run): pin subagent activity rendering (#26) via wire replay`.
+   ✅ **Done** — `lib/run/__fixtures__/wire-issue-26.jsonl` captures the
+   shape of a real run that dispatches a `Task` subagent: heartbeat,
+   thinking + tool_use partials, assistant turn, `subagent_event:started`,
+   interleaved heartbeats, two `subagent_event:progress` events
+   (`lastToolName: Read` then `Grep`), `subagent_event:completed` (with
+   summary), parent `tool_progress` for the Task, and a final `result`.
+   `lib/run/wire-replay.test.ts` reads the fixture, replays it through
+   `reduceActivity` with a deterministic per-line clock (`now = (i+1) *
+1000`), and pins six guarantees: (1) on `subagent_event:started` a step
+   with `toolName === '__subagent__'` and label `Delegating: Research
+auth` exists — the regression sentinel for #26; (2) `elapsedSeconds`
+   grows monotonically across progress events (the visual signal that
+   replaces the silent gap); (3) on `completed` the step turns inactive
+   and `detail` becomes the summary; (4) on `result` the iteration
+   boundary clears `steps`/`subagentStartedAt`/`blockIndexMap`/
+   `partialJson`/`lastToolStep`; (5) the parent Task step renders
+   alongside the subagent step during the run; (6) interleaving
+   heartbeats does not change the final state vs. a heartbeat-filtered
+   replay.
+
+   Reality-check while writing: real SDK `task_progress` carries both
+   `description` and `last_tool_name`; the reducer prefers
+   `description ?? lastToolName`, so detail stays as the subagent's
+   purpose ("Research auth") rather than evolving to "Read"/"Grep". The
+   visible "alive" signal is `elapsedSeconds` — assertions reflect that.
+   This is a documented divergence from issue #26's _suggested_
+   direction (which mentioned surfacing `lastToolName`); the closed-PR
+   implementation chose description. Test asserts what is, not what was
+   suggested. All 1497 tests, types, lint, and format green.
 
 ---
 
