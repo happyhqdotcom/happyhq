@@ -46,20 +46,23 @@ export async function moveSampleCategory(
   toCategory: string,
   token?: string,
 ): Promise<void> {
-  assertSafeStreamName(streamName)
-  assertSafePathSegment(sampleName, 'sample name')
-  assertSafePathSegment(fromCategory, 'sample category')
+  const safeStream = assertSafeStreamName(streamName)
+  const safeName = assertSafePathSegment(sampleName, 'sample name')
+  const safeFromCategory = assertSafePathSegment(
+    fromCategory,
+    'sample category',
+  )
   // Slugify the target type
   const targetCategory = toCategory
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
   if (!targetCategory) throw new Error('Invalid type name')
-  if (targetCategory === fromCategory) return
+  if (targetCategory === safeFromCategory) return
 
-  const samplesRoot = path.join(streamPath(streamName), 'samples')
-  const fromDir = safePath(path.join(samplesRoot, fromCategory, sampleName))
-  const toDir = safePath(path.join(samplesRoot, targetCategory, sampleName))
+  const samplesRoot = path.join(streamPath(safeStream), 'samples')
+  const fromDir = safePath(path.join(samplesRoot, safeFromCategory, safeName))
+  const toDir = safePath(path.join(samplesRoot, targetCategory, safeName))
 
   // Verify source exists
   await access(fromDir)
@@ -70,11 +73,11 @@ export async function moveSampleCategory(
 
   // Clean up empty source type directory
   try {
-    const remaining = await readdir(path.join(samplesRoot, fromCategory))
+    const remaining = await readdir(path.join(samplesRoot, safeFromCategory))
     // Remove if only INDEX.md or nothing remains
     const nonIndex = remaining.filter((f) => f !== 'INDEX.md')
     if (nonIndex.length === 0) {
-      await rm(path.join(samplesRoot, fromCategory), {
+      await rm(path.join(samplesRoot, safeFromCategory), {
         recursive: true,
         force: true,
       })
@@ -94,22 +97,22 @@ export async function deleteSample(
   category: string,
   token?: string,
 ): Promise<void> {
-  assertSafeStreamName(streamName)
-  assertSafePathSegment(sampleName, 'sample name')
-  assertSafePathSegment(category, 'sample category')
-  const samplesRoot = path.join(streamPath(streamName), 'samples')
-  const sampleDir = safePath(path.join(samplesRoot, category, sampleName))
+  const safeStream = assertSafeStreamName(streamName)
+  const safeName = assertSafePathSegment(sampleName, 'sample name')
+  const safeCategory = assertSafePathSegment(category, 'sample category')
+  const samplesRoot = path.join(streamPath(safeStream), 'samples')
+  const sampleDir = safePath(path.join(samplesRoot, safeCategory, safeName))
 
-  await deleteFileItem(sampleDir, `[${streamName}] Delete sample ${sampleName}`)
+  await deleteFileItem(sampleDir, `[${safeStream}] Delete sample ${safeName}`)
 
   // Clean up empty type directory
   try {
-    const remaining = await readdir(path.join(samplesRoot, category))
+    const remaining = await readdir(path.join(samplesRoot, safeCategory))
     const meaningful = remaining.filter(
       (f) => f !== 'INDEX.md' && f !== '.meta.json',
     )
     if (meaningful.length === 0) {
-      await rm(path.join(samplesRoot, category), {
+      await rm(path.join(samplesRoot, safeCategory), {
         recursive: true,
         force: true,
       })
