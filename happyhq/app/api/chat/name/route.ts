@@ -1,4 +1,5 @@
 import { setChatName } from '@/lib/actions'
+import { assertSafeSessionId } from '@/lib/fs/paths'
 import { log } from '@/lib/log.server'
 
 interface NameRequest {
@@ -24,6 +25,12 @@ export async function POST(request: Request) {
   const { sessionId, name } = body
   if (!sessionId || !name) {
     return Response.json({ error: 'Missing required fields' }, { status: 400 })
+  }
+
+  try {
+    assertSafeSessionId(sessionId)
+  } catch {
+    return Response.json({ error: 'Invalid sessionId' }, { status: 400 })
   }
 
   try {

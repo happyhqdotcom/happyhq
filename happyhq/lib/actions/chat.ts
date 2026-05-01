@@ -4,7 +4,7 @@ import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
-import { validatePath } from '@/lib/fs/paths'
+import { assertSafeSessionId, validatePath } from '@/lib/fs/paths'
 import { readTextFile } from '@/lib/fs/read.server'
 import { ensureDirectory, writeTextFile } from '@/lib/fs/write.server'
 import { log } from '@/lib/log.server'
@@ -22,6 +22,7 @@ export async function createChatSession(
   sessionId: string,
   streamSlug?: string | null,
 ): Promise<void> {
+  assertSafeSessionId(sessionId)
   const chatDir = path.join(HAPPYHQ_ROOT, '.chats', sessionId)
   await ensureDirectory(chatDir)
   await ensureDirectory(path.join(chatDir, 'uploads'))
@@ -47,6 +48,7 @@ export async function setChatName(
   sessionId: string,
   name: string,
 ): Promise<void> {
+  assertSafeSessionId(sessionId)
   const chatDir = path.join(HAPPYHQ_ROOT, '.chats', sessionId)
   const chatJsonPath = path.join(chatDir, 'chat.json')
   validatePath(chatJsonPath)
@@ -152,6 +154,7 @@ export async function markTaskStarted(
   sessionId: string,
   taskName: string,
 ): Promise<void> {
+  assertSafeSessionId(sessionId)
   const chatDir = path.join(HAPPYHQ_ROOT, '.chats', sessionId)
   const chatJsonPath = path.join(chatDir, 'chat.json')
   validatePath(chatJsonPath)
@@ -190,6 +193,7 @@ export async function markTaskStarted(
  * SDK session data in ~/.claude/ is left intact (SDK's domain).
  */
 export async function deleteChat(sessionId: string): Promise<void> {
+  assertSafeSessionId(sessionId)
   const chatDir = path.join(HAPPYHQ_ROOT, '.chats', sessionId)
   validatePath(chatDir)
   await rm(chatDir, { recursive: true, force: true })

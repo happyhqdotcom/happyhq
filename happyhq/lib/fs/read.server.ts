@@ -5,7 +5,13 @@ import path from 'node:path'
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
 
 import { assessTextQuality } from './assess-quality.server'
-import { streamPath, taskPath, tasksDir, validatePath } from './paths'
+import {
+  assertSafePathSegment,
+  safePath,
+  streamPath,
+  taskPath,
+  tasksDir,
+} from './paths'
 import { parsePlaybookMd, readPlaybookMd } from './playbook-md.server'
 import { readTaskMd } from './task-md.server'
 import type {
@@ -40,9 +46,8 @@ function parseTitle(raw: string | null): string | null {
  * Returns null for missing files (ENOENT), throws for other errors.
  */
 export async function readTextFile(filePath: string): Promise<string | null> {
-  validatePath(filePath)
   try {
-    return await readFile(filePath, 'utf-8')
+    return await readFile(safePath(filePath), 'utf-8')
   } catch (error: unknown) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
     throw error
@@ -55,14 +60,14 @@ export async function readTextFile(filePath: string): Promise<string | null> {
  * Returns empty array for missing directories (ENOENT), throws for other errors.
  */
 export async function listDirectory(dirPath: string): Promise<FileEntry[]> {
-  validatePath(dirPath)
+  const safeDir = safePath(dirPath)
   try {
-    const entries = await readdir(dirPath, { withFileTypes: true })
+    const entries = await readdir(safeDir, { withFileTypes: true })
     return await Promise.all(
       entries
         .filter((entry) => !entry.name.startsWith('.'))
         .map(async (entry) => {
-          const fullPath = path.join(dirPath, entry.name)
+          const fullPath = path.join(safeDir, entry.name)
           const isDir = entry.isDirectory()
           const [fileStat, metaRaw] = await Promise.all([
             stat(fullPath),
@@ -146,9 +151,10 @@ function extractFrontmatterFavicon(content: string): string | null {
  * Title is extracted from the first # heading in the file.
  */
 async function listWebInputItems(webDir: string): Promise<FileItem[]> {
+  const safeWebDir = safePath(webDir)
   let domainDirs: Dirent<string>[]
   try {
-    domainDirs = await readdir(webDir, { withFileTypes: true })
+    domainDirs = await readdir(safeWebDir, { withFileTypes: true })
   } catch (error: unknown) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
     throw error
@@ -157,10 +163,20 @@ async function listWebInputItems(webDir: string): Promise<FileItem[]> {
   const items: FileItem[] = []
   for (const domainDir of domainDirs) {
     if (!domainDir.isDirectory() || domainDir.name.startsWith('.')) continue
-    const domainPath = path.join(webDir, domainDir.name)
+    try {
+      assertSafePathSegment(domainDir.name, 'web domain')
+    } catch {
+      continue
+    }
+    const domainPath = path.join(safeWebDir, domainDir.name)
     const files = await readdir(domainPath)
     for (const file of files) {
       if (!file.endsWith('.md') || file.startsWith('.')) continue
+      try {
+        assertSafePathSegment(file, 'web page filename')
+      } catch {
+        continue
+      }
       const filePath = path.join(domainPath, file)
       const [fileStat, content] = await Promise.all([
         stat(filePath),
@@ -190,11 +206,11 @@ async function listWebInputItems(webDir: string): Promise<FileItem[]> {
  * Returns empty array for missing directories (ENOENT).
  */
 export async function listFileItems(dir: string): Promise<FileItem[]> {
-  validatePath(dir)
+  const safeDir = safePath(dir)
 
   let dirEntries: Dirent<string>[]
   try {
-    dirEntries = await readdir(dir, { withFileTypes: true })
+    dirEntries = await readdir(safeDir, { withFileTypes: true })
   } catch (error: unknown) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
     throw error
@@ -208,10 +224,15 @@ export async function listFileItems(dir: string): Promise<FileItem[]> {
     folders.map(async (folder) => {
       // web/ subdirectory: walk domain → page.md (two levels deep)
       if (folder.name === 'web') {
-        return listWebInputItems(path.join(dir, 'web'))
+        return listWebInputItems(path.join(safeDir, 'web'))
       }
 
-      const folderPath = path.join(dir, folder.name)
+      try {
+        assertSafePathSegment(folder.name, 'input folder')
+      } catch {
+        return null
+      }
+      const folderPath = path.join(safeDir, folder.name)
       const files = await readdir(folderPath)
 
       const originalFile = files.find((f) => f.startsWith('original.'))
@@ -264,7 +285,12 @@ export async function listFileItems(dir: string): Promise<FileItem[]> {
   )
   const looseEntries = await Promise.all(
     looseFiles.map(async (file) => {
-      const filePath = path.join(dir, file.name)
+      try {
+        assertSafePathSegment(file.name, 'input file')
+      } catch {
+        return null
+      }
+      const filePath = path.join(safeDir, file.name)
       const fileStat = await stat(filePath)
       const baseName = file.name.replace(/\.[^.]+$/, '')
       return {
@@ -298,11 +324,11 @@ export async function listFileItems(dir: string): Promise<FileItem[]> {
 export async function listSamples(
   samplesDir: string,
 ): Promise<{ samples: SampleEntry[]; sampleTypes: SampleType[] }> {
-  validatePath(samplesDir)
+  const safeSamplesDir = safePath(samplesDir)
 
   let categoryEntries: Dirent<string>[]
   try {
-    categoryEntries = await readdir(samplesDir, { withFileTypes: true })
+    categoryEntries = await readdir(safeSamplesDir, { withFileTypes: true })
   } catch (error: unknown) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT')
       return { samples: [], sampleTypes: [] }
@@ -316,7 +342,12 @@ export async function listSamples(
   const sampleTypes: SampleType[] = []
   const nested = await Promise.all(
     categories.map(async (cat) => {
-      const catDir = path.join(samplesDir, cat.name)
+      try {
+        assertSafePathSegment(cat.name, 'sample category')
+      } catch {
+        return []
+      }
+      const catDir = path.join(safeSamplesDir, cat.name)
 
       const [indexMd, metaRaw, fileItems] = await Promise.all([
         readTextFile(path.join(catDir, 'INDEX.md')),
@@ -357,7 +388,7 @@ export async function listSamples(
 export async function readChatJson(
   sessionId: string,
 ): Promise<Record<string, unknown> | null> {
-  const chatDir = path.join(HAPPYHQ_ROOT, '.chats', sessionId)
+  const chatDir = safePath(path.join(HAPPYHQ_ROOT, '.chats', sessionId))
   const raw = await readTextFile(path.join(chatDir, 'chat.json'))
   if (!raw) return null
   try {
@@ -375,8 +406,7 @@ export async function readChatJson(
  * Returns empty array if .chats/ does not exist.
  */
 export async function listChats(streamName: string): Promise<ChatEntry[]> {
-  const chatsDir = path.join(HAPPYHQ_ROOT, '.chats')
-  validatePath(chatsDir)
+  const chatsDir = safePath(path.join(HAPPYHQ_ROOT, '.chats'))
   try {
     const entries = await readdir(chatsDir, { withFileTypes: true })
     const chats = await Promise.all(
@@ -428,7 +458,7 @@ export async function listChats(streamName: string): Promise<ChatEntry[]> {
 export async function findStreamForSession(
   sessionId: string,
 ): Promise<{ streamName: string | null; chat: ChatEntry } | null> {
-  const chatDir = path.join(HAPPYHQ_ROOT, '.chats', sessionId)
+  const chatDir = safePath(path.join(HAPPYHQ_ROOT, '.chats', sessionId))
 
   let dirStat
   try {
@@ -517,8 +547,7 @@ export async function listAllTaskItems(): Promise<TaskItem[]> {
  * Sorted newest-first by creation time.
  */
 export async function listAllChats(): Promise<ChatItem[]> {
-  const chatsDir = path.join(HAPPYHQ_ROOT, '.chats')
-  validatePath(chatsDir)
+  const chatsDir = safePath(path.join(HAPPYHQ_ROOT, '.chats'))
   try {
     const entries = await readdir(chatsDir, { withFileTypes: true })
     const items = await Promise.all(
@@ -567,7 +596,7 @@ export async function listAllChats(): Promise<ChatItem[]> {
 export async function readStreamContent(
   streamName: string,
 ): Promise<StreamContent> {
-  const streamDir = streamPath(streamName)
+  const streamDir = safePath(streamPath(streamName))
   const [playbookRaw, specs, samplesResult] = await Promise.all([
     readTextFile(path.join(streamDir, 'playbook.md')),
     listDirectory(path.join(streamDir, 'specs')),
@@ -607,8 +636,7 @@ export async function readStreamContent(
 export async function readTaskContent(
   taskSlug: string,
 ): Promise<TaskContent | null> {
-  const taskDir = taskPath(taskSlug)
-  validatePath(taskDir)
+  const taskDir = safePath(taskPath(taskSlug))
 
   try {
     await stat(taskDir)
@@ -664,8 +692,7 @@ export async function readTaskContent(
  * Returns true if the directory exists, false for ENOENT, throws for other errors.
  */
 export async function streamExists(streamName: string): Promise<boolean> {
-  const dir = streamPath(streamName)
-  validatePath(dir)
+  const dir = safePath(streamPath(streamName))
   try {
     const s = await stat(dir)
     return s.isDirectory()

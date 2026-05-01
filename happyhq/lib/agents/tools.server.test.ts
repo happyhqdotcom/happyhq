@@ -25,6 +25,11 @@ vi.mock('@/lib/actions', () => ({
 vi.mock('@/lib/fs/paths', () => ({
   streamPath: (name: string) => `/mock/happyhq/${name}`,
   chatPath: (sessionId: string) => `/mock/happyhq/.chats/${sessionId}`,
+  // Asserters: no-ops in tests since fixtures use safe values; real impl
+  // is exercised in lib/fs/paths.test.ts.
+  assertSafeSessionId: () => {},
+  assertSafeStreamName: () => {},
+  assertSafePathSegment: () => {},
 }))
 
 vi.mock('@/lib/fs/read.server', () => ({

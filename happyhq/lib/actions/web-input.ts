@@ -2,7 +2,7 @@
 
 import path from 'node:path'
 
-import { taskPath } from '@/lib/fs/paths'
+import { assertSafeTaskSlug, taskPath } from '@/lib/fs/paths'
 import { ensureDirectory, writeTextFile } from '@/lib/fs/write.server'
 import { commitGitState } from '@/lib/git/sync.server'
 import { log } from '@/lib/log.server'
@@ -31,6 +31,12 @@ export async function addWebInput(
     favicon: string | null
   },
 ): Promise<{ path: string | null; error?: string }> {
+  try {
+    assertSafeTaskSlug(taskSlug)
+  } catch {
+    return { path: null, error: 'Invalid task slug' }
+  }
+
   const normalizedUrl = url.match(/^https?:\/\//) ? url : `https://${url}`
 
   let hostname: string

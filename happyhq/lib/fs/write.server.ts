@@ -1,15 +1,14 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { validatePath } from './paths'
+import { safePath } from './paths'
 
 /**
  * Create a directory and all parent directories within ~/HappyHQ/.
  * Idempotent — succeeds silently if the directory already exists.
  */
 export async function ensureDirectory(dirPath: string): Promise<void> {
-  validatePath(dirPath)
-  await mkdir(dirPath, { recursive: true })
+  await mkdir(safePath(dirPath), { recursive: true })
 }
 
 /**
@@ -18,9 +17,9 @@ export async function ensureDirectory(dirPath: string): Promise<void> {
  * Used for fresh-run cleanup of working/ and outputs/.
  */
 export async function clearDirectory(dirPath: string): Promise<void> {
-  validatePath(dirPath)
-  await rm(dirPath, { recursive: true, force: true })
-  await mkdir(dirPath, { recursive: true })
+  const safe = safePath(dirPath)
+  await rm(safe, { recursive: true, force: true })
+  await mkdir(safe, { recursive: true })
 }
 
 /**
@@ -31,7 +30,7 @@ export async function writeTextFile(
   filePath: string,
   content: string,
 ): Promise<void> {
-  validatePath(filePath)
-  await ensureDirectory(path.dirname(filePath))
-  await writeFile(filePath, content, 'utf-8')
+  const safe = safePath(filePath)
+  await ensureDirectory(path.dirname(safe))
+  await writeFile(safe, content, 'utf-8')
 }

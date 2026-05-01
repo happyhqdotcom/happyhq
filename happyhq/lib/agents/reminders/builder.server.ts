@@ -1,3 +1,4 @@
+import { assertSafeTaskSlug } from '@/lib/fs/paths'
 import {
   listAllTaskItems,
   readStreamContent,
@@ -75,6 +76,7 @@ export async function buildReminders(ctx: ReminderContext): Promise<string[]> {
 
   // Cross-mode: Viewing Task — when user has a specific task open
   if (ctx.taskSlug) {
+    assertSafeTaskSlug(ctx.taskSlug)
     const task = await readTaskContent(ctx.taskSlug)
     if (task) reminders.push(viewingTaskReminder(ctx.taskSlug, task))
   }

@@ -132,9 +132,11 @@ describe('createStream', () => {
     expect(mockMkdir).not.toHaveBeenCalled()
   })
 
-  it('rejects paths outside ~/HappyHQ/', async () => {
+  it('rejects traversal in stream name', async () => {
+    // Traversal segments fail the SAFE_PATH_SEGMENT_RE asserter at construction
+    // time, before path.join — that's the regex barrier CodeQL recognises.
     await expect(createStream('../../etc/evil')).rejects.toThrow(
-      'outside ~/HappyHQ/',
+      'Invalid stream name',
     )
     expect(mockMkdir).not.toHaveBeenCalled()
   })
@@ -229,9 +231,9 @@ describe('renameStream', () => {
     )
   })
 
-  it('rejects source paths outside ~/HappyHQ/', async () => {
+  it('rejects traversal in source stream name', async () => {
     await expect(renameStream('../../etc/evil', 'good-name')).rejects.toThrow(
-      'outside ~/HappyHQ/',
+      'Invalid stream name',
     )
     expect(mockRename).not.toHaveBeenCalled()
   })
@@ -243,9 +245,9 @@ describe('renameStream', () => {
     expect(mockRename).not.toHaveBeenCalled()
   })
 
-  it('rejects destination paths outside ~/HappyHQ/', async () => {
+  it('rejects traversal in destination stream name', async () => {
     await expect(renameStream('good-name', '../../etc/evil')).rejects.toThrow(
-      'outside ~/HappyHQ/',
+      'Invalid stream name',
     )
     expect(mockRename).not.toHaveBeenCalled()
   })
@@ -290,9 +292,9 @@ describe('checkStreamExists', () => {
     expect(result).toBe(false)
   })
 
-  it('rejects paths outside ~/HappyHQ/', async () => {
+  it('rejects traversal in stream name', async () => {
     await expect(checkStreamExists('../../etc/evil')).rejects.toThrow(
-      'outside ~/HappyHQ/',
+      'Invalid stream name',
     )
     expect(mockStat).not.toHaveBeenCalled()
   })

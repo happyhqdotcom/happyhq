@@ -14,7 +14,10 @@ import {
 import type { InputQuality } from '@/lib/fs/assess-quality.server'
 import { assessTextQuality } from '@/lib/fs/assess-quality.server'
 import {
+  assertSafePathSegment,
   assertSafeSessionId,
+  assertSafeStreamName,
+  assertSafeTaskSlug,
   streamPath,
   taskPath,
   validatePath,
@@ -223,6 +226,7 @@ export async function setupTaskFromChat(
   textContext: string,
   files: string[],
 ): Promise<void> {
+  assertSafeTaskSlug(taskSlug)
   assertSafeSessionId(sessionId)
   const taskDir = taskPath(taskSlug)
 
@@ -270,6 +274,12 @@ export async function deleteFile(
   relativePath: string,
   commitMessage?: string,
 ): Promise<void> {
+  // Regex barrier on each segment of the user-supplied relative path —
+  // sits on the original taint source so CodeQL sees a sanitiser before
+  // the value reaches `path.join` and the fs op.
+  for (const segment of relativePath.split('/').filter(Boolean)) {
+    assertSafePathSegment(segment)
+  }
   const abs = path.join(HAPPYHQ_ROOT, relativePath)
   await deleteFileItem(abs, commitMessage ?? `Remove ${relativePath}`)
   log('file.deleted', { path: relativePath })
@@ -410,6 +420,7 @@ export async function ingestSample(
   formData: FormData,
   token?: string,
 ): Promise<{ slug: string }> {
+  assertSafeStreamName(streamName)
   const destDir = path.join(streamPath(streamName), 'samples', 'other')
   await ensureDirectory(destDir)
   const result = await ingestFile(destDir, formData, {
@@ -431,6 +442,7 @@ export async function ingestTaskInput(
   formData: FormData,
   token?: string,
 ): Promise<{ slug: string; quality?: InputQuality }> {
+  assertSafeTaskSlug(taskSlug)
   const destDir = path.join(taskPath(taskSlug), 'inputs')
   await ensureDirectory(destDir)
   const result = await ingestFile(destDir, formData, {

@@ -4,7 +4,12 @@ import { access, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 
 import { formatSlug } from '@/lib/format'
-import { streamPath, validatePath } from '@/lib/fs/paths'
+import {
+  assertSafePathSegment,
+  assertSafeStreamName,
+  streamPath,
+  validatePath,
+} from '@/lib/fs/paths'
 import { readPlaybookMd, writePlaybookMd } from '@/lib/fs/playbook-md.server'
 import { RESERVED_ROOT_DIRS, streamExists } from '@/lib/fs/read.server'
 import { ensureDirectory } from '@/lib/fs/write.server'
@@ -22,6 +27,7 @@ export async function createStream(
   slug: string,
   token?: string,
 ): Promise<void> {
+  assertSafeStreamName(slug)
   if (RESERVED_ROOT_DIRS.has(slug))
     throw new Error(
       `"${slug}" is a reserved name and cannot be used as a stream.`,
@@ -63,6 +69,7 @@ export async function createStream(
  * Hard delete, no confirmation, no undo.
  */
 export async function deleteStream(slug: string): Promise<void> {
+  assertSafeStreamName(slug)
   const dir = streamPath(slug)
   validatePath(dir)
   await rm(dir, { recursive: true, force: true })
@@ -78,6 +85,8 @@ export async function renameStream(
   fromSlug: string,
   toSlug: string,
 ): Promise<void> {
+  assertSafeStreamName(fromSlug)
+  assertSafeStreamName(toSlug)
   if (RESERVED_ROOT_DIRS.has(toSlug))
     throw new Error(
       `"${toSlug}" is a reserved name and cannot be used as a stream.`,
@@ -96,6 +105,7 @@ export async function renameStream(
  * Thin server-action wrapper around streamExists() from read.server.
  */
 export async function checkStreamExists(slug: string): Promise<boolean> {
+  assertSafeStreamName(slug)
   return streamExists(slug)
 }
 
@@ -104,6 +114,7 @@ export async function writeStreamTitle(
   slug: string,
   title: string,
 ): Promise<void> {
+  assertSafeStreamName(slug)
   const dir = streamPath(slug)
   const existing = await readPlaybookMd(dir)
   if (existing) {
@@ -124,6 +135,7 @@ export async function writePlaybookBody(
   slug: string,
   body: string,
 ): Promise<void> {
+  assertSafeStreamName(slug)
   const dir = streamPath(slug)
   const existing = await readPlaybookMd(dir)
   if (existing) {
@@ -150,6 +162,8 @@ export async function deleteSpec(
   streamName: string,
   specName: string,
 ): Promise<void> {
+  assertSafeStreamName(streamName)
+  assertSafePathSegment(specName, 'spec name')
   const specFile = path.join(streamPath(streamName), 'specs', specName)
   validatePath(specFile)
   await access(specFile)

@@ -21,7 +21,11 @@ import { readConfig } from '@/lib/config/config.server'
 import { resolveConfig } from '@/lib/config/defaults'
 import { LLM_COST_PER_MINUTE_USD } from '@/lib/constants'
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
-import { taskPath } from '@/lib/fs/paths'
+import {
+  assertSafeStreamName,
+  assertSafeTaskSlug,
+  taskPath,
+} from '@/lib/fs/paths'
 import { updateTaskMdPending } from '@/lib/fs/task-md.server'
 import type { IterationMetrics, PendingType, RunInfo } from '@/lib/fs/types'
 import { clearDirectory, writeTextFile } from '@/lib/fs/write.server'
@@ -94,6 +98,12 @@ export async function startRun(
   userId?: string,
   resume?: boolean,
 ): Promise<void> {
+  // Regex barriers on the original taint sources — every fs op below
+  // (taskPath/clearDirectory/fs.rm/writeRunInfo/readRunInfo) flows through
+  // these names. Asserting at the entry point is what CodeQL recognises
+  // as a `js/path-injection` sanitiser barrier.
+  assertSafeStreamName(streamName)
+  assertSafeTaskSlug(taskName)
   const s = getState()
 
   // If a previous run was aborted but the loop hasn't finished cleaning up,
@@ -266,6 +276,7 @@ export function isRunActive(): boolean {
  * corresponding server-side process (e.g. after HMR killed the loop).
  */
 export async function clearStaleRun(taskName: string): Promise<void> {
+  assertSafeTaskSlug(taskName)
   const info = await readRunInfo(taskName)
   if (!info) return
   const stoppedDuring =
@@ -1080,6 +1091,7 @@ function createIterationController(parentSignal: AbortSignal): {
 }
 
 async function readRunInfo(taskName: string): Promise<RunInfo | null> {
+  assertSafeTaskSlug(taskName)
   try {
     const raw = await fs.readFile(
       path.join(taskPath(taskName), '.run.json'),
@@ -1180,6 +1192,7 @@ function extractTokenMetrics(
 }
 
 async function writeRunInfo(taskName: string, info: RunInfo): Promise<void> {
+  assertSafeTaskSlug(taskName)
   const runPath = path.join(taskPath(taskName), '.run.json')
   await writeTextFile(runPath, JSON.stringify(info, null, 2))
   // Sync task.md status if it exists (best-effort)

@@ -3,7 +3,13 @@
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 
-import { taskPath, validatePath } from '@/lib/fs/paths'
+import {
+  assertSafePathSegment,
+  assertSafeStreamName,
+  assertSafeTaskSlug,
+  taskPath,
+  validatePath,
+} from '@/lib/fs/paths'
 import {
   readTaskMd,
   setTaskCompleted,
@@ -27,6 +33,8 @@ export async function createTask(
   stream?: string,
   description?: string,
 ): Promise<void> {
+  assertSafeTaskSlug(slug)
+  if (stream !== undefined) assertSafeStreamName(stream)
   const taskDir = taskPath(slug)
   await ensureDirectory(taskDir)
 
@@ -46,6 +54,7 @@ export async function writeTaskTitle(
   taskSlug: string,
   title: string,
 ): Promise<void> {
+  assertSafeTaskSlug(taskSlug)
   const taskDir = taskPath(taskSlug)
   const existing = await readTaskMd(taskDir)
   if (!existing) throw new Error('Task not found')
@@ -62,6 +71,7 @@ export async function writeTaskDescription(
   taskSlug: string,
   description: string,
 ): Promise<void> {
+  assertSafeTaskSlug(taskSlug)
   const taskDir = taskPath(taskSlug)
   const existing = await readTaskMd(taskDir)
   if (!existing) throw new Error('Task not found')
@@ -77,6 +87,8 @@ export async function deleteTaskInput(
   taskSlug: string,
   inputName: string,
 ): Promise<void> {
+  assertSafeTaskSlug(taskSlug)
+  assertSafePathSegment(inputName, 'input name')
   const inputDir = path.join(taskPath(taskSlug), 'inputs', inputName)
   await deleteFileItem(
     inputDir,
@@ -90,6 +102,8 @@ export async function updateTaskStream(
   taskSlug: string,
   streamSlug: string | null,
 ): Promise<void> {
+  assertSafeTaskSlug(taskSlug)
+  if (streamSlug !== null) assertSafeStreamName(streamSlug)
   const taskDir = taskPath(taskSlug)
   const existing = await readTaskMd(taskDir)
   if (!existing) throw new Error('Task not found')
@@ -113,6 +127,7 @@ export async function updateTaskStream(
  * Uncompleting: clears completedAt; for stream-assigned tasks, sets pending: review.
  */
 export async function toggleTaskDone(slug: string): Promise<void> {
+  assertSafeTaskSlug(slug)
   const taskDir = taskPath(slug)
   const existing = await readTaskMd(taskDir)
   if (!existing) throw new Error('Task not found')
@@ -136,6 +151,7 @@ export async function toggleTaskDone(slug: string): Promise<void> {
  * Hard delete, no confirmation, no undo.
  */
 export async function deleteTaskByLocation(slug: string): Promise<void> {
+  assertSafeTaskSlug(slug)
   const dir = taskPath(slug)
   validatePath(dir)
   await rm(dir, { recursive: true, force: true })

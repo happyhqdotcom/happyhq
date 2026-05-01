@@ -13,6 +13,7 @@ import { clearSession, registerSession } from '@/lib/chat/active-sessions'
 import { clearSessionMode, setSessionMode } from '@/lib/chat/session-mode'
 import type { ChatRequest, ChatStreamEvent } from '@/lib/chat/types'
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
+import { assertSafeSessionId, assertSafeStreamName } from '@/lib/fs/paths'
 import { streamExists } from '@/lib/fs/read.server'
 import { log } from '@/lib/log.server'
 import { encodeEvent, filterMessage } from '@/lib/run/filter.server'
@@ -28,6 +29,19 @@ export async function POST(request: Request) {
   const { message, sessionId, streamSlug, resume, taskSlug } = body
   if (typeof message !== 'string' || !sessionId) {
     return Response.json({ error: 'Missing required fields' }, { status: 400 })
+  }
+
+  try {
+    assertSafeSessionId(sessionId)
+  } catch {
+    return Response.json({ error: 'Invalid sessionId' }, { status: 400 })
+  }
+
+  try {
+    if (streamSlug) assertSafeStreamName(streamSlug)
+    if (body.modeStreamSlug) assertSafeStreamName(body.modeStreamSlug)
+  } catch {
+    return Response.json({ error: 'Invalid stream slug' }, { status: 400 })
   }
 
   // Stream validation only when streamSlug is provided

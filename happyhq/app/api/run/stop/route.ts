@@ -1,3 +1,4 @@
+import { assertSafeTaskSlug } from '@/lib/fs/paths'
 import { readTaskContent } from '@/lib/fs/read.server'
 import {
   clearStaleRun,
@@ -16,6 +17,16 @@ export async function POST(request: Request) {
     task = body.task
   } catch {
     // Empty body is fine — backwards-compatible with no-param calls
+  }
+
+  // Regex barrier on the original user-supplied task slug, when provided —
+  // see /api/run/start for the rationale.
+  if (task !== undefined) {
+    try {
+      assertSafeTaskSlug(task)
+    } catch {
+      return Response.json({ error: 'Invalid task slug' }, { status: 400 })
+    }
   }
 
   if (stream && task) {
