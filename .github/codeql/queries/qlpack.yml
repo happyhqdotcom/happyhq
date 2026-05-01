@@ -1,0 +1,5 @@
+name: happyhq/codeql-customizations
+version: 0.0.1
+library: false
+dependencies:
+  codeql/javascript-queries: '*'
