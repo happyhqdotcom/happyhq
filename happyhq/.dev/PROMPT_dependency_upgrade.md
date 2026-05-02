@@ -11,7 +11,7 @@
    - `pnpm lint`
    - `pnpm check-types`
    - `pnpm --filter=happyhq test`
-   - `npx tsx scripts/smoke-test.ts` — needs a dev server. Use a non-default port (3000 may collide with another worktree). Recipe:
+   - `npx tsx scripts/smoke-test.ts` — needs a dev server. **You MUST start it on port 3456, not the default 3000.** Port 3000 is reserved for the maintainer's own dev server (and may also be in use by the bugs loop's worktree). Using 3000 risks an EADDRINUSE failure or — worse — running the smoke test against an unrelated server. Recipe:
      1. Start the server in the background: `(cd ../happyhq && PORT=3456 pnpm dev > /tmp/dev-3456.log 2>&1 &)` — or use the Bash tool's `run_in_background: true` with the same command (preferred — gives you a task ID to stop cleanly).
      2. Wait for ready: poll `until curl -sf http://localhost:3456/api/auth/status > /dev/null 2>&1; do sleep 2; done` with the Monitor tool, OR manually re-curl every few seconds. Don't blind-`sleep 30`.
      3. Run the test: `PORT=3456 npx tsx scripts/smoke-test.ts`.
@@ -34,7 +34,7 @@
        - **"Doesn't affect our usage"** — cite the specific evidence (e.g., "grep finds no caller of `db.transact()` with a callback signature; the v6 API change to that signature can't bite us"). Proceed to ready-to-merge.
        - **"Affects our usage and the change is benign / a clear improvement"** — cite the evidence and reason it's safe (e.g., "we use `actions/checkout` with default `persist-credentials: true`; the new `$RUNNER_TEMP` storage location is functionally equivalent and doesn't break any subsequent step in our workflows"). Proceed to ready-to-merge.
        - **"Affects our usage and impact is unclear after investigation, OR the change introduces real risk we can't size from the available info"** — apply `ralphie:skip-needs-review` with a comment that includes (a) what the change is, (b) what you investigated, (c) what's still unclear and why a human needs to weigh in. Return to `${BASE_BRANCH}`, exit.
-   - **Post the comment** on the PR using the rules-shape `ready-to-merge` format. The comment MUST include a `Changelog watch-list` section that documents the verdict for **each** watch item — ownership, auth/secrets, security advisory, deprecations, breaking API — even when the verdict is "none" or "no change". This is an audit trail for future readers; "didn't mention it" and "checked and found nothing" are not the same. For any item where the skim flagged something, include a one-line summary of what was investigated and the impact verdict.
+   - **Post the comment** on the PR using the rules-shape `ready-to-merge` format. The comment MUST include an `### Investigation` section (use exactly that header, not "Changelog watch-list" or any other variant) with one line for **each** of the five audit items — ownership, auth/secrets, security advisory, deprecations, breaking API — even when the verdict is "none" or "no change". This is an audit trail for future readers; "didn't mention it" and "checked and found nothing" are not the same. For any item where the skim flagged something, add sub-bullets with depth (what was checked, what was found).
    - **Apply the label**: `gh pr edit ${PR_NUMBER} --add-label "ralphie:ready-to-merge"`.
    - Return to base branch: `git checkout ${BASE_BRANCH}`.
    - Exit. **Do not merge. The human reviews the comment and clicks merge.**
