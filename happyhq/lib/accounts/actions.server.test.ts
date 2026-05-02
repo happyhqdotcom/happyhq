@@ -101,26 +101,36 @@ describe('actions.server', () => {
     })
 
     it('returns error when deleteUser fails', async () => {
-      mockDeleteUser.mockRejectedValue(new Error('InstantDB error'))
-      const { deleteAccount } = await import('./actions.server')
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        mockDeleteUser.mockRejectedValue(new Error('InstantDB error'))
+        const { deleteAccount } = await import('./actions.server')
 
-      const result = await deleteAccount('user-1')
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('Failed to delete account. Please try again.')
+        const result = await deleteAccount('user-1')
+        expect(result.success).toBe(false)
+        expect(result.error).toBe('Failed to delete account. Please try again.')
+      } finally {
+        errSpy.mockRestore()
+      }
     })
 
     it('returns error when onBeforeDelete callback fails', async () => {
-      const onBeforeDelete = vi.fn(async () => {
-        throw new Error('Stripe error')
-      })
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        const onBeforeDelete = vi.fn(async () => {
+          throw new Error('Stripe error')
+        })
 
-      const { deleteAccount } = await import('./actions.server')
-      const result = await deleteAccount('user-1', onBeforeDelete)
+        const { deleteAccount } = await import('./actions.server')
+        const result = await deleteAccount('user-1', onBeforeDelete)
 
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('Failed to delete account. Please try again.')
-      // Should not have attempted to delete the user
-      expect(mockDeleteUser).not.toHaveBeenCalled()
+        expect(result.success).toBe(false)
+        expect(result.error).toBe('Failed to delete account. Please try again.')
+        // Should not have attempted to delete the user
+        expect(mockDeleteUser).not.toHaveBeenCalled()
+      } finally {
+        errSpy.mockRestore()
+      }
     })
   })
 })
