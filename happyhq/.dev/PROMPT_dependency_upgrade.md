@@ -69,16 +69,47 @@ If yes, this session uses **elevated scrutiny**: investigation needs to be thoro
 
    **Path B.2 — lockfile-regeneration replacement (no behavioral change).**
    - Triggered when `LOCKFILE_REGENERATED=true` from step 2 AND verification (step 3) passed locally. This means the fix is "use the regenerated lockfile" — no code changes needed.
-   - Return to `${BASE_BRANCH}`: `git checkout ${BASE_BRANCH}`.
-   - Create a fresh branch: `git checkout -b chore/upgrade-<package>-lockfile-regen` (or a similarly descriptive name based on the group/package being bumped).
-   - Apply both the version bump and the regenerated lockfile from the Dependabot branch's checkout:
+   - **Before regenerating, inspect Dependabot's diff to detect the case shape:**
+
      ```
-     git checkout <dependabot-branch-name> -- happyhq/package.json package.json
-     pnpm install   # regenerates pnpm-lock.yaml fresh
+     git diff origin/main...<dependabot-branch> --name-only
+     git diff origin/main...<dependabot-branch> -- pnpm-lock.yaml | grep -E '^[+-] {2}[a-zA-Z@/-]+: \^?[0-9]' | head -20
      ```
-   - Verify everything is consistent: `git status` should show `happyhq/package.json`, `package.json` (if root was touched), and `pnpm-lock.yaml` modified — nothing else.
+
+     Three sub-shapes determine how to construct the replacement branch:
+
+     **B.2.a — package.json + lockfile bumps (the typical case):**
+     - Recipe: take both files from Dependabot's branch and re-run install:
+       ```
+       git checkout <dependabot-branch-name> -- happyhq/package.json package.json
+       pnpm install   # regenerates pnpm-lock.yaml fresh
+       ```
+
+     **B.2.b — lockfile-only bumps (transitive deps; Dependabot didn't change package.json):**
+     - Don't `pnpm install` from the current package.json — that re-resolves _current_ state and may reset transitive bumps Dependabot intended. Instead, take Dependabot's lockfile directly:
+       ```
+       git checkout <dependabot-branch-name> -- pnpm-lock.yaml
+       pnpm install --frozen-lockfile   # verifies the lockfile is internally consistent against current package.json
+       ```
+     - If the frozen install fails, fall through to B.2.c — Dependabot's lockfile carries an override-floor change that needs a package.json reconciliation.
+
+     **B.2.c — override-floor bump in lockfile (Dependabot raised `pnpm.overrides` snapshot in lockfile but didn't update `package.json`'s `pnpm.overrides`):**
+     - Detect by: lockfile diff includes a change to the top-of-file `overrides:` section (e.g., `-  postcss: ^8.5.10` / `+  postcss: ^8.5.13`) **and** `git diff origin/main...<dependabot-branch> -- package.json` shows no matching `pnpm.overrides.<pkg>` change.
+     - This is Dependabot's intent leaking through: it wanted to raise a security/policy floor on a transitive dep but its tooling only updated the lockfile snapshot, not the package.json source of truth.
+     - **Do NOT** simply regenerate from current package.json — that silently undoes the floor bump and weakens the security guarantee.
+     - Recipe:
+       1. Read the lockfile-snapshot bump to identify the package and the new floor (e.g., `postcss: ^8.5.13`).
+       2. Update `package.json`'s `pnpm.overrides.<pkg>` to the new floor:
+          ```
+          # Edit package.json: pnpm.overrides.postcss → "^8.5.13"
+          ```
+       3. Regenerate lockfile: `pnpm install`.
+       4. Verify the resulting lockfile's `overrides:` snapshot matches Dependabot's.
+     - Replacement PR body must call out the override floor change explicitly so the maintainer can sanity-check the security/policy intent.
+
+   - Verify everything is consistent: `git status` should show `package.json` and/or `happyhq/package.json` and `pnpm-lock.yaml` modified — nothing else.
    - **Size gate** still applies: `git diff --stat origin/main...HEAD -- ':!happyhq/package.json' ':!package.json' ':!pnpm-lock.yaml' ':!*.md' ':!*.mdx'`. (Should be 0 changes — the regen path is supposed to be clean.) If somehow >10 files / >300 LoC, apply `ralphie:skip-too-big` with cited reason and exit.
-   - Commit: `git add -A && git commit -m "chore: regenerate lockfile for <package or group> bump"` with a body that quotes the original `pnpm install --frozen-lockfile` error output.
+   - Commit: `git add -A && git commit -m "chore: regenerate lockfile for <package or group> bump"` with a body that quotes the original `pnpm install --frozen-lockfile` error output. For B.2.c, the commit body must also state the override floor was raised and quote the lockfile snapshot diff.
    - Push: `git push -u origin chore/upgrade-<package>-lockfile-regen`.
    - Open replacement PR: `gh pr create --base main --assignee @me --title "chore: regenerate lockfile for <package or group> bump" --body "..."`. PR body MUST include:
      - `Replaces #${PR_NUMBER}`
