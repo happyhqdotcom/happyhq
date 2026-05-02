@@ -16,10 +16,16 @@
 4. **Branch on the result:**
 
    **Path A — clean (verification passed):**
-   - Merge: `gh pr merge ${PR_NUMBER} --squash --delete-branch`.
-   - Comment: `gh pr comment ${PR_NUMBER} --body "Ralphie merged this. Verification: lint/types/test/smoke clean."`
+   - **Skim the upstream changelog / release notes** for the version delta. Look for any of:
+     - Ownership change (different maintainer or org publishing the release)
+     - Secrets / auth / token handling refactor
+     - Security advisory referenced in the release
+     - Deprecation we'd hit (grep the repo for callers of any deprecated API)
+     - Breaking API change that the test suite might not cover
+   - **If the changelog flags any of the above:** apply `ralphie:skip-needs-review` to the PR with a comment quoting the concerning item and linking the changelog. Use the rules-shape skip comment format. Return to main, exit.
+   - **If the changelog is clean:** post the rules-shape `ready-to-merge` summary comment on the PR (verification status, 2–4 changelog highlights with link, one-or-two-sentence recommendation), then label: `gh pr edit ${PR_NUMBER} --add-label "ralphie:ready-to-merge"`.
    - Return to main: `git checkout main && git pull`.
-   - Exit. (No label needed — the merged state is the signal.)
+   - Exit. **Do not merge. The human reviews the comment and clicks merge.**
 
    **Path B — verification failed (breaking-change fixups):**
    - **Plan from the changelog first.** Read the upstream release notes / migration guide for the version delta. Identify which breaking change(s) caused the failures. Quote the relevant entries in the work plan. If the failure mode isn't predicted by the changelog, **stop**: apply `ralphie:skip-verification-failed` to the original PR with the failure output included, return to main, exit.
@@ -55,10 +61,10 @@
 7. Exit.
 
 **[1]** ONE PR per session. Do not pick up other PRs, do not chain. The orchestrator handles the next one.
-**[2]** Hard constraints from @dependency-rules.md are non-negotiable: never push to `main`, never push to a Dependabot branch, never modify `happyhq/ee/`, `.github/`, CI workflows, `dependabot.yml`, or licensing files. If the fixup would require any of these, apply `ralphie:skip-out-of-scope` and exit.
+**[2]** Hard constraints from @dependency-rules.md are non-negotiable: never push to `main`, never push to a Dependabot branch, never merge a Dependabot PR (the human is the gate, always), never modify `happyhq/ee/`, `.github/`, CI workflows, `dependabot.yml`, or licensing files. If the fixup would require any of these, apply `ralphie:skip-out-of-scope` and exit.
 **[3]** Cite the changelog. Every fixup commit message and the replacement PR body must reference the upstream changelog / migration guide entry that justifies the change. If you can't find a changelog entry for what you're fixing, you've drifted off the rails — stop and skip with `ralphie:skip-verification-failed`.
 **[4]** Smallest fixup. Don't refactor adjacent code. Don't update unrelated callers. Surface drift via PR-body comments, not by widening the diff.
 **[5]** Stop when surprised. If a test failure isn't predicted by the changelog, or you can't trace a diff line to a documented change, apply `ralphie:skip-verification-failed` and let the human take it.
 **[6]** AI disclosure in the replacement PR body is required by @CONTRIBUTING.md.
 **[7]** Always end on `main` with a clean working tree, even on skip paths.
-**[8]** Replacement PRs are not auto-merged. They go to the human's review queue. The loop's job ends at "complete, well-documented PR open."
+**[8]** Nothing the loop touches gets auto-merged. Path A ends at `ralphie:ready-to-merge` (label + summary comment); Path B ends at "replacement PR open." In both cases the merge button is the maintainer's.
