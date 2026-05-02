@@ -57,7 +57,7 @@
     "geist": "^1.4.1",
     "gray-matter": "^4.0.3",
     "input-otp": "^1.4.2",
-    "lucide-react": "^0.546.0",
+    "lucide-react": "^1.14.0",
     "mailparser": "^3.7.5",
     "mammoth": "^1.12.0",
     "nanoid": "^5.1.6",
