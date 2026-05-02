@@ -29,7 +29,11 @@ import {
 import { updateTaskMdPending } from '@/lib/fs/task-md.server'
 import type { IterationMetrics, PendingType, RunInfo } from '@/lib/fs/types'
 import { clearDirectory, writeTextFile } from '@/lib/fs/write.server'
-import { commitGitState, isTaskCompleted } from '@/lib/git/sync.server'
+import {
+  commitGitState,
+  getLatestTaskCommit,
+  isTaskCompleted,
+} from '@/lib/git/sync.server'
 
 import type { ChatStreamEvent } from '@/lib/chat/types'
 
@@ -679,6 +683,19 @@ async function runWorkingLoop(
       ? existingRun.iteration + 1
       : 1
 
+  // No-progress detection. The working prompt mandates a `git commit` per
+  // iteration. If the latest commit touching tasks/<task>/ doesn't advance for
+  // NO_PROGRESS_LIMIT consecutive iterations, the agent is stuck (e.g. plan
+  // already complete but `[done]` not emitted, or persistently confused).
+  // Stop early with a `no_progress` reason so the user sees a diagnosable
+  // failure instead of burning to maxIterations with `iteration_limit`.
+  //
+  // Threshold of 2 tolerates a single iteration that errored before commit
+  // ("fresh context self-heals"), but catches the actual stuck pattern.
+  const NO_PROGRESS_LIMIT = 2
+  let lastTaskCommit = getLatestTaskCommit(taskName)
+  let staleIterations = 0
+
   for (
     let iteration = startIteration;
     iteration <= maxIterations;
@@ -877,6 +894,43 @@ async function runWorkingLoop(
         duration_ms: Date.now() - iterStartMs,
         error: iterErrMsg,
       })
+
+      // No-progress check applies to errored iterations too — if the agent
+      // crashed before committing two iterations running, that's still stuck.
+      {
+        const currentCommit = getLatestTaskCommit(taskName)
+        if (currentCommit === lastTaskCommit) {
+          staleIterations++
+        } else {
+          staleIterations = 0
+          lastTaskCommit = currentCommit
+        }
+        if (staleIterations >= NO_PROGRESS_LIMIT) {
+          await writeRunInfo(taskName, {
+            status: 'stopped',
+            stoppedDuring: 'working',
+            stopReason: 'no_progress',
+            iteration,
+            startedAt,
+            lastIterationAt: new Date().toISOString(),
+            error: `No progress: agent committed no work for ${NO_PROGRESS_LIMIT} consecutive iterations`,
+            costUsd: totalCost,
+            planningCostUsd,
+            iterations: allIterations,
+            planningSessionId,
+            workingSessionIds,
+          })
+          log('run.stopped', {
+            task: taskName,
+            stream: streamName,
+            mode: 'working',
+            reason: 'no_progress',
+            iteration,
+            cost: totalCost,
+          })
+          return 'stopped'
+        }
+      }
       continue
     } finally {
       cleanup()
@@ -952,7 +1006,10 @@ async function runWorkingLoop(
       duration_ms: iterDurationMs,
     })
 
-    // Check for [done] in the latest commit touching this task
+    // Check for [done] in the latest commit touching this task. [done] wins
+    // over the no-progress check below: if the agent's final commit declares
+    // completion, honor it even if the same commit makes this iteration
+    // technically "stale" relative to the previous one.
     if (isTaskCompleted(taskName)) {
       await writeRunInfo(taskName, {
         status: 'completed',
@@ -975,6 +1032,45 @@ async function runWorkingLoop(
         duration_ms: Date.now() - new Date(startedAt).getTime(),
       })
       return 'completed'
+    }
+
+    // No-progress check: did this iteration advance the head of git log for
+    // tasks/<task>/? Agents that aren't committing any work (plan exhausted,
+    // confused, or stuck in a no-op loop) get caught here before burning
+    // through maxIterations.
+    {
+      const currentCommit = getLatestTaskCommit(taskName)
+      if (currentCommit === lastTaskCommit) {
+        staleIterations++
+      } else {
+        staleIterations = 0
+        lastTaskCommit = currentCommit
+      }
+      if (staleIterations >= NO_PROGRESS_LIMIT) {
+        await writeRunInfo(taskName, {
+          status: 'stopped',
+          stoppedDuring: 'working',
+          stopReason: 'no_progress',
+          iteration,
+          startedAt,
+          lastIterationAt: new Date().toISOString(),
+          error: `No progress: agent committed no work for ${NO_PROGRESS_LIMIT} consecutive iterations`,
+          costUsd: totalCost,
+          planningCostUsd,
+          iterations: allIterations,
+          planningSessionId,
+          workingSessionIds,
+        })
+        log('run.stopped', {
+          task: taskName,
+          stream: streamName,
+          mode: 'working',
+          reason: 'no_progress',
+          iteration,
+          cost: totalCost,
+        })
+        return 'stopped'
+      }
     }
   }
 
