@@ -141,7 +141,15 @@ These are guidance, not gates. The rules above are pass/fail; these tune _how_ a
 
 **The skim is a trigger to investigate, not a trigger to bail.** When the skim flags something — ownership change, secrets/auth handling refactor, security advisory, deprecation, breaking API change — read the linked PR/migration note, search the repo for usage of the affected behavior, and form a concrete impact verdict. The loop's value is the work; punting every flagged change to the human just shifts the same investigation onto them. Skip with `ralphie:skip-needs-review` only when the investigation reveals genuine concern or the impact is unclear after a real attempt — not as a default response to flagged keywords.
 
-**Lockfile-time errors are regenerable, not failures.** When `pnpm install --frozen-lockfile` fails with `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`, `ERR_PNPM_OUTDATED_LOCKFILE`, or similar tooling-state mismatches, that's a deterministic re-resolution — not a behavioral change. Run `pnpm install` (no frozen) to regenerate the lockfile, then proceed to verification. If verification with the regenerated lockfile is clean, the agent's "fixup" for Path B is the regenerated lockfile itself; no changelog citation is required because there's no behavioral delta to cite. Open a replacement PR with the regenerated lockfile and a comment quoting the original pnpm error.
+**Lockfile-time errors are regenerable, not failures — but preserve Dependabot's intent.** When `pnpm install --frozen-lockfile` fails with `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`, `ERR_PNPM_OUTDATED_LOCKFILE`, or similar tooling-state mismatches, that's a deterministic re-resolution — not a behavioral change. Run `pnpm install` (no frozen) to regenerate the lockfile, then proceed to verification. If verification is clean, open a replacement PR with the regenerated lockfile.
+
+**But** Dependabot's PR may carry intent that simple regeneration discards. Three sub-shapes require different recipes (see Path B.2 in the upgrade prompt):
+
+- **B.2.a — package.json + lockfile bumps (typical):** take both files from Dependabot's branch, re-run `pnpm install`.
+- **B.2.b — lockfile-only bumps (transitive):** take Dependabot's lockfile directly (`git checkout <dep-branch> -- pnpm-lock.yaml`), verify with `pnpm install --frozen-lockfile`. Don't re-resolve from current package.json — it'll reset the transitive bumps Dependabot intended.
+- **B.2.c — override-floor bump in lockfile (Dependabot raised `pnpm.overrides` snapshot but didn't update `package.json`):** read the lockfile diff to find the new floor, manually update `package.json`'s `pnpm.overrides.<pkg>` to match, then regenerate. Simply regenerating from current package.json silently undoes the floor and weakens security.
+
+The general principle: **the regenerated lockfile is the fix for tooling-state mismatch; package.json edits are the fix for tooling-intent loss.** Both can apply in the same PR.
 
 ## Tuning signal
 
