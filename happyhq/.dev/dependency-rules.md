@@ -12,16 +12,16 @@ Source of truth for how the deps loop processes open Dependabot PRs. Both `PROMP
 
 Apply in order — bail at the earliest stop. The first three are evaluable from the PR text alone (Phase 1 — triage). The last five only show up after attempting an upgrade (Phase 2).
 
-| #   | Condition                                                                                                                                                                                                                                                                                                                            | Label applied                      | What unblocks it                                                      |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- | --------------------------------------------------------------------- |
-| 1   | PR diff would touch `happyhq/ee/`, `.github/`, CI workflows, `dependabot.yml`, or licensing files — **except** PRs from the `dependabot/github_actions/*` branch family where the diff is limited to `uses:` line changes in workflow files (those are mechanical version pins, not authored CI edits, and are eligible for Phase 2) | `ralphie:skip-out-of-scope`        | Maintainer scopes the change; remove label                            |
-| 2   | CI on the PR is red and the failure is unrelated to the version bump (infra flake, lint config drift, network timeout, etc.)                                                                                                                                                                                                         | `ralphie:skip-ci-red`              | Investigate the CI failure; remove label                              |
-| 3   | Update is one of: framework major (`next`, `react`, `react-dom`); security-sensitive runtime major (auth, crypto, billing — e.g., `stripe` ≥2 majors at once, `instantdb`, JWT/OIDC libs); pre-1.0 → 1.0 jump on a runtime dep                                                                                                       | `ralphie:skip-manual-upgrade`      | Maintainer upgrades and reviews; remove label                         |
-| 4   | (Phase 2) Verification clean (lint/types/test/smoke) **and** changelog skim reveals nothing concerning                                                                                                                                                                                                                               | `ralphie:ready-to-merge`           | Maintainer reads Ralphie's summary comment, clicks merge              |
-| 5   | (Phase 2) Changelog skim flags a concerning item (ownership change, secrets/auth refactor, security advisory, deprecation we'd hit, breaking API change tests didn't catch)                                                                                                                                                          | `ralphie:skip-needs-review`        | Maintainer reviews the changelog; decides to merge, replace, or close |
-| 6   | (Phase 2) `pnpm format` / `pnpm lint` / `pnpm check-types` / `pnpm --filter=happyhq test` / `npx tsx scripts/smoke-test.ts` failed twice                                                                                                                                                                                             | `ralphie:skip-verification-failed` | Read Ralphie's comment; fix locally                                   |
-| 7   | (Phase 2) Fixups would exceed 10 files or 300 lines net added (`*.md`/`*.mdx` and lockfile/package.json excluded from the count)                                                                                                                                                                                                     | `ralphie:skip-too-big`             | Scope it down or do it manually                                       |
-| 8   | (Phase 2) Replacement PR shipped (breaking-change fixups path)                                                                                                                                                                                                                                                                       | `ralphie:replaced-by-#<new>`       | Terminal — the linked replacement PR closes the loop                  |
+| #   | Condition                                                                                                                                                                                                                                                                                                                            | Label applied                      | What unblocks it                                                                      |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- | ------------------------------------------------------------------------------------- |
+| 1   | PR diff would touch `happyhq/ee/`, `.github/`, CI workflows, `dependabot.yml`, or licensing files — **except** PRs from the `dependabot/github_actions/*` branch family where the diff is limited to `uses:` line changes in workflow files (those are mechanical version pins, not authored CI edits, and are eligible for Phase 2) | `ralphie:skip-out-of-scope`        | Maintainer scopes the change; remove label                                            |
+| 2   | CI on the PR is red and the failure is unrelated to the version bump (infra flake, lint config drift, network timeout, etc.)                                                                                                                                                                                                         | `ralphie:skip-ci-red`              | Investigate the CI failure; remove label                                              |
+| 3   | Update is one of: framework major (`next`, `react`, `react-dom`); security-sensitive runtime major (auth, crypto, billing — e.g., `stripe` ≥2 majors at once, `instantdb`, JWT/OIDC libs); pre-1.0 → 1.0 jump on a runtime dep                                                                                                       | `ralphie:skip-manual-upgrade`      | Maintainer upgrades and reviews; remove label                                         |
+| 4   | (Phase 2) Verification clean (lint/types/test/smoke) **and** changelog skim reveals nothing concerning                                                                                                                                                                                                                               | `ralphie:ready-to-merge`           | Maintainer reads Ralphie's summary comment, clicks merge                              |
+| 5   | (Phase 2) Changelog skim flags an item AND impact investigation reveals genuine concern for our codebase (or impact is unclear after investigation)                                                                                                                                                                                  | `ralphie:skip-needs-review`        | Maintainer reads Ralphie's investigation summary; decides to merge, replace, or close |
+| 6   | (Phase 2) `pnpm format` / `pnpm lint` / `pnpm check-types` / `pnpm --filter=happyhq test` / `npx tsx scripts/smoke-test.ts` failed twice                                                                                                                                                                                             | `ralphie:skip-verification-failed` | Read Ralphie's comment; fix locally                                                   |
+| 7   | (Phase 2) Fixups would exceed 10 files or 300 lines net added (`*.md`/`*.mdx` and lockfile/package.json excluded from the count)                                                                                                                                                                                                     | `ralphie:skip-too-big`             | Scope it down or do it manually                                                       |
+| 8   | (Phase 2) Replacement PR shipped (breaking-change fixups path)                                                                                                                                                                                                                                                                       | `ralphie:replaced-by-#<new>`       | Terminal — the linked replacement PR closes the loop                                  |
 
 A PR that passes rules 1–3 is **eligible** — it stays unlabeled and Phase 2 picks it up. Phase 2 takes one of two paths:
 
@@ -58,8 +58,30 @@ Ralphie verified this — ready to merge.
 - <bullet 2>
 - (link to upstream release notes)
 
+### Investigation
+(Include this section only if the changelog skim flagged anything. Otherwise omit.)
+- Flag: <e.g., "credential-persistence refactor at <link>">
+- What I checked: <e.g., "grep'd ci.yml and codeql.yml for any step depending on persisted git creds; none">
+- Verdict: <one sentence — why the flag doesn't bite us>
+
 ### Recommendation
 <one or two sentences — why this looks safe to merge for our usage>
+```
+
+## Comment shape (Path A skip — `skip-needs-review`)
+
+Used when investigation reveals genuine concern or unclear impact. Goes beyond the generic skip shape to surface the work already done.
+
+```
+Ralphie skipped this for: needs-review
+
+What I saw: <1–2 sentences — the changelog item that triggered investigation, with link>
+
+What I investigated: <2–4 bullets — the specific code/workflows/configs you checked, and what you found>
+
+What's still unclear: <1–2 sentences — why the human needs to weigh in: ambiguous impact, ownership change risk, deprecation timeline, etc.>
+
+What would unblock it: <1 sentence — concrete action for the maintainer>
 ```
 
 ## Comment shape (replacement, posted on the original Dependabot PR)
@@ -97,7 +119,11 @@ These are guidance, not gates. The rules above are pass/fail; these tune _how_ a
 
 **The human is the gate, always.** Ralphie never merges — not Dependabot's PRs, not replacement PRs. Path A's job is "verify, summarize, label `ready-to-merge`." Path B's job is "open a replacement PR with the breaking-change fixups documented." In both cases the merge button is the maintainer's. The loop's value is the verification work and the documentation, not the merge click.
 
-**Skim the changelog even when verification is clean.** Green CI doesn't catch supply-chain risk (maintainer compromise, ownership change, hostile release). It doesn't catch behavior changes that won't bite until production load. A 60-second changelog skim catches a lot of that at near-zero cost. If the changelog mentions ownership change, secrets/auth handling refactor, security advisory, or breaking API change, apply `ralphie:skip-needs-review` instead of `ready-to-merge` — even if every test passed.
+**Skim the changelog even when verification is clean, then investigate before deciding.** Green CI doesn't catch supply-chain risk (maintainer compromise, ownership change, hostile release). It doesn't catch behavior changes that won't bite until production load. A 60-second changelog skim catches a lot of that at near-zero cost.
+
+**But the skim is a trigger to investigate, not a trigger to bail.** When the skim flags something — ownership change, secrets/auth handling refactor, security advisory, deprecation, breaking API change — read the linked PR/migration note, search the repo for usage of the affected behavior, and form a concrete impact verdict. The loop's value is the work; punting every flagged change to the human just shifts the same investigation onto them. Skip with `ralphie:skip-needs-review` only when the investigation reveals genuine concern or the impact is unclear after a real attempt — not as a default response to flagged keywords.
+
+Concrete shape: changelog mentions a credential-storage refactor → grep workflows for steps that depend on credential storage location → if no consumer, comment the impact assessment and recommend merge; if there's a consumer and the change is benign, same; if there's a consumer and the impact is ambiguous, skip with the specific concern.
 
 ## Tuning signal
 
