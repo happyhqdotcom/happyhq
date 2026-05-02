@@ -44,6 +44,8 @@ What would unblock it: <1 sentence — concrete action for the human>
 
 ## Comment shape (Path A success — `ready-to-merge`)
 
+The `Changelog watch-list` section is **required, even when every item is null** — it's an audit trail proving the agent considered each watch item. A "no" is signal too.
+
 ```
 Ralphie verified this — ready to merge.
 
@@ -58,11 +60,12 @@ Ralphie verified this — ready to merge.
 - <bullet 2>
 - (link to upstream release notes)
 
-### Investigation
-(Include this section only if the changelog skim flagged anything. Otherwise omit.)
-- Flag: <e.g., "credential-persistence refactor at <link>">
-- What I checked: <e.g., "grep'd ci.yml and codeql.yml for any step depending on persisted git creds; none">
-- Verdict: <one sentence — why the flag doesn't bite us>
+### Changelog watch-list
+- Ownership: <"same maintainer (@<handle>)" or "ownership change — investigated → <verdict>">
+- Auth/secrets: <"none" or "<change> — investigated → <verdict>">
+- Security advisory: <"none referenced" or "<advisory> — investigated → <verdict>">
+- Deprecations: <"none we'd hit" or "<deprecation> — investigated → <verdict>">
+- Breaking API: <"none" or "<change> — investigated → <verdict>">
 
 ### Recommendation
 <one or two sentences — why this looks safe to merge for our usage>
