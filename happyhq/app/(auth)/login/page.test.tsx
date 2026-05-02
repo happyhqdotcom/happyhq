@@ -17,12 +17,30 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
 }))
 
-// Mock next/image to a plain img for simpler test output
+// Mock next/image to a plain img for simpler test output.
+// Strip props that next/image accepts but a raw <img> doesn't, so React
+// doesn't warn about boolean values being forwarded to unknown DOM attrs.
 vi.mock('next/image', () => ({
   default: ({
-    priority: _,
+    priority: _priority,
+    unoptimized: _unoptimized,
+    fill: _fill,
+    quality: _quality,
+    placeholder: _placeholder,
+    blurDataURL: _blurDataURL,
+    loader: _loader,
+    onLoadingComplete: _onLoadingComplete,
     ...props
-  }: React.ComponentProps<'img'> & { priority?: boolean }) => {
+  }: React.ComponentProps<'img'> & {
+    priority?: boolean
+    unoptimized?: boolean
+    fill?: boolean
+    quality?: number
+    placeholder?: string
+    blurDataURL?: string
+    loader?: unknown
+    onLoadingComplete?: unknown
+  }) => {
     // eslint-disable-next-line jsx-a11y/alt-text
     return <img {...props} />
   },
@@ -83,6 +101,19 @@ afterEach(() => {
 })
 
 describe('LoginPage', () => {
+  it('does not forward next/image-only props to the DOM', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    render(<LoginPage hasPasswordGate />)
+
+    const domAttrWarnings = errorSpy.mock.calls.filter((args) =>
+      String(args[0]).includes('for a non-boolean attribute'),
+    )
+    expect(domAttrWarnings).toEqual([])
+
+    errorSpy.mockRestore()
+  })
+
   it('renders a password input and sign-in button', () => {
     render(<LoginPage hasPasswordGate />)
 
