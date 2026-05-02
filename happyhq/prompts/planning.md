@@ -19,6 +19,8 @@ How to approach breaking the work into sessions:
 - If the work is genuinely trivial, plan one session.
 - If a session has too much work, split it into batches.
 
+Output paths: final deliverables go under `tasks/{{TASK_NAME}}/outputs/`. Drafts, calculations, and intermediate artifacts go under `tasks/{{TASK_NAME}}/working/`. Use these exact paths when listing outputs in the plan — never the task root.
+
 IMPORTANT: Plan only. Do NOT write anything other than plan.md. NEVER justify session design in the plan. Surface assumptions explicitly. If you notice mistakes in the inputs, fix and/or flag them. Flag choices where I might want something different. Reference specs and samples by filename. Use tables where helpful.
 
 CONSTRAINTS:
