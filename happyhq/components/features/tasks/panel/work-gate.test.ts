@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { shouldShowOutputsSection } from './outputs-gate'
+import { shouldShowWorkSection } from './work-gate'
 
-describe('shouldShowOutputsSection', () => {
+describe('shouldShowWorkSection', () => {
   describe('files exist on disk — visible regardless of run state', () => {
-    // Issue #144: outputs/ files must remain accessible whenever they're
-    // present on disk, even if .run.json claims a non-finished status.
+    // Issue #144: working/ and outputs/ files must remain accessible whenever
+    // they're present on disk, even if .run.json claims a non-finished status.
     const STATES = [
       null,
       'planning',
@@ -17,10 +17,10 @@ describe('shouldShowOutputsSection', () => {
     for (const taskStatus of STATES) {
       it(`shows the section when files exist and status is ${taskStatus}`, () => {
         expect(
-          shouldShowOutputsSection({
+          shouldShowWorkSection({
             taskStatus,
             stoppedDuringWorking: false,
-            hasOutputFiles: true,
+            hasWorkFiles: true,
           }),
         ).toBe(true)
       })
@@ -30,20 +30,20 @@ describe('shouldShowOutputsSection', () => {
   describe('no files on disk — gated by run state', () => {
     it('hides the section when idle and nothing has been written', () => {
       expect(
-        shouldShowOutputsSection({
+        shouldShowWorkSection({
           taskStatus: null,
           stoppedDuringWorking: false,
-          hasOutputFiles: false,
+          hasWorkFiles: false,
         }),
       ).toBe(false)
     })
 
     it('hides the section while planning so the work surface stays empty', () => {
       expect(
-        shouldShowOutputsSection({
+        shouldShowWorkSection({
           taskStatus: 'planning',
           stoppedDuringWorking: false,
-          hasOutputFiles: false,
+          hasWorkFiles: false,
         }),
       ).toBe(false)
     })
@@ -52,30 +52,30 @@ describe('shouldShowOutputsSection', () => {
       // Pre-issue-#144 behavior for the empty case is preserved: only the
       // file-presence path opens the gate prematurely.
       expect(
-        shouldShowOutputsSection({
+        shouldShowWorkSection({
           taskStatus: 'plan_ready',
           stoppedDuringWorking: false,
-          hasOutputFiles: false,
+          hasWorkFiles: false,
         }),
       ).toBe(false)
     })
 
     it('shows the section while working so live activity is visible', () => {
       expect(
-        shouldShowOutputsSection({
+        shouldShowWorkSection({
           taskStatus: 'working',
           stoppedDuringWorking: false,
-          hasOutputFiles: false,
+          hasWorkFiles: false,
         }),
       ).toBe(true)
     })
 
     it('shows the section when a working run was stopped, even with no files', () => {
       expect(
-        shouldShowOutputsSection({
+        shouldShowWorkSection({
           taskStatus: 'stopped',
           stoppedDuringWorking: true,
-          hasOutputFiles: false,
+          hasWorkFiles: false,
         }),
       ).toBe(true)
     })

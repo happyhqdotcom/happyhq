@@ -38,7 +38,7 @@ import {
 } from '@/components/features/tasks/atoms/section-header'
 import { WorkingRow } from '@/components/features/tasks/atoms/working-row'
 import { useOptimisticUploads } from '@/components/features/tasks/hooks/use-optimistic-uploads'
-import { shouldShowOutputsSection } from '@/components/features/tasks/panel/outputs-gate'
+import { shouldShowWorkSection } from '@/components/features/tasks/panel/work-gate'
 import {
   deleteFile,
   deleteTaskByLocation,
@@ -232,7 +232,7 @@ export function TaskPanel({
 
   const outputs = taskContent?.outputs ?? []
   const workingFiles = taskContent?.working ?? []
-  const hasOutputFiles = outputs.length > 0 || workingFiles.length > 0
+  const hasWorkFiles = outputs.length > 0 || workingFiles.length > 0
   const iterations = taskContent?.run?.iterations ?? []
   const hadPlanning = (taskContent?.run?.planningCostUsd ?? 0) > 0
   const planDurationMs = hadPlanning ? (iterations[0]?.durationMs ?? 0) : 0
@@ -534,11 +534,11 @@ export function TaskPanel({
             )}
 
             {/* Work section — active, stopped during working, finished, or
-                any time output files exist on disk (see issue #144) */}
-            {shouldShowOutputsSection({
+                any time work files exist on disk (see issue #144) */}
+            {shouldShowWorkSection({
               taskStatus,
               stoppedDuringWorking,
-              hasOutputFiles,
+              hasWorkFiles,
             }) && (
               <div className="animate-fade-in-fast">
                 <hr className="border-zinc-200" />
@@ -619,9 +619,7 @@ export function TaskPanel({
                           : undefined
                       }
                     />
-                  ) : (
-                    <SectionHeader label="Outputs" />
-                  )}
+                  ) : null}
                   <FileList
                     files={outputs}
                     onFileClick={(file) =>
