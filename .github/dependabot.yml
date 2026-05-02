@@ -10,6 +10,13 @@ updates:
         update-types:
           - minor
           - patch
+        # Agent / AI SDKs are excluded from the group so they get their own
+        # PRs. Even patch bumps can shift LLM behavior (tool schemas, default
+        # params, retry semantics, prompt caching) in ways the test suite
+        # can't observe — they need individual review.
+        exclude-patterns:
+          - '@anthropic-ai/claude-agent-sdk'
+          - '@anthropic-ai/sdk'
     ignore:
       - dependency-name: next
         update-types:
