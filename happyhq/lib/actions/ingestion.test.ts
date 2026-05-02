@@ -113,7 +113,7 @@ const MOCK_TOKEN = 'test-refresh-token'
 import { ingestTaskInput, setupTaskFromChat, uploadFile } from './ingestion'
 
 afterEach(() => {
-  vi.restoreAllMocks()
+  vi.resetAllMocks()
 })
 
 // --- uploadFile ---
