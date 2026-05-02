@@ -16,14 +16,22 @@
 4. **Branch on the result:**
 
    **Path A — clean (verification passed):**
-   - **Skim the upstream changelog / release notes** for the version delta. Look for any of:
+   - **Skim the upstream changelog / release notes** for the version delta. Note any of:
      - Ownership change (different maintainer or org publishing the release)
      - Secrets / auth / token handling refactor
      - Security advisory referenced in the release
-     - Deprecation we'd hit (grep the repo for callers of any deprecated API)
+     - Deprecation we might hit
      - Breaking API change that the test suite might not cover
-   - **If the changelog flags any of the above:** apply `ralphie:skip-needs-review` to the PR with a comment quoting the concerning item and linking the changelog. Use the rules-shape skip comment format. Return to main, exit.
-   - **If the changelog is clean:** post the rules-shape `ready-to-merge` summary comment on the PR (verification status, 2–4 changelog highlights with link, one-or-two-sentence recommendation), then label: `gh pr edit ${PR_NUMBER} --add-label "ralphie:ready-to-merge"`.
+   - **If nothing in the skim raises a flag**, jump to "Post the comment" below.
+   - **If something is flagged, do NOT immediately skip — investigate the impact for our codebase before deciding.** This is the loop's job, not the human's. For each flag:
+     - Read the linked PR / issue / migration note for the specific change. Understand what concretely changed (file paths, behavior, defaults, env vars, etc.).
+     - Search the repo for any code, workflow, or config that depends on the affected behavior. Use grep, file reads, and Sonnet subagents in parallel for breadth.
+     - Form a concrete impact verdict, with evidence:
+       - **"Doesn't affect our usage"** — cite the specific evidence (e.g., "grep finds no caller of `db.transact()` with a callback signature; the v6 API change to that signature can't bite us"). Proceed to ready-to-merge.
+       - **"Affects our usage and the change is benign / a clear improvement"** — cite the evidence and reason it's safe (e.g., "we use `actions/checkout` with default `persist-credentials: true`; the new `$RUNNER_TEMP` storage location is functionally equivalent and doesn't break any subsequent step in our workflows"). Proceed to ready-to-merge.
+       - **"Affects our usage and impact is unclear after investigation, OR the change introduces real risk we can't size from the available info"** — apply `ralphie:skip-needs-review` with a comment that includes (a) what the change is, (b) what you investigated, (c) what's still unclear and why a human needs to weigh in. Return to main, exit.
+   - **Post the comment** on the PR using the rules-shape `ready-to-merge` format: verification status, 2–4 changelog highlights with link, **investigation summary** (if anything was flagged and cleared), and one-or-two-sentence recommendation.
+   - **Apply the label**: `gh pr edit ${PR_NUMBER} --add-label "ralphie:ready-to-merge"`.
    - Return to main: `git checkout main && git pull`.
    - Exit. **Do not merge. The human reviews the comment and clicks merge.**
 
