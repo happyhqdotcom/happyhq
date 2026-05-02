@@ -17,7 +17,12 @@ vi.mock('node:child_process', () => ({
   execFileSync: mockExecFileSync,
 }))
 
-import { commitGitState, isTaskCompleted, syncGitState } from './sync.server'
+import {
+  commitGitState,
+  getLatestTaskCommit,
+  isTaskCompleted,
+  syncGitState,
+} from './sync.server'
 
 afterEach(() => {
   vi.clearAllMocks()
@@ -162,6 +167,44 @@ describe('isTaskCompleted', () => {
       'tasks/my-task; rm -rf /',
     ])
     expect(opts).toMatchObject({ cwd: MOCK_ROOT, encoding: 'utf8' })
+  })
+})
+
+describe('getLatestTaskCommit', () => {
+  it('returns the SHA from git log', () => {
+    mockExecFileSync.mockReturnValue('abc123def\n')
+
+    expect(getLatestTaskCommit('my-task')).toBe('abc123def')
+  })
+
+  it('returns null when git log returns empty output (no commits)', () => {
+    mockExecFileSync.mockReturnValue('')
+
+    expect(getLatestTaskCommit('my-task')).toBeNull()
+  })
+
+  it('returns null when execFileSync throws', () => {
+    mockExecFileSync.mockImplementation(() => {
+      throw new Error('not a git repository')
+    })
+
+    expect(getLatestTaskCommit('my-task')).toBeNull()
+  })
+
+  it('passes the task path as a discrete argv element', () => {
+    mockExecFileSync.mockReturnValue('')
+
+    getLatestTaskCommit('my-task; rm -rf /')
+
+    const [file, args] = mockExecFileSync.mock.calls[0]
+    expect(file).toBe('git')
+    expect(args).toEqual([
+      'log',
+      '--format=%H',
+      '-1',
+      '--',
+      'tasks/my-task; rm -rf /',
+    ])
   })
 })
 

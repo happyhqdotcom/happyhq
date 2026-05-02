@@ -28,6 +28,7 @@ const {
   mockPlanningAgentOptions,
   mockWorkingAgentOptions,
   mockIsTaskCompleted,
+  mockGetLatestTaskCommit,
   mockWriteTextFile,
   mockClearDirectory,
   mockIsBillingEnabled,
@@ -60,6 +61,10 @@ const {
       }),
     ),
     mockIsTaskCompleted: vi.fn().mockReturnValue(false),
+    // Defaults to a fresh SHA per call so tests that don't care about the
+    // no-progress check keep passing — the loop sees commit advance every
+    // iteration and never trips the staleness counter.
+    mockGetLatestTaskCommit: vi.fn(() => `sha-${Math.random()}`),
     mockWriteTextFile: vi.fn(),
     mockClearDirectory: vi.fn(),
     mockIsBillingEnabled: vi.fn().mockReturnValue(false),
@@ -92,6 +97,7 @@ vi.mock('@/lib/git/sync.server', () => ({
   syncGitState: vi.fn(),
   commitGitState: vi.fn(),
   isTaskCompleted: mockIsTaskCompleted,
+  getLatestTaskCommit: mockGetLatestTaskCommit,
 }))
 
 vi.mock('@/lib/fs/write.server', () => ({
@@ -367,6 +373,45 @@ describe('working mode', () => {
     const writes = getRunInfoWrites()
     const terminal = writes[writes.length - 1]
     expect(terminal.status).toBe('completed')
+  })
+
+  it('stops with no_progress when agent commits nothing for 2 consecutive iterations', async () => {
+    mockQuery.mockImplementation(() => fakeQuery([]))
+    mockIsTaskCompleted.mockReturnValue(false)
+    // Same SHA every call → loop sees no commit advance → staleness trips
+    mockGetLatestTaskCommit.mockReturnValue('stuck-sha')
+
+    await startRun('s1', 't1', 'working')
+    await _waitForLoop()
+
+    const writes = getRunInfoWrites()
+    const terminal = writes[writes.length - 1]
+    expect(terminal).toMatchObject({
+      status: 'stopped',
+      stopReason: 'no_progress',
+      iteration: 2,
+    })
+    expect(terminal.error).toContain('No progress')
+  })
+
+  it('does not trip no_progress when agent commits something every iteration', async () => {
+    mockQuery.mockImplementation(() => fakeQuery([]))
+    mockIsTaskCompleted.mockReturnValue(false)
+    // Distinct SHAs each call → commit "advances" every iteration → never stale
+    let n = 0
+    mockGetLatestTaskCommit.mockImplementation(() => `sha-${n++}`)
+
+    await startRun('s1', 't1', 'working')
+    await _waitForLoop()
+
+    // Should hit iteration_limit (maxIterations=3), not no_progress
+    const writes = getRunInfoWrites()
+    const terminal = writes[writes.length - 1]
+    expect(terminal).toMatchObject({
+      status: 'stopped',
+      stopReason: 'iteration_limit',
+      iteration: 3,
+    })
   })
 
   it('continues iterating when isTaskCompleted returns false', async () => {

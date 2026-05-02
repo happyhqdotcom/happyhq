@@ -62,6 +62,22 @@ Hardcoded at 20 iterations (`MAX_ITERATIONS` in `lib/constants.ts`). A safety va
 
 This is not expected behavior. Well-scoped plans should complete within the limit. If Q is hitting the limit, the plan is too broad or Q is stuck — either way, human judgment is needed.
 
+## No-Progress Stop
+
+A second safety valve, tighter than the iteration limit. The working prompt mandates a `git commit` per iteration. If the latest commit touching `tasks/{taskName}/` doesn't advance for 2 consecutive iterations, the loop halts and writes `status: 'stopped'` with `stopReason: 'no_progress'` to `.run.json`.
+
+After each iteration (success or error path), the loop reads `git log --format=%H -1 -- tasks/{taskName}` and compares the SHA to the one captured at the start. Same SHA → "stale" counter increments; new SHA → counter resets. When the counter hits 2, the run stops early.
+
+Why a separate signal from `iteration_limit`:
+
+- **Catches stuck runs cheaper.** A confused or already-finished agent that keeps iterating without committing burns ~$0.40/iter for nothing. No-progress catches it after iter 2 instead of iter 20.
+- **More diagnosable.** `iteration_limit` reads as "Q needed more iterations." `no_progress` reads as "Q stalled" — different remediation. The first suggests scope; the second suggests the plan is exhausted or the agent is confused.
+- **Hardened, not heuristic.** The check is binary (commit advanced or not), so it doesn't kill good runs. A working agent commits every iteration per the prompt.
+
+Threshold of 2 (not 1) tolerates a single iteration that errored before commit — fresh-context retry can self-heal one bad iteration. Two in a row indicates a real problem.
+
+**Watch for in the wild:** if `no_progress` fires on legitimate runs, the candidates are (a) the agent intentionally not committing because it had nothing to add — but the working prompt forbids this; (b) commits landing somewhere outside `tasks/{taskName}/` so `git log -- <path>` doesn't see them — possible if the agent edits stream-level files; (c) network/SDK errors before commit twice in a row — rare. If false positives appear, the fix is to widen the path the check looks at, not to weaken the threshold.
+
 ## What Q Produces
 
 - **Working artifacts** in `working/` — Q's breadcrumbs. Extracted facts, draft sections, analysis notes. These show Q's process, not just its output. The detail of what artifacts look like is the prompt's job.
@@ -180,7 +196,7 @@ interface RunInfo {
     | 'stopped'
   stoppedDuring?: 'discovery' | 'planning' | 'working'
   queuedAt?: string // ISO 8601 — set when status is 'queued'
-  stopReason?: 'budget' | 'user' | 'error' | 'iteration_limit'
+  stopReason?: 'budget' | 'user' | 'error' | 'iteration_limit' | 'no_progress'
   startedAt: string // ISO 8601 timestamp
   lastIterationAt: string // ISO 8601 timestamp, updated after each phase/iteration
   error: string | null
@@ -206,17 +222,17 @@ One run at a time per task. Start reads `.run.json` to check — if `status` is 
 
 Eight states. No error state — if the loop crashes, status is `stopped` with the `error` field populated.
 
-| Status        | Entry trigger                                                     | Desktop renders                                                                                                                                                                                                         | User actions                                       |
-| ------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `queued`      | Start Task when concurrency limit reached                         | Task card shows "Queued". Auto-starts when a slot opens.                                                                                                                                                                | Stop button (cancels queue entry).                 |
-| `discovering` | Start Task clicked / Start button clicked / dequeued              | Island shows discovery activity; questions render in island when Q asks. See [Discovery](discovery.md).                                                                                                                 | Stop button (in island).                           |
-| `planning`    | Discovery completes (auto-transition) / restart from plan         | Island shows planning activity (spinner, activity steps).                                                                                                                                                               | Stop button (in island).                           |
-| `plan_ready`  | Planning agent completes successfully                             | Plan auto-opens as window. PlanApproval replaces island.                                                                                                                                                                | Approve (starts working) or open sidebar to teach. |
-| `working`     | Approve clicked / Start button clicked (after planning completes) | Island shows activity steps, task icons show files.                                                                                                                                                                     | Stop button (in island).                           |
-| `completed`   | `[done]` found in git commit message                              | All files listed, outputs viewable.                                                                                                                                                                                     | Start button (restart from scratch).               |
-| `stopped`     | User stop, crash, iteration limit, or billing limit               | Progress shows what completed. Error field shown if present. `stopReason` discriminates the cause: `budget` shows Continue + upgrade prompt (violet); `user`/`error`/`iteration_limit` show Restart + Continue (amber). | Continue (resumes) or Restart (from scratch).      |
+| Status        | Entry trigger                                                     | Desktop renders                                                                                                                                                                                                                       | User actions                                       |
+| ------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `queued`      | Start Task when concurrency limit reached                         | Task card shows "Queued". Auto-starts when a slot opens.                                                                                                                                                                              | Stop button (cancels queue entry).                 |
+| `discovering` | Start Task clicked / Start button clicked / dequeued              | Island shows discovery activity; questions render in island when Q asks. See [Discovery](discovery.md).                                                                                                                               | Stop button (in island).                           |
+| `planning`    | Discovery completes (auto-transition) / restart from plan         | Island shows planning activity (spinner, activity steps).                                                                                                                                                                             | Stop button (in island).                           |
+| `plan_ready`  | Planning agent completes successfully                             | Plan auto-opens as window. PlanApproval replaces island.                                                                                                                                                                              | Approve (starts working) or open sidebar to teach. |
+| `working`     | Approve clicked / Start button clicked (after planning completes) | Island shows activity steps, task icons show files.                                                                                                                                                                                   | Stop button (in island).                           |
+| `completed`   | `[done]` found in git commit message                              | All files listed, outputs viewable.                                                                                                                                                                                                   | Start button (restart from scratch).               |
+| `stopped`     | User stop, crash, iteration limit, no-progress, or billing limit  | Progress shows what completed. Error field shown if present. `stopReason` discriminates the cause: `budget` shows Continue + upgrade prompt (violet); `user`/`error`/`iteration_limit`/`no_progress` show Restart + Continue (amber). | Continue (resumes) or Restart (from scratch).      |
 
-Transitions: `queued → discovering → planning → plan_ready → working → completed` is the happy path. Discovery auto-transitions to planning (server-driven, no user action — see [Discovery](discovery.md)). `queued` transitions to `discovering` or `planning` automatically when a concurrency slot opens (see [Concurrency](concurrency.md)). Any state can transition to `stopped` via user stop, error, or billing limit. `stopReason` captures why: `'budget'` (billing limit), `'user'` (user clicked Stop), `'error'` (crash/auth failure), `'iteration_limit'` (hit max iterations). Budget stops auto-resume on Continue; other stops require explicit `resume: true`. `stoppedDuring` records which phase was active when stopped.
+Transitions: `queued → discovering → planning → plan_ready → working → completed` is the happy path. Discovery auto-transitions to planning (server-driven, no user action — see [Discovery](discovery.md)). `queued` transitions to `discovering` or `planning` automatically when a concurrency slot opens (see [Concurrency](concurrency.md)). Any state can transition to `stopped` via user stop, error, or billing limit. `stopReason` captures why: `'budget'` (billing limit), `'user'` (user clicked Stop), `'error'` (crash/auth failure), `'iteration_limit'` (hit max iterations), `'no_progress'` (agent committed nothing for 2 consecutive iterations — see [No-Progress Stop](#no-progress-stop)). Budget stops auto-resume on Continue; other stops require explicit `resume: true`. `stoppedDuring` records which phase was active when stopped.
 
 ### Minimal In-Memory State
 
@@ -322,6 +338,7 @@ The island's `TaskWorkingContent` renders the most recent step's label and detai
 - [x] Q commits to git as part of each iteration (see [Git Layer](git-layer.md)) _(prompt scope, not loop implementation — `prompts/working.md` line 14 instructs `git add -A && git commit`)_
 - [x] App checks git log for `[done]` after each iteration; loop ends when found
 - [x] Loop halts after 20 iterations if `[done]` not found; writes `status: 'stopped'` with `error: 'Iteration limit reached'` to `.run.json`
+- [x] Loop halts early with `stopReason: 'no_progress'` when the latest commit on `tasks/{taskName}/` doesn't advance for 2 consecutive iterations
 - [x] Loop continues on agent errors — fresh iteration, fresh context
 - [x] User can stop the loop at any time; `abortController.abort()` terminates the current iteration immediately
 - [x] After stopping, user can start a new plan + run for the same task (via "No, start over" in plan approval or restart from sidebar)
@@ -344,6 +361,7 @@ Run loop — working mode (`lib/run/loop.server.test.ts`):
 
 - [x] Iterative loop with `[done]` completion detection in git log (`lib/run/loop.server.test.ts`)
 - [x] MAX_ITERATIONS (20) safety valve halts loop (`lib/run/loop.server.test.ts`)
+- [x] No-progress stop fires when 2 consecutive iterations don't advance the task's git head (`lib/run/loop.server.test.ts`)
 - [x] Error continuation — fresh iteration after failure (`lib/run/loop.server.test.ts`)
 - [x] No `[done]` in git log → loop continues to next iteration (`lib/run/loop.server.test.ts`)
 - [x] Concurrent run prevention (409) (`lib/run/loop.server.test.ts`)

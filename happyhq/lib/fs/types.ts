@@ -21,7 +21,7 @@ export interface IterationMetrics {
 export interface RunInfo {
   status: 'planning' | 'plan_ready' | 'working' | 'completed' | 'stopped'
   stoppedDuring?: 'planning' | 'working' // which phase was active when stopped
-  stopReason?: 'budget' | 'user' | 'error' | 'iteration_limit'
+  stopReason?: 'budget' | 'user' | 'error' | 'iteration_limit' | 'no_progress'
   iteration: number // 0 on initial write, 1-based during/after iterations
   startedAt: string // ISO 8601 timestamp
   lastIterationAt: string // ISO 8601 timestamp, updated after each iteration

@@ -70,6 +70,31 @@ export function isTaskCompleted(taskName: string): boolean {
   }
 }
 
+/**
+ * Get the SHA of the most recent commit touching a task's directory, or null
+ * if no commits exist (or git errors). Used by the working loop to detect
+ * iterations where the agent didn't commit any work — a "no progress" signal
+ * that catches stuck runs before they burn through the iteration cap.
+ */
+export function getLatestTaskCommit(taskName: string): string | null {
+  try {
+    const taskDir = `tasks/${taskName}`
+    const sha = execFileSync(
+      'git',
+      ['log', '--format=%H', '-1', '--', taskDir],
+      {
+        cwd: HAPPYHQ_ROOT,
+        encoding: 'utf8',
+        timeout: 5000,
+        stdio: 'pipe',
+      },
+    ).trim()
+    return sha || null
+  } catch {
+    return null
+  }
+}
+
 export function syncGitState(): void {
   try {
     const status = execSync('git status --porcelain', {
