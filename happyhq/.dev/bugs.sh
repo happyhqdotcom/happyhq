@@ -79,23 +79,31 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR" || exit 1
 
 # ── Worktree-aware base branch resolution ──
-# Loops run from the primary checkout (on `main`) or from a sibling worktree
-# (on `loop/bugs`). Snap whichever branch we're on to origin/main so the agent
-# starts from a clean, up-to-date base. The prompts use $BASE_BRANCH instead
-# of literal `main` for checkout/return paths so they work in both locations.
-CURRENT_BRANCH=$(git branch --show-current)
-case "$CURRENT_BRANCH" in
-    main|loop/bugs)
-        BASE_BRANCH="$CURRENT_BRANCH"
+# The expected branch is determined by the worktree path, not by whatever
+# branch happens to be checked out — that prevents the silent drift where
+# the bugs worktree gets nudged onto `main` and the wrapper happily proceeds,
+# leaving the maintainer's primary checkout unable to switch back to main.
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+case "$REPO_ROOT" in
+    */happyhq-bugs)
+        BASE_BRANCH="loop/bugs"
+        ;;
+    */happyhq)
+        BASE_BRANCH="main"
         ;;
     *)
-        echo -e "  ${RED}Error: bugs.sh must be run from 'main' (primary checkout) or 'loop/bugs' (bugs worktree). Currently on: $CURRENT_BRANCH${RESET}" >&2
+        echo -e "  ${RED}Error: bugs.sh must run from the primary checkout (.../happyhq) or the bugs worktree (.../happyhq-bugs). Current: ${REPO_ROOT}${RESET}" >&2
         exit 1
         ;;
 esac
 export BASE_BRANCH
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
+CURRENT_BRANCH=$(git branch --show-current)
+if [ "$CURRENT_BRANCH" != "$BASE_BRANCH" ]; then
+    echo -e "  ${RED}Error: ${REPO_ROOT} should be on '${BASE_BRANCH}', not '${CURRENT_BRANCH}'.${RESET}" >&2
+    echo -e "  ${DIM}Fix: git -C ${REPO_ROOT} checkout ${BASE_BRANCH}${RESET}" >&2
+    exit 1
+fi
 
 # Guard against losing uncommitted work — the next step is `git reset --hard`.
 if [ -n "$(git status --porcelain)" ]; then

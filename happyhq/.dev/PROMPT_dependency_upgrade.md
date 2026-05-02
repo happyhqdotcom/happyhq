@@ -11,10 +11,10 @@
    - `pnpm lint`
    - `pnpm check-types`
    - `pnpm --filter=happyhq test`
-   - `npx tsx scripts/smoke-test.ts` — needs a dev server. **You MUST start it on port 3456, not the default 3000.** Port 3000 is reserved for the maintainer's own dev server (and may also be in use by the bugs loop's worktree). Using 3000 risks an EADDRINUSE failure or — worse — running the smoke test against an unrelated server. Recipe:
-     1. Start the server in the background: `(cd ../happyhq && PORT=3456 pnpm dev > /tmp/dev-3456.log 2>&1 &)` — or use the Bash tool's `run_in_background: true` with the same command (preferred — gives you a task ID to stop cleanly).
-     2. Wait for ready: poll `until curl -sf http://localhost:3456/api/auth/status > /dev/null 2>&1; do sleep 2; done` with the Monitor tool, OR manually re-curl every few seconds. Don't blind-`sleep 30`.
-     3. Run the test: `PORT=3456 npx tsx scripts/smoke-test.ts`.
+   - `npx tsx scripts/smoke-test.ts` — needs a dev server. **Use port `${SMOKE_PORT}` (set by the wrapper). Do not pick another port.** Port 3000 is reserved for the maintainer's own dev server and may also be in use by another worktree; an unrelated port risks EADDRINUSE failures or — worse — running the smoke test against an unrelated server. Recipe:
+     1. Start the server in the background: `(cd ../happyhq && PORT=${SMOKE_PORT} pnpm dev > /tmp/dev-${SMOKE_PORT}.log 2>&1 &)` — or use the Bash tool's `run_in_background: true` with the same command (preferred — gives you a task ID to stop cleanly).
+     2. Wait for ready: poll `until curl -sf http://localhost:${SMOKE_PORT}/api/auth/status > /dev/null 2>&1; do sleep 2; done` with the Monitor tool, OR manually re-curl every few seconds. Don't blind-`sleep 30`.
+     3. Run the test: `PORT=${SMOKE_PORT} npx tsx scripts/smoke-test.ts`.
      4. Kill the server: TaskStop on the background task ID, or `pkill -f "next dev"` as a fallback.
 
 4. **Branch on the result:**
