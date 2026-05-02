@@ -1,5 +1,13 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+} from 'vitest'
 
 // Mock Catalyst Dialog — uses Headless UI portals/transitions that don't work in jsdom.
 // Other Catalyst components (Button, Input, Field) render as standard HTML.
@@ -27,12 +35,14 @@ vi.mock('@/components/common/catalyst/dialog', () => ({
 import { NameInputDialog } from './name-dialog'
 
 describe('NameInputDialog', () => {
-  let onClose: ReturnType<typeof vi.fn>
-  let onSubmit: ReturnType<typeof vi.fn>
+  let onClose: Mock<() => void>
+  let onSubmit: Mock<(name: string) => Promise<void>>
 
   beforeEach(() => {
-    onClose = vi.fn()
-    onSubmit = vi.fn().mockResolvedValue(undefined)
+    onClose = vi.fn<() => void>()
+    onSubmit = vi
+      .fn<(name: string) => Promise<void>>()
+      .mockResolvedValue(undefined)
   })
 
   afterEach(() => {

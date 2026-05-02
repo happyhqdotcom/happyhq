@@ -30,7 +30,7 @@ describe('readLogs', () => {
   afterEach(() => {
     fs.rmSync(testDir, { recursive: true, force: true })
     vi.useRealTimers()
-    vi.restoreAllMocks()
+    vi.resetAllMocks()
   })
 
   it('returns recent entries from today in reverse order', () => {

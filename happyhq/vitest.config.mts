@@ -12,16 +12,8 @@ export default defineConfig({
     testTimeout: 10_000,
     exclude: [...configDefaults.exclude, 'tests/**/*.spec.ts'],
     pool: process.env.CI ? 'forks' : 'threads',
-    poolOptions: {
-      threads: {
-        maxThreads: 2,
-        minThreads: 1,
-      },
-      forks: {
-        maxForks: 2,
-        minForks: 1,
-      },
-    },
+    maxWorkers: 2,
+    clearMocks: true,
   },
   resolve: {
     alias: {

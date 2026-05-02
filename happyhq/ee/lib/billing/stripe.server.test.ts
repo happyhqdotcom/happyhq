@@ -35,13 +35,13 @@ vi.mock('@/lib/database/instant.server', () => ({
 }))
 
 vi.mock('stripe', () => ({
-  default: vi.fn(() => ({
-    customers: { create: mockStripeCustomersCreate },
-    subscriptions: {
+  default: class MockStripe {
+    customers = { create: mockStripeCustomersCreate }
+    subscriptions = {
       cancel: mockStripeSubscriptionsCancel,
       update: mockStripeSubscriptionsUpdate,
-    },
-  })),
+    }
+  },
 }))
 
 describe('stripe.server', () => {

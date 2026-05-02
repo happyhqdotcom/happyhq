@@ -1,3 +1,4 @@
+import type { ChatStreamEvent } from '@/lib/chat/types'
 import { describe, expect, it, vi } from 'vitest'
 
 const mockReadFileSync = vi.hoisted(() => vi.fn(() => 'prompt content'))
@@ -144,7 +145,9 @@ describe('learningAgentOptions', () => {
   })
 
   describe('canUseTool', () => {
-    async function getCanUseTool(notifyClient?: ReturnType<typeof vi.fn>) {
+    async function getCanUseTool(
+      notifyClient?: (event: ChatStreamEvent) => void,
+    ) {
       const opts = await learningAgentOptions('my-stream', 'session-uuid-1', {
         notifyClient,
       })
