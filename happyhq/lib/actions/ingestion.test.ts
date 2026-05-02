@@ -520,18 +520,23 @@ describe('setupTaskFromChat', () => {
   })
 
   it('skips missing upload directories instead of throwing', async () => {
-    mockMkdir.mockResolvedValue(undefined)
-    mockWriteFile.mockResolvedValue(undefined)
-    mockRename.mockResolvedValue(undefined)
-    mockExistsSync.mockReturnValueOnce(true).mockReturnValueOnce(false)
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      mockMkdir.mockResolvedValue(undefined)
+      mockWriteFile.mockResolvedValue(undefined)
+      mockRename.mockResolvedValue(undefined)
+      mockExistsSync.mockReturnValueOnce(true).mockReturnValueOnce(false)
 
-    await setupTaskFromChat('my-task-01abc', 'sess-1', 'Ctx', [
-      'exists',
-      'gone',
-    ])
+      await setupTaskFromChat('my-task-01abc', 'sess-1', 'Ctx', [
+        'exists',
+        'gone',
+      ])
 
-    expect(mockRename).toHaveBeenCalledTimes(1)
-    expect(mockWriteFile).toHaveBeenCalled()
+      expect(mockRename).toHaveBeenCalledTimes(1)
+      expect(mockWriteFile).toHaveBeenCalled()
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 
   it('commits with [tasks/slug] Chat inputs message', async () => {

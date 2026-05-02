@@ -189,17 +189,22 @@ describe('usage.server', () => {
     })
 
     it('returns null when no current usage period exists for paid user', async () => {
-      mockQuery.mockResolvedValueOnce({
-        usage: [],
-        // Active subscription — paid user whose invoice.paid hasn't fired yet
-        subscriptions: [{ status: 'active', tier: 'pro' }],
-      })
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        mockQuery.mockResolvedValueOnce({
+          usage: [],
+          // Active subscription — paid user whose invoice.paid hasn't fired yet
+          subscriptions: [{ status: 'active', tier: 'pro' }],
+        })
 
-      const { startTaskRun } = await import('./usage.server')
-      const result = await startTaskRun('user-1', 'my-stream', 'my-task')
+        const { startTaskRun } = await import('./usage.server')
+        const result = await startTaskRun('user-1', 'my-stream', 'my-task')
 
-      expect(result).toBeNull()
-      expect(mockTransact).not.toHaveBeenCalled()
+        expect(result).toBeNull()
+        expect(mockTransact).not.toHaveBeenCalled()
+      } finally {
+        warnSpy.mockRestore()
+      }
     })
   })
 

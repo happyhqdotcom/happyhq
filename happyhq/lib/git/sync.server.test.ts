@@ -64,20 +64,30 @@ describe('syncGitState', () => {
   })
 
   it('does not throw when git status fails', () => {
-    mockExecSync.mockImplementation(() => {
-      throw new Error('git not found')
-    })
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      mockExecSync.mockImplementation(() => {
+        throw new Error('git not found')
+      })
 
-    expect(() => syncGitState()).not.toThrow()
+      expect(() => syncGitState()).not.toThrow()
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 
   it('does not throw when git commit fails', () => {
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (cmd.startsWith('git status')) return Buffer.from('M file.txt')
-      throw new Error('commit failed: nothing to commit')
-    })
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      mockExecSync.mockImplementation((cmd: string) => {
+        if (cmd.startsWith('git status')) return Buffer.from('M file.txt')
+        throw new Error('commit failed: nothing to commit')
+      })
 
-    expect(() => syncGitState()).not.toThrow()
+      expect(() => syncGitState()).not.toThrow()
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 
   it('logs a warning when an error occurs', () => {
@@ -266,21 +276,31 @@ describe('commitGitState', () => {
   })
 
   it('does not throw when git status fails', () => {
-    mockExecFileSync.mockImplementation(() => {
-      throw new Error('git not found')
-    })
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      mockExecFileSync.mockImplementation(() => {
+        throw new Error('git not found')
+      })
 
-    expect(() => commitGitState('[x] Create stream')).not.toThrow()
+      expect(() => commitGitState('[x] Create stream')).not.toThrow()
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 
   it('does not throw when git commit fails', () => {
-    mockExecFileSync.mockImplementation((_file: string, args: string[]) => {
-      if (args[0] === 'status') return Buffer.from('M file.txt')
-      if (args[0] === 'add') return Buffer.from('')
-      throw new Error('commit failed')
-    })
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      mockExecFileSync.mockImplementation((_file: string, args: string[]) => {
+        if (args[0] === 'status') return Buffer.from('M file.txt')
+        if (args[0] === 'add') return Buffer.from('')
+        throw new Error('commit failed')
+      })
 
-    expect(() => commitGitState('[x] Create stream')).not.toThrow()
+      expect(() => commitGitState('[x] Create stream')).not.toThrow()
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 
   it('logs a warning when an error occurs', () => {

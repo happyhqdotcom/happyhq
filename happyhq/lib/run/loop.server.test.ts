@@ -762,17 +762,22 @@ describe('billing integration', () => {
   })
 
   it('continues gracefully when billing module throws', async () => {
-    mockStartTaskRun.mockRejectedValue(new Error('DB down'))
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      mockStartTaskRun.mockRejectedValue(new Error('DB down'))
 
-    mockQuery.mockReturnValue(fakeQuery([]))
-    mockIsTaskCompleted.mockReturnValue(true)
+      mockQuery.mockReturnValue(fakeQuery([]))
+      mockIsTaskCompleted.mockReturnValue(true)
 
-    await startRun('s1', 't1', 'working', TEST_USER_ID)
-    await _waitForLoop()
+      await startRun('s1', 't1', 'working', TEST_USER_ID)
+      await _waitForLoop()
 
-    // Run should still complete normally despite billing failure
-    const writes = getRunInfoWrites()
-    const terminal = writes[writes.length - 1]
-    expect(terminal.status).toBe('completed')
+      // Run should still complete normally despite billing failure
+      const writes = getRunInfoWrites()
+      const terminal = writes[writes.length - 1]
+      expect(terminal.status).toBe('completed')
+    } finally {
+      errSpy.mockRestore()
+    }
   })
 })
