@@ -27,25 +27,11 @@ updates:
         # mismatches and runtime drift across auth/sync/realtime.
         patterns:
           - '@instantdb/*'
-    ignore:
-      - dependency-name: next
-        update-types:
-          - version-update:semver-major
-      - dependency-name: react
-        update-types:
-          - version-update:semver-major
-      - dependency-name: react-dom
-        update-types:
-          - version-update:semver-major
-      - dependency-name: eslint
-        update-types:
-          - version-update:semver-major
-      - dependency-name: eslint-config-next
-        update-types:
-          - version-update:semver-major
-      - dependency-name: typescript
-        update-types:
-          - version-update:semver-major
+    # No framework-major ignores. The loop's value is investigation —
+    # let next/react/typescript/eslint majors flow through so Phase 2
+    # can read migration guides, grep call-sites, and produce a cited
+    # skip-needs-review (or skip-manual-upgrade for multi-major steps).
+    # Elevated-scrutiny rules in dependency-rules.md cover the bar.
 
   - package-ecosystem: github-actions
     directory: /
