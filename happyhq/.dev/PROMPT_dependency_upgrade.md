@@ -7,6 +7,7 @@
 - **Security-sensitive runtime major** — auth, crypto, billing primitives (e.g., `stripe`, `instantdb`, JWT/OIDC libs)
 - **Pre-1.0 → 1.0 jump on a runtime dep** (in `dependencies`, not `devDependencies`)
 - **Multi-major bump** — e.g., `stripe` v20 → v22, skipping v21
+- **Agent / AI SDK bump (ANY version delta, including patch)** — `@anthropic-ai/claude-agent-sdk`, `@anthropic-ai/sdk`, or any similar LLM client. Tests can't observe LLM behavior changes; patch bumps can still shift tool schemas, default model params, retry semantics, prompt caching, or streaming format. Investigation must read the SDK's release notes for the version delta and check for shifts in defaults / schemas / runtime semantics — not just check for breaking type changes.
 
 If yes, this session uses **elevated scrutiny**: investigation needs to be thorough, the bar for "doesn't affect us" is higher, and skip outcomes (`skip-needs-review` or `skip-manual-upgrade`) are correct when investigation can't be exhaustive.
 
