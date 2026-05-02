@@ -5,7 +5,12 @@ export function useFileStaging() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const addFiles = useCallback((files: FileList | File[]) => {
-    setStagedFiles((prev) => [...prev, ...Array.from(files)])
+    // Snapshot here, not inside the updater: HTMLInputElement.files is [SameObject],
+    // so resetting `input.value = ''` after this call mutates the same FileList in
+    // place. If the updater is queued (e.g. another setState is already pending),
+    // it would run after the clear and read an empty list.
+    const snapshot = Array.from(files)
+    setStagedFiles((prev) => [...prev, ...snapshot])
   }, [])
 
   const removeFile = useCallback((index: number) => {
