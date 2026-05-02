@@ -3,7 +3,6 @@ import type {
   SDKResultMessage,
 } from '@anthropic-ai/claude-agent-sdk'
 import { query } from '@anthropic-ai/claude-agent-sdk'
-import { execFileSync } from 'node:child_process'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
@@ -20,7 +19,6 @@ import { StderrBuffer } from '@/lib/agents/stderr-buffer.server'
 import { readConfig } from '@/lib/config/config.server'
 import { resolveConfig } from '@/lib/config/defaults'
 import { LLM_COST_PER_MINUTE_USD } from '@/lib/constants'
-import { HAPPYHQ_ROOT } from '@/lib/constants.server'
 import {
   assertSafeStreamName,
   assertSafeTaskSlug,
@@ -33,6 +31,7 @@ import {
   commitGitState,
   getLatestTaskCommit,
   isTaskCompleted,
+  restorePlanFromGit,
 } from '@/lib/git/sync.server'
 
 import type { ChatStreamEvent } from '@/lib/chat/types'
@@ -1195,32 +1194,6 @@ async function readRunInfo(taskName: string): Promise<RunInfo | null> {
     return JSON.parse(raw) as RunInfo
   } catch {
     return null
-  }
-}
-
-/**
- * Restore plan.md to the version from the "Plan accepted" git commit.
- * Best-effort — if no commit is found or git fails, the current plan
- * is left as-is (graceful no-op on first run or edge cases).
- */
-function restorePlanFromGit(taskName: string): void {
-  try {
-    const taskRelPath = `tasks/${taskName}/plan.md`
-    const hash = execFileSync(
-      'git',
-      ['log', '--format=%H', '--grep=Plan accepted', '-1', '--', taskRelPath],
-      { cwd: HAPPYHQ_ROOT, encoding: 'utf8', stdio: 'pipe' },
-    ).trim()
-    if (!hash) return
-    execFileSync('git', ['restore', `--source=${hash}`, '--', taskRelPath], {
-      cwd: HAPPYHQ_ROOT,
-      stdio: 'pipe',
-    })
-  } catch (err) {
-    console.warn(
-      '[Q:run] Failed to restore plan.md:',
-      err instanceof Error ? err.message : err,
-    )
   }
 }
 

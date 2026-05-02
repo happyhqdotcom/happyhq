@@ -117,3 +117,32 @@ export function syncGitState(): void {
     )
   }
 }
+
+/**
+ * Restore plan.md to the version from the "Plan accepted" git commit.
+ * Best-effort — if no commit is found or git fails, the current plan
+ * is left as-is (graceful no-op on first run or edge cases).
+ *
+ * Lives here (not in loop.server.ts) so tests that mock `@/lib/git/sync.server`
+ * intercept the shell-out instead of hitting real git.
+ */
+export function restorePlanFromGit(taskName: string): void {
+  try {
+    const taskRelPath = `tasks/${taskName}/plan.md`
+    const hash = execFileSync(
+      'git',
+      ['log', '--format=%H', '--grep=Plan accepted', '-1', '--', taskRelPath],
+      { cwd: HAPPYHQ_ROOT, encoding: 'utf8', stdio: 'pipe' },
+    ).trim()
+    if (!hash) return
+    execFileSync('git', ['restore', `--source=${hash}`, '--', taskRelPath], {
+      cwd: HAPPYHQ_ROOT,
+      stdio: 'pipe',
+    })
+  } catch (err) {
+    console.warn(
+      '[Q:run] Failed to restore plan.md:',
+      err instanceof Error ? err.message : err,
+    )
+  }
+}
