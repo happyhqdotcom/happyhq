@@ -8,8 +8,8 @@ import {
 import clsx from 'clsx'
 import { motion } from 'framer-motion'
 import { notFound } from 'next/navigation'
-import { useEffect, useRef } from 'react'
-import type { ImperativePanelHandle } from 'react-resizable-panels'
+import { useEffect } from 'react'
+import { usePanelRef } from 'react-resizable-panels'
 
 import { BottomPanelContent, BottomTabBar } from './_components/bottom-panel'
 import { CanvasHeader } from './_components/canvas-header'
@@ -39,7 +39,7 @@ export default function PlaygroundLayout({
   }
 
   // Bottom panel
-  const bottomPanelRef = useRef<ImperativePanelHandle>(null)
+  const bottomPanelRef = usePanelRef()
   const bottomPanelOpen = usePlaygroundStore((s) => s.bottomPanelOpen)
   const setBottomPanelOpen = usePlaygroundStore((s) => s.setBottomPanelOpen)
 
@@ -48,10 +48,10 @@ export default function PlaygroundLayout({
     if (!panel) return
     if (bottomPanelOpen && panel.isCollapsed()) {
       panel.expand()
-    } else if (!bottomPanelOpen && panel.isExpanded()) {
+    } else if (!bottomPanelOpen && !panel.isCollapsed()) {
       panel.collapse()
     }
-  }, [bottomPanelOpen])
+  }, [bottomPanelOpen, bottomPanelRef])
 
   // Panels
   const leftPanel = usePlaygroundStore((s) => s.leftPanel)
@@ -114,18 +114,27 @@ export default function PlaygroundLayout({
           )}
         >
           <CanvasHeader component={component} />
-          <ResizablePanelGroup direction="vertical">
-            <ResizablePanel defaultSize={75} minSize={30}>
+          <ResizablePanelGroup orientation="vertical">
+            <ResizablePanel defaultSize="75%" minSize="30%">
               {children}
             </ResizablePanel>
-            <ResizableHandle className="h-px bg-zinc-200/80 after:hidden data-[panel-group-direction=vertical]:h-px" />
+            <ResizableHandle className="h-px bg-zinc-200/80 after:hidden" />
             <ResizablePanel
-              ref={bottomPanelRef}
-              defaultSize={25}
-              minSize={10}
+              panelRef={bottomPanelRef}
+              defaultSize="25%"
+              minSize="10%"
               collapsible
-              onCollapse={() => setBottomPanelOpen(false)}
-              onExpand={() => setBottomPanelOpen(true)}
+              onResize={(size, _id, prevSize) => {
+                if (!prevSize) return
+                if (prevSize.asPercentage > 0 && size.asPercentage === 0) {
+                  setBottomPanelOpen(false)
+                } else if (
+                  prevSize.asPercentage === 0 &&
+                  size.asPercentage > 0
+                ) {
+                  setBottomPanelOpen(true)
+                }
+              }}
             >
               <BottomPanelContent />
             </ResizablePanel>
