@@ -98,6 +98,7 @@ vi.mock('@/lib/git/sync.server', () => ({
   commitGitState: vi.fn(),
   isTaskCompleted: mockIsTaskCompleted,
   getLatestTaskCommit: mockGetLatestTaskCommit,
+  restorePlanFromGit: vi.fn(),
 }))
 
 vi.mock('@/lib/fs/write.server', () => ({

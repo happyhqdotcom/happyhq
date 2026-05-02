@@ -21,6 +21,7 @@ import {
   commitGitState,
   getLatestTaskCommit,
   isTaskCompleted,
+  restorePlanFromGit,
   syncGitState,
 } from './sync.server'
 
@@ -305,5 +306,70 @@ describe('commitGitState', () => {
     for (const call of mockExecFileSync.mock.calls) {
       expect(call[2]).toHaveProperty('cwd', MOCK_ROOT)
     }
+  })
+})
+
+describe('restorePlanFromGit', () => {
+  it('skips restore when no "Plan accepted" commit exists for the task', () => {
+    mockExecFileSync.mockReturnValue('')
+
+    restorePlanFromGit('my-task')
+
+    // Only the log lookup runs; no restore call when hash is empty.
+    expect(mockExecFileSync).toHaveBeenCalledTimes(1)
+    const [file, args] = mockExecFileSync.mock.calls[0]
+    expect(file).toBe('git')
+    expect(args).toEqual([
+      'log',
+      '--format=%H',
+      '--grep=Plan accepted',
+      '-1',
+      '--',
+      'tasks/my-task/plan.md',
+    ])
+  })
+
+  it('restores plan.md from the matching commit when one exists', () => {
+    mockExecFileSync
+      .mockReturnValueOnce('abc123\n')
+      .mockReturnValueOnce(Buffer.from(''))
+
+    restorePlanFromGit('my-task')
+
+    expect(mockExecFileSync).toHaveBeenCalledTimes(2)
+    const [file, args] = mockExecFileSync.mock.calls[1]
+    expect(file).toBe('git')
+    expect(args).toEqual([
+      'restore',
+      '--source=abc123',
+      '--',
+      'tasks/my-task/plan.md',
+    ])
+  })
+
+  it('does not throw when git fails (graceful no-op)', () => {
+    // Production callers depend on this: a missing git binary or any other
+    // git error must not crash the run-restart path.
+    mockExecFileSync.mockImplementation(() => {
+      throw new Error('spawnSync git ENOENT')
+    })
+
+    expect(() => restorePlanFromGit('my-task')).not.toThrow()
+  })
+
+  it('passes the task path as a discrete argv element so a hostile task name cannot inject shell args', () => {
+    mockExecFileSync.mockReturnValue('')
+
+    restorePlanFromGit('my-task; rm -rf /')
+
+    const [, args] = mockExecFileSync.mock.calls[0]
+    expect(args).toEqual([
+      'log',
+      '--format=%H',
+      '--grep=Plan accepted',
+      '-1',
+      '--',
+      'tasks/my-task; rm -rf //plan.md',
+    ])
   })
 })
