@@ -4,19 +4,29 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    # Limit raised from 5: the deps loop processes each PR autonomously,
+    # so the traditional "don't overwhelm the maintainer" cap matters less.
+    # The constraint now is loop session cost + queue management.
+    open-pull-requests-limit: 15
     groups:
+      # Two principles for grouping:
+      # - Packages that release together get a group (one PR keeps versions
+      #   in lockstep). Add new SDK families here as we encounter them.
+      # - Packages whose behavior tests can't catch get their own PR
+      #   (excluded from groups; LLM clients are the canonical case).
       npm-minor-patch:
         update-types:
           - minor
           - patch
-        # Agent / AI SDKs are excluded from the group so they get their own
-        # PRs. Even patch bumps can shift LLM behavior (tool schemas, default
-        # params, retry semantics, prompt caching) in ways the test suite
-        # can't observe — they need individual review.
         exclude-patterns:
           - '@anthropic-ai/claude-agent-sdk'
           - '@anthropic-ai/sdk'
+      instantdb:
+        # @instantdb/core, @instantdb/react, @instantdb/admin release in
+        # lockstep; bumping one without the others causes type-inference
+        # mismatches and runtime drift across auth/sync/realtime.
+        patterns:
+          - '@instantdb/*'
     ignore:
       - dependency-name: next
         update-types:
@@ -41,7 +51,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 15
     groups:
       actions-minor-patch:
         update-types:
