@@ -38,6 +38,7 @@ import {
 } from '@/components/features/tasks/atoms/section-header'
 import { WorkingRow } from '@/components/features/tasks/atoms/working-row'
 import { useOptimisticUploads } from '@/components/features/tasks/hooks/use-optimistic-uploads'
+import { shouldShowWorkSection } from '@/components/features/tasks/panel/work-gate'
 import {
   deleteFile,
   deleteTaskByLocation,
@@ -231,6 +232,7 @@ export function TaskPanel({
 
   const outputs = taskContent?.outputs ?? []
   const workingFiles = taskContent?.working ?? []
+  const hasWorkFiles = outputs.length > 0 || workingFiles.length > 0
   const iterations = taskContent?.run?.iterations ?? []
   const hadPlanning = (taskContent?.run?.planningCostUsd ?? 0) > 0
   const planDurationMs = hadPlanning ? (iterations[0]?.durationMs ?? 0) : 0
@@ -531,11 +533,13 @@ export function TaskPanel({
               </div>
             )}
 
-            {/* Work section — active, stopped (during working), or finished */}
-            {(taskStatus === 'working' ||
-              stoppedDuringWorking ||
-              (isFinished &&
-                (outputs.length > 0 || workingFiles.length > 0))) && (
+            {/* Work section — active, stopped during working, finished, or
+                any time work files exist on disk (see issue #144) */}
+            {shouldShowWorkSection({
+              taskStatus,
+              stoppedDuringWorking,
+              hasWorkFiles,
+            }) && (
               <div className="animate-fade-in-fast">
                 <hr className="border-zinc-200" />
                 <div className="flex flex-col gap-0.5 px-3 py-4">
@@ -588,7 +592,7 @@ export function TaskPanel({
                         )
                       }
                     />
-                  ) : (
+                  ) : isFinished ? (
                     <SectionHeader
                       label="Worked"
                       durationMs={workDurationMs}
@@ -615,7 +619,7 @@ export function TaskPanel({
                           : undefined
                       }
                     />
-                  )}
+                  ) : null}
                   <FileList
                     files={outputs}
                     onFileClick={(file) =>
