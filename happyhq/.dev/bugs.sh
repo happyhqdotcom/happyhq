@@ -78,6 +78,37 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR" || exit 1
 
+# ── Worktree-aware base branch resolution ──
+# Loops run from the primary checkout (on `main`) or from a sibling worktree
+# (on `loop/bugs`). Snap whichever branch we're on to origin/main so the agent
+# starts from a clean, up-to-date base. The prompts use $BASE_BRANCH instead
+# of literal `main` for checkout/return paths so they work in both locations.
+CURRENT_BRANCH=$(git branch --show-current)
+case "$CURRENT_BRANCH" in
+    main|loop/bugs)
+        BASE_BRANCH="$CURRENT_BRANCH"
+        ;;
+    *)
+        echo -e "  ${RED}Error: bugs.sh must be run from 'main' (primary checkout) or 'loop/bugs' (bugs worktree). Currently on: $CURRENT_BRANCH${RESET}" >&2
+        exit 1
+        ;;
+esac
+export BASE_BRANCH
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+# Guard against losing uncommitted work — the next step is `git reset --hard`.
+if [ -n "$(git status --porcelain)" ]; then
+    echo -e "  ${RED}Error: uncommitted changes in ${REPO_ROOT}. Commit, stash, or discard before running the loop — the next step hard-resets to origin/main.${RESET}" >&2
+    git status --short >&2
+    exit 1
+fi
+
+echo -e "  ${DIM}Snapping ${BASE_BRANCH} → origin/main (hard reset), then pnpm install…${RESET}"
+git fetch origin --quiet || { echo -e "  ${RED}git fetch failed${RESET}" >&2; exit 1; }
+git reset --hard origin/main >/dev/null || { echo -e "  ${RED}git reset failed${RESET}" >&2; exit 1; }
+(cd "$REPO_ROOT" && (pnpm install --frozen-lockfile || pnpm install)) || { echo -e "  ${RED}pnpm install failed${RESET}" >&2; exit 1; }
+
 cleanup() {
     echo -e "\n${DIM}Cleaning up child processes...${RESET}"
     pkill -P $$ 2>/dev/null
