@@ -44,7 +44,7 @@ What would unblock it: <1 sentence — concrete action for the human>
 
 ## Comment shape (Path A success — `ready-to-merge`)
 
-The `Changelog watch-list` section is **required, even when every item is null** — it's an audit trail proving the agent considered each watch item. A "no" is signal too.
+The `Investigation` section is **required, with a line for each of the five audit items, even when every item is null** — it's an audit trail proving the agent considered each. A "no" is signal too. For flagged items, add sub-bullets with depth (what was checked, what was found).
 
 ```
 Ralphie verified this — ready to merge.
@@ -60,9 +60,10 @@ Ralphie verified this — ready to merge.
 - <bullet 2>
 - (link to upstream release notes)
 
-### Changelog watch-list
+### Investigation
 - Ownership: <"same maintainer (@<handle>)" or "ownership change — investigated → <verdict>">
-- Auth/secrets: <"none" or "<change> — investigated → <verdict>">
+- Auth/secrets: <"none" or "<change> — investigated → <verdict, with link>">
+  - <optional sub-bullet — what was checked / found, when there's depth>
 - Security advisory: <"none referenced" or "<advisory> — investigated → <verdict>">
 - Deprecations: <"none we'd hit" or "<deprecation> — investigated → <verdict>">
 - Breaking API: <"none" or "<change> — investigated → <verdict>">
