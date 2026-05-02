@@ -4,13 +4,13 @@
 
 1. **Reproduce.** Establish the bug locally — write a failing test, or run the steps in the issue and confirm the failure mode. If repro cannot be established from the issue + linked logs + a focused investigation, apply `ralphie:skip-not-reproducible` (rubric rule 7), post the rubric-shaped comment, exit. Use `~/HappyHQ/.logs/$(date +%Y-%m-%d).jsonl` and `npx tsx scripts/read-logs.ts` for runtime logs (see @CLAUDE.md "Debugging Q").
 
-2. **Branch.** From `main`: `git checkout main && git pull && git checkout -b fix/${ISSUE_NUMBER}-<short-slug>`. The slug is 2–4 hyphenated words derived from the issue title.
+2. **Branch.** The wrapper has already snapped `${BASE_BRANCH}` to latest `origin/main`, so just branch off it: `git checkout ${BASE_BRANCH} && git checkout -b fix/${ISSUE_NUMBER}-<short-slug>`. The slug is 2–4 hyphenated words derived from the issue title.
 
 3. **Fix + regression test.** Implement the smallest change that fixes the bug. Add a regression test that fails before the fix and passes after. Tests verify behavior, not implementation (see @CLAUDE.md). Use Sonnet subagents for parallel reads/searches; use Opus for debugging or architectural calls.
 
 4. **Verify.** From the `happyhq/` directory, run `pnpm format`, `pnpm lint`, `pnpm check-types`, `pnpm --filter=happyhq test`. If any fail, fix and re-run. If they fail twice, apply `ralphie:skip-verification-failed` (rubric rule 8), post the rubric-shaped comment with the failing output included, exit.
 
-5. **Size gate.** After the fix is in, check the diff: `git diff --stat main...HEAD -- ':!*.md' ':!*.mdx'`. If >10 files changed or >300 lines net added, apply `ralphie:skip-too-big` (rubric rule 6/9), post the rubric-shaped comment summarizing what the fix would have entailed, leave the branch in place (do not push), exit. Spec/doc updates (`*.md`/`*.mdx`) are excluded from the count — they don't carry the same review burden as code, and bundling them with the fix keeps design and implementation in sync.
+5. **Size gate.** After the fix is in, check the diff: `git diff --stat origin/main...HEAD -- ':!*.md' ':!*.mdx'`. (Use `origin/main`, not the local `main` ref — when running from a worktree the local `main` may be stale.) If >10 files changed or >300 lines net added, apply `ralphie:skip-too-big` (rubric rule 6/9), post the rubric-shaped comment summarizing what the fix would have entailed, leave the branch in place (do not push), exit. Spec/doc updates (`*.md`/`*.mdx`) are excluded from the count — they don't carry the same review burden as code, and bundling them with the fix keeps design and implementation in sync.
 
 6. **Commit.** `git add -A && git commit -m "fix: <one-line summary>\n\nCloses #${ISSUE_NUMBER}"`.
 
@@ -22,7 +22,7 @@
 
 8. **Label.** `gh issue edit ${ISSUE_NUMBER} --add-label "ralphie:fixed-in-pr"`. The PR's `Closes #` is the rest of the breadcrumb.
 
-9. **Return to main.** `git checkout main`. Each session leaves the working tree on `main` so the next session (or the maintainer) starts from a clean baseline. Apply this on the skip paths too — if you abort and revert in step 6 of the guardrails, end on `main`.
+9. **Return to base branch.** `git checkout ${BASE_BRANCH}`. Each session leaves the working tree on `${BASE_BRANCH}` so the next session (or the maintainer) starts from a clean baseline. Apply this on the skip paths too — if you abort and revert in step 6 of the guardrails, end on `${BASE_BRANCH}`.
 
 10. ${DRY_RUN_NOTE}
 
@@ -35,7 +35,7 @@
 **[3]** A regression test is required _when there is a behavior contract worth pinning_. Apply the litmus test from @testing.md before writing one: "what bug would this catch?" If the only answer is "someone reverted this exact line" (e.g. asserting an asset path equals `/brand/q.svg`, asserting a specific class name, asserting copy text), the test is a vanity test — don't write it. Asset swaps, copy tweaks, and CSS-only fixes are visually verified, not test-locked. If you cannot articulate a user-visible contract the test defends, the fix is either too trivial to need a test, or you haven't found the right contract yet — re-think before writing one.
 **[4]** Tests verify behavior — what the system guarantees to the user. 50 different implementations should pass the same test. Test conditional rendering driven by state, input/output contracts, error paths, security boundaries. Never `toBeTruthy()`, snapshots, "renders without crashing", asserts on specific src/href/class/copy values, or "mock was called" (unless the call IS the contract).
 **[5]** Capture the **why** in the PR body and (if non-obvious) a code comment. Never narrate **what** in comments — well-named code does that.
-**[6]** If you discover the fix requires a schema migration / new env var / new dep / CI change mid-implementation, stop, revert your changes (`git checkout main && git branch -D fix/${ISSUE_NUMBER}-...`), apply `ralphie:skip-out-of-scope`, exit.
+**[6]** If you discover the fix requires a schema migration / new env var / new dep / CI change mid-implementation, stop, revert your changes (`git checkout ${BASE_BRANCH} && git branch -D fix/${ISSUE_NUMBER}-...`), apply `ralphie:skip-out-of-scope`, exit.
 **[7]** AI disclosure in the PR body is required by @CONTRIBUTING.md. Never omit it.
 **[8]** When applying any `ralphie:skip-*` label, the comment uses the rubric's "Comment shape" format. Always.
 **[9]** Question the shape of the fix before committing to it. If the fix is purely a constraint (cap, limit, truncate, hide), the unbounded behavior has a cause — find it and fix it, even when it lives in nearby code. Scope follows the cause: touch nearby code when it's the cause, leave it when it's just adjacent and looks improvable. If you're adding a new element to an existing UI surface, check it's distinguishable from neighbors of similar shape.
