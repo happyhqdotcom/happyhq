@@ -304,7 +304,6 @@ describe('usage.server', () => {
           status: 'aborted',
         }),
       )
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const call = (mockUpdate.mock.calls as any)[0][0]
       expect(call.endedAt).toBeGreaterThanOrEqual(before)
     })
