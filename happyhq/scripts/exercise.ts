@@ -55,7 +55,7 @@ export interface ExerciseScript {
 }
 
 interface Args {
-  root: string
+  root?: string
   script: string
   id: string
   port?: number
@@ -152,9 +152,9 @@ function parseArgs(argv: string[]): Args {
   }
   if (!args.script) bail('--script is required')
   if (!args.id) args.id = `ex-${crypto.randomBytes(4).toString('hex')}`
-  if (!args.root) {
-    args.root = path.join(os.tmpdir(), `happyhq-exercise-${args.id}`)
-  }
+  // --root may be empty here; main() resolves the default via fs.mkdtemp
+  // so the sandbox dir is created atomically with mode 0700 instead of
+  // string-joining a predictable name into os.tmpdir().
   // Validate id segment shape — gates the path interpolation downstream.
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(args.id)) {
     bail(`invalid --id: ${args.id}`)
@@ -482,7 +482,9 @@ async function writeJsonl(file: string, rows: unknown[]): Promise<void> {
 async function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2))
 
-  const root = path.resolve(args.root)
+  const rawRoot =
+    args.root ?? (await fs.mkdtemp(path.join(os.tmpdir(), 'happyhq-exercise-')))
+  const root = path.resolve(rawRoot)
   const exDir = path.join(root, '.exercises', args.id)
   const runsDir = path.join(root, '.runs')
   const logsDir = path.join(root, '.logs')
