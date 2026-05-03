@@ -13,7 +13,7 @@ import { NextResponse } from 'next/server'
  * Accounts auth is handled client-side by AuthGuard (db.SignedIn/db.SignedOut)
  * in the (app) layout, which reads InstantDB's reactive auth state directly.
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const password = process.env.Q_PASSWORD
 
   if (!password) {
