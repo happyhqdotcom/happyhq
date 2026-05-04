@@ -16,11 +16,18 @@
    - If under-drifted → continue.
 
 3. **Form an opinion.** Walk each proposed change site and ask honest questions:
+   - **Does this change improve the code?** This is the anchor. Each site falls into one of three buckets:
+     - **Real bug fixed** — the directive caught something genuinely wrong; the change makes the code correct where it was broken.
+     - **Improvement** — not a bug, but the new form is genuinely cleaner (dead code removed, clearer pattern, simpler control flow) on its own merits.
+     - **Directive-conformance only** — the code was correct; the change exists solely to satisfy a heuristic (linter false positive, type-checker contortion, awkward migration target, style-rule conformance) without making the code better.
    - Is the body's approach still the right shape for _this_ site? Sometimes a site listed as "fix in place" is actually the kind of pattern the body's "refactor" bucket covers, or vice versa.
    - Is there a smaller fix? A deeper one? Does the issue describe a symptom whose root cause lives one layer up?
    - Are there sites the body missed that fall under the same rule? (Note them in the PR body but don't widen the diff to cover them — that's a separate issue.)
+   - **Adjacent latent issues.** While reading the code to make this change, did you notice an unrelated bug nearby (a leak, a stale closure, a missing guard, a TODO that's actually live)? If surgical (one or two lines) → fix in this PR and document in the PR body. If larger → file a follow-up `tech-debt` issue and link it. Don't walk past a real bug just because it's not in the directive.
 
    **If the body is wrong** (the proposed approach won't produce a good outcome on inspection) → apply `ralphie:skip-needs-rescope` (rubric rule 5), post the rubric-shaped comment with the alternative shape concrete enough that the maintainer can decide whether to update the body, exit. **Do not ship a thoughtless implementation** just because the loop reached this issue.
+
+   **If a meaningful fraction of sites are "directive-conformance only"** — the directive itself doesn't fit this codebase. Re-enabling a linter rule that flags a recurring legitimate pattern, completing a migration whose target doesn't fit how the codebase uses the source, enforcing a style rule that hurts readability for some sites — these are rescope signals, not "fix harder" signals. Apply `ralphie:skip-needs-rescope` with the alternative ("leave rule off; audit pattern X first" / "scope migration to subset Y" / etc.). The "this change improves the code" anchor decides: if a non-trivial number of sites fail it, the directive is wrong, not the code.
 
 4. **Branch.** The wrapper has already snapped `${BASE_BRANCH}` to latest `origin/main`. From `${BASE_BRANCH}`: `git checkout -b chore/${ISSUE_NUMBER}-<short-slug>`. The slug is 2–4 hyphenated words derived from the issue title (per [CLAUDE.md](CLAUDE.md) prefixes — `chore/`, not `fix/`).
 
@@ -46,6 +53,8 @@
 9. **Push + PR.** `git push -u origin chore/${ISSUE_NUMBER}-<slug>` then `gh pr create --base main --assignee @me --title "chore: <summary>" --body "..."`. The `--assignee @me` puts the PR in the maintainer's "Assigned to me" queue. PR body MUST include:
    - `Closes #${ISSUE_NUMBER}`
    - One-paragraph summary of what changed and why
+   - **Per-site classification** — a short table or list with each changed site and its anchor verdict from step 3 (`Real bug fixed` / `Improvement` / `Directive-conformance only`). One-line rationale per site. Reviewers use this to see at a glance whether the loop did engineering or compliance.
+   - **Adjacent latent issues** (if any) — what you noticed and fixed while editing the code, with one-line justification each.
    - **Deviations from the issue body** (if any) — what you did differently and why
    - **"Why this is over threshold but low risk"** section (if rule 8 sub-case applied)
    - Verification summary (lint/types/test all green; rule active if applicable)
@@ -64,7 +73,7 @@
 **[1]** ONE issue per session. Do not pick up other issues, do not chain. The orchestrator handles the next one.
 **[2]** Hard constraints from @tech-debt-rubric.md are non-negotiable: never push to `main`, never modify `happyhq/ee/`, `.github/`, CI workflows, lockfiles (beyond what the focused fix demands), or licensing files. If the fix would require any of these, apply `ralphie:skip-out-of-scope` and exit.
 **[3]** Engage seriously, don't follow blindly. The issue body is a hypothesis. Read the code, form your own opinion, deviate when warranted, push back via `ralphie:skip-needs-rescope` when the proposed approach is wrong on inspection. The loop's value comes from doing the engineering — if it just types out what the issue says, the maintainer would be better served reading the issue themselves.
-**[4]** Tests defend behavior, not lines. Tech-debt fixes that don't change runtime behavior usually don't need new tests. Tech-debt fixes that DO change behavior need tests that pin the new behavior. Apply the litmus test from `testing.md`: "what bug would this catch?" If the answer is "someone reverted this exact line," skip the test.
+**[4]** Tests defend behavior, not lines. Tech-debt fixes that don't change runtime behavior usually don't need new tests. Tech-debt fixes that DO change behavior need tests that pin the new behavior. Apply the litmus test from `testing.md`: "what bug would this catch?" If the answer is "someone reverted this exact line," skip the test. **Caveat:** when the implementation _pattern_ changes materially — new ref, new control flow, new teardown mechanism, swapped abstraction — even if the externally observable behavior is identical, a regression test pinning the teardown/boundary contract is in scope. The bug to catch is "someone refactors the new pattern and breaks the contract," which is not the same as "someone reverted a line." If a useful test is genuinely impractical (DOM event-loop edge cases, animation timing in JSDOM), say so explicitly in the PR body — don't silently skip.
 **[5]** Capture the **why** in the PR body and (if non-obvious) a code comment. Never narrate **what** in comments — well-named code does that.
 **[6]** If you discover the fix requires a schema migration / new env var / new dep / CI change mid-implementation, stop, revert your changes (`git checkout ${BASE_BRANCH} && git branch -D chore/${ISSUE_NUMBER}-...`), apply `ralphie:skip-out-of-scope`, exit.
 **[7]** AI disclosure in the PR body is required by @CONTRIBUTING.md. Never omit it.
