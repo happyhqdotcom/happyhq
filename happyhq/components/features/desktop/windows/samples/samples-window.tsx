@@ -272,7 +272,7 @@ export function SamplesWindow({
   const [isUploading, setIsUploading] = useState(false)
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [creatingNewType, setCreatingNewType] = useState(false)
-  const pendingTitlesRef = useRef<Record<string, string>>({})
+  const [pendingTitles, setPendingTitles] = useState<Record<string, string>>({})
   const [pendingTypeTitles, setPendingTypeTitles] = useState<
     Record<string, string>
   >({})
@@ -412,7 +412,10 @@ export function SamplesWindow({
           currentTitle={sample.title}
           slug={sample.name}
           onSave={async (newTitle) => {
-            pendingTitlesRef.current[sample.originalPath] = newTitle
+            setPendingTitles((prev) => ({
+              ...prev,
+              [sample.originalPath]: newTitle,
+            }))
             setEditingKey(null)
             try {
               await writeSampleTitle(
@@ -424,7 +427,10 @@ export function SamplesWindow({
               )
               onSampleIngested()
             } catch {
-              delete pendingTitlesRef.current[sample.originalPath]
+              setPendingTitles((prev) => {
+                const { [sample.originalPath]: _, ...rest } = prev
+                return rest
+              })
             }
           }}
           onCancel={() => setEditingKey(null)}
@@ -434,9 +440,7 @@ export function SamplesWindow({
       <FileRow
         name={sample.name}
         filename={sample.originalName}
-        displayTitle={
-          pendingTitlesRef.current[sample.originalPath] ?? sample.title
-        }
+        displayTitle={pendingTitles[sample.originalPath] ?? sample.title}
         onClick={() =>
           openFileWindow({
             name: sample.originalName,

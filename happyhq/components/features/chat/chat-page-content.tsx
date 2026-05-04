@@ -54,8 +54,10 @@ import { WorkingIndicator } from './messages/working-indicator'
 const EMPTY_CHATS: ChatItem[] = []
 
 export function ChatPageContent({
+  sessionId,
   originStreamSlug,
 }: {
+  sessionId: string
   originStreamSlug?: string | null
 }) {
   const messages = useChatMessages()
@@ -163,7 +165,7 @@ export function ChatPageContent({
                 sessionId: c.sessionId,
                 label: c.title ?? 'Untitled chat',
               }))}
-              currentSessionId={sessionIdRef.current}
+              currentSessionId={sessionId}
               label={chatName || 'New Chat'}
               onSelect={(id) => router.push(`/chat/${id}`)}
               onDelete={(id) => {

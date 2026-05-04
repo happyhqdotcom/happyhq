@@ -69,8 +69,9 @@ export function useWorkingText() {
     usedSounds: Set<string>
   } | null>(null)
 
-  // Lazy-init on first access so the first phrase is ready immediately
-  if (!ref.current) {
+  // Lazy-init on first access so the first phrase is ready immediately.
+  // `== null` is the React Compiler-sanctioned shape for one-time ref init.
+  if (ref.current == null) {
     const usedMutters = new Set<string>()
     ref.current = {
       bucketIndex: 0,

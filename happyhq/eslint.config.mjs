@@ -19,7 +19,6 @@ const eslintConfig = [
       // (via eslint-config-next 16). Disabled to land the toolchain upgrade
       // non-blocking; addressing the findings is its own piece of work.
       'react-hooks/set-state-in-effect': 'off',
-      'react-hooks/refs': 'off',
       'react-hooks/purity': 'off',
       'react-hooks/immutability': 'off',
       'react/use': 'off',

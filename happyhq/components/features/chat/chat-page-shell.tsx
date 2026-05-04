@@ -47,7 +47,7 @@ export function ChatPageShell({
       initialSessionId={sessionId}
       initialHistory={initialHistory}
     >
-      <ChatPageContent originStreamSlug={streamSlug} />
+      <ChatPageContent sessionId={sessionId} originStreamSlug={streamSlug} />
     </ChatSessionProvider>
   )
 }
