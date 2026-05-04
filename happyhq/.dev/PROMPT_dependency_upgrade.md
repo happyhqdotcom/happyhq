@@ -117,8 +117,8 @@ If yes, this session uses **elevated scrutiny**: investigation needs to be thoro
      - Quote the original Dependabot PR's bumped versions for traceability.
      - Verification summary (lint/types/test/smoke output, all green).
      - AI-assistance disclosure per @CONTRIBUTING.md.
-   - Capture the new PR number. Create the dynamic label if needed: `gh label create "ralphie:replaced-by-#<new>" --color "5319E7" --description "Ralphie closed this in favor of replacement PR #<new>"` (ignore "already exists" errors).
-   - Close the original Dependabot PR: `gh pr edit ${PR_NUMBER} --add-label "ralphie:replaced-by-#<new>"`, `gh pr comment ${PR_NUMBER} --body "..."` (rules-shape replacement comment), `gh pr close ${PR_NUMBER}`.
+   - Capture the new PR number for the replacement comment. Create the generic label if it doesn't exist yet: `gh label create "ralphie:replaced-by-newer-pr" --color "5319E7" --description "Closed because the loop opened a replacement PR; the replacement's body links via 'Replaces #N'"` (ignore "already exists" errors).
+   - Close the original Dependabot PR: `gh pr edit ${PR_NUMBER} --add-label "ralphie:replaced-by-newer-pr"`, `gh pr comment ${PR_NUMBER} --body "..."` (rules-shape replacement comment — the comment carries the link to the new PR; the label only signals "don't re-pick"), `gh pr close ${PR_NUMBER}`.
    - Return to `${BASE_BRANCH}`. Exit.
 
    **Path B.3 — breaking-change fixups.**
