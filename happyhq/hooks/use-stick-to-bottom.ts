@@ -30,11 +30,7 @@ export function useStickToBottom(): UseStickToBottomReturn {
   const scrollToBottom = useCallback(
     (behavior: ScrollBehavior = 'smooth') => {
       if (!scrollEl) return
-      if (scrollEl.scrollTo) {
-        scrollEl.scrollTo({ top: scrollEl.scrollHeight, behavior })
-      } else {
-        scrollEl.scrollTop = scrollEl.scrollHeight
-      }
+      scrollEl.scrollTo({ top: scrollEl.scrollHeight, behavior })
       isAtBottomRef.current = true
       setIsAtBottom(true)
     },
@@ -68,7 +64,7 @@ export function useStickToBottom(): UseStickToBottomReturn {
 
     const observer = new MutationObserver(() => {
       if (!isAtBottomRef.current) return
-      scrollEl.scrollTop = scrollEl.scrollHeight
+      scrollEl.scrollTo({ top: scrollEl.scrollHeight, behavior: 'auto' })
     })
 
     observer.observe(scrollEl, {

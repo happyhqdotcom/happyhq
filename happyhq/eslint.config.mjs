@@ -20,7 +20,6 @@ const eslintConfig = [
       // non-blocking; addressing the findings is its own piece of work.
       'react-hooks/set-state-in-effect': 'off',
       'react-hooks/purity': 'off',
-      'react-hooks/immutability': 'off',
       'react/use': 'off',
     },
   },
