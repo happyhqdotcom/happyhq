@@ -9,6 +9,9 @@ import { useCurrentUser } from '@/lib/accounts/hooks'
 import { db } from '@/lib/database/instant'
 import { formatMinutes, formatPrice } from '@/lib/format'
 
+// Cadence for re-checking the active billing period (see `now` state below).
+const PERIOD_TICK_MS = 60_000
+
 /**
  * Usage settings — shows current plan and runtime usage meter.
  * Extracted from BillingSettings so usage has its own page.
@@ -37,10 +40,12 @@ export function UsageSettings() {
   const tierLimits = getTierLimits(currentTier)
 
   // Re-evaluate the active period periodically so the meter switches over when
-  // a billing period boundary crosses while the page is open.
+  // a billing period boundary crosses while the page is open. Cadence is
+  // sub-minute because monthly boundaries don't need higher precision and the
+  // re-render is cheap.
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 60_000)
+    const id = setInterval(() => setNow(Date.now()), PERIOD_TICK_MS)
     return () => clearInterval(id)
   }, [])
 

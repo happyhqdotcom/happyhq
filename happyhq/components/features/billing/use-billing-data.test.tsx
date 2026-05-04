@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react'
+import { act, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UsageData } from './use-billing-data'
 
@@ -156,5 +156,57 @@ describe('useBillingData', () => {
     render(<TestComponent />)
     expect(result!.remainingMinutes).toBe(0)
     expect(result!.remainingPercent).toBe(0)
+  })
+
+  it('switches to the next billing period when the boundary crosses while mounted', async () => {
+    // Boundary at T+30s. Period A ends at the boundary; Period B starts at it.
+    const start = Date.now()
+    const boundary = start + 30_000
+
+    mockUseCurrentUser.mockReturnValue({
+      user: { id: 'user-1', email: 'test@example.com', createdAt: 0 },
+      isLoading: false,
+      isAuthenticated: true,
+    })
+    mockUseQuery.mockReturnValue({
+      data: {
+        subscriptions: [{ id: 'sub-1', tier: 'starter', status: 'active' }],
+        usage: [
+          {
+            id: 'period-a',
+            periodStart: start - 86_400_000,
+            periodEnd: boundary,
+            usedMinutes: 50,
+            includedMinutes: 60,
+          },
+          {
+            id: 'period-b',
+            periodStart: boundary,
+            periodEnd: start + 86_400_000,
+            usedMinutes: 5,
+            includedMinutes: 60,
+          },
+        ],
+      },
+    })
+
+    const { useBillingData } = await import('./use-billing-data')
+    let result: UsageData | null | undefined
+
+    function TestComponent() {
+      result = useBillingData()
+      return null
+    }
+
+    render(<TestComponent />)
+    // Initial render is inside Period A.
+    expect(result!.usedMinutes).toBe(50)
+
+    // Advance past the boundary and let the 60s tick fire — the hook should
+    // re-derive `now` and switch to Period B.
+    act(() => {
+      vi.advanceTimersByTime(60_000)
+    })
+    expect(result!.usedMinutes).toBe(5)
   })
 })
