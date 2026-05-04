@@ -43,8 +43,12 @@ const claudeExecutable = process.env.Q_PASSWORD
 function agentEnv(
   override?: Record<string, string | undefined>,
 ): Record<string, string | undefined> {
+  // The SDK passes this verbatim as the spawned process's env (no merge with
+  // process.env), so when there's no override we have to spread process.env
+  // ourselves — otherwise ANTHROPIC_API_KEY, HOME, PATH, etc. get stripped
+  // and Claude Code reports "Not logged in".
   return {
-    ...(override ?? {}),
+    ...(override ?? process.env),
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
     ENABLE_TOOL_SEARCH: 'false',
   }
