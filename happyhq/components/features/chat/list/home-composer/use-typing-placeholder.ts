@@ -96,7 +96,6 @@ export function useTypingPlaceholder(phrases: string[], paused: boolean) {
     return () => clearTimeout(timer)
   })
 
-  // Reset when phrases change
   useEffect(() => {
     ref.current = {
       phraseIndex: 0,
@@ -104,6 +103,9 @@ export function useTypingPlaceholder(phrases: string[], paused: boolean) {
       phase: 'typing',
       deleteTarget: 0,
     }
+    // Clear rendered text on the same render that swaps the phrase list,
+    // so the new phrase doesn't briefly type over the old one.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDisplay('')
   }, [phrases])
 

@@ -129,9 +129,12 @@ export function useRunActivity(isActive: boolean): RunActivityState {
 
   useEffect(() => {
     if (!isActive) {
-      // Clean up and clear status when not active
+      // Clean up and clear status when not active. The synchronous setStates
+      // wipe per-run UI state in the same render that the run flips inactive,
+      // so no stale activity flashes between runs.
       controllerRef.current?.abort()
       controllerRef.current = null
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStatusLine(null)
       setLastContentChangeAt(null)
       setActivitySteps([])

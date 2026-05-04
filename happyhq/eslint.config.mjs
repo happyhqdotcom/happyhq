@@ -18,7 +18,6 @@ const eslintConfig = [
       // React Compiler safety rules pulled in by eslint-plugin-react-hooks@7
       // (via eslint-config-next 16). Disabled to land the toolchain upgrade
       // non-blocking; addressing the findings is its own piece of work.
-      'react-hooks/set-state-in-effect': 'off',
       // The findings have been resolved (see git history), but the rule
       // misclassifies DOM-property writes on `useState<HTMLElement>` values
       // as state mutations. Re-enabling would force false-positive workarounds

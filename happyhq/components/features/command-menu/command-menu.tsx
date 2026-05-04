@@ -58,9 +58,11 @@ function PaletteContent() {
     type: 'disabled',
   })
 
-  // Reset URL input action when leaving url-input page
   useEffect(() => {
     if (page?.type !== 'url-input') {
+      // Reset locally-owned action state when UrlInputPage unmounts so the
+      // next session starts from 'disabled' instead of stale data.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setUrlInputAction({ type: 'disabled' })
     }
   }, [page])

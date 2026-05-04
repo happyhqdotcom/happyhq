@@ -117,8 +117,10 @@ export function UrlInputPage({
   const config = SOURCE_CONFIGS[source] || SOURCE_CONFIGS['save-link']
   const Icon = config.icon
 
-  // Reset preview state when search changes
   useEffect(() => {
+    // Reset preview state when the search input changes — previously fetched
+    // unfurl data is now stale and would render against the wrong URL.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUnfurlData(null)
     setUnfurlError(false)
     setHasPreviewed(false)

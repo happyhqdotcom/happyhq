@@ -69,11 +69,9 @@ function AssistantMessageRenderer({
     setSimulatedContent(null)
   }, [stop])
 
-  // Reset simulation when variant changes
-  useEffect(() => {
-    stop()
-    setSimulatedContent(null)
-  }, [sourceText, stop])
+  // Variant changes are handled by `<Fragment key={variantKey}>` in
+  // playground/page.tsx, which fully remounts this renderer — no manual
+  // reset effect needed.
 
   const setCanvasActions = usePlaygroundStore((s) => s.setCanvasActions)
   const setIsStreaming = usePlaygroundStore((s) => s.setIsStreaming)
