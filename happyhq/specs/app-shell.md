@@ -53,14 +53,13 @@ The user can also select an existing stream from the `StreamContextSelector` dro
 
 See [Home](home.md) for the full data flow.
 
-**Via the sidebar** (manual naming — "Recents" `+` button opens a dialog):
+**Via the sidebar** (manual — "Streams" `+` button):
 
-1. User clicks the `+` button next to the "Recents" group label in the sidebar
-2. A `NameInputDialog` modal opens — user types a human-readable name
-3. Name is converted to a kebab-case slug via `toSlug()`. Collision check before creation.
-4. `createStream(slug)` creates the directory, sidebar refreshes, navigates to `/{slug}`
+1. User clicks the `+` button next to the "Streams" group label in the sidebar
+2. The sidebar navigates to `/stream/new` (a dedicated route under `app/(desktop)/stream/new/`)
+3. The page collects a name, validates/converts to a slug, calls `createStream(slug)`, then navigates to the new stream
 
-See [Sidebar](sidebar.md) for the full create/rename flows.
+See [Sidebar](sidebar.md).
 
 ## App Launch
 
