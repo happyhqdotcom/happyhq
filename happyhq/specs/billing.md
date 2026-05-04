@@ -316,8 +316,8 @@ When `canStartTask()` returns `{ allowed: true, warning: 'low_balance', remainin
 
 When `createStream` or `uploadFile` server actions throw billing limit errors (e.g., "Free plan allows 1 stream. Upgrade to create more."), the error message surfaces as:
 
-- Inline text in `NameInputDialog` (sidebar stream/task rename dialogs)
-- Toast notification via `sonner` in the home composer
+- Inline text on the stream-create page (`/stream/new`)
+- Toast notification via `sonner` in the home composer and `TaskCreateDialog`
 
 ## Licensing & Open Source
 

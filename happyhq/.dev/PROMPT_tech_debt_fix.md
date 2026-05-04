@@ -26,6 +26,13 @@
 
 5. **Implement.** Apply the change with judgment. Where you deviate from the body, document the deviation in the PR body — that's where reviewers will look for the reasoning. If the body lists per-site decisions ("decide one of: fix / disable / refactor"), apply the bucket guidance the body provides, but override the bucket per site when the code says you should.
 
+5a. **Spec drift sweep.** Before you treat the implementation as done, grep `specs/` for the symbols/files you changed (`grep -rn "<Symbol>\|<filename>" happyhq/specs/`). For each hit:
+
+- **Surgical drift** (a stale symbol name, a removed file path, a one-line description that no longer matches) → fix it in this PR. Spec edits are part of the change.
+- **Broad drift** (the spec section describes a flow or component shape that no longer exists; multiple paragraphs would need rewriting) → file a separate `tech-debt` issue describing what's stale, link it from the PR's "Spec drift" section, and proceed. Don't widen this PR into a spec rewrite.
+- **No drift** → no action.
+  It is **not acceptable** to merge a fix that leaves a `specs/` file referencing the symbol you just removed without either updating the spec or filing the follow-up issue. "Noted, not fixed" only applies once a follow-up issue exists.
+
 6. **Verify.** From the `happyhq/` directory: `pnpm format`, `pnpm lint`, `pnpm check-types`, `pnpm --filter=happyhq test`. If a re-enable step is in scope (an `'off'` line was removed in eslint.config.mjs), `pnpm lint` must pass with the rule active. If any check fails, fix and re-run. If they fail twice, apply `ralphie:skip-verification-failed` (rubric rule 6), post the rubric-shaped comment with the failing output included, exit.
 
 7. **Risk gate.** With the diff in hand, apply the rubric's "Risk gate" decision tree:
