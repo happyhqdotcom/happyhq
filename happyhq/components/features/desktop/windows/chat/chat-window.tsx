@@ -48,12 +48,14 @@ function fetchSessionMessages(sessionId: string): Promise<ChatMessage[]> {
 function InteractiveChatContent({
   frameProps,
   windowTitle,
+  sessionId,
 }: {
   frameProps: Omit<
     React.ComponentProps<typeof WindowFrame>,
     'title' | 'children'
   >
   windowTitle: string
+  sessionId: string | null
 }) {
   const chatActions = useChatActions()
   const router = useRouter()
@@ -142,7 +144,7 @@ function InteractiveChatContent({
                   : 'General',
               }),
             }))}
-            currentSessionId={sessionIdRef.current}
+            currentSessionId={sessionId}
             label={windowTitle || 'New Chat'}
             onSelect={(id) => chatActions.switchChat(id)}
             onDelete={(id) => {
@@ -206,7 +208,11 @@ export function ChatWindow({ id, canvasRef }: WindowComponentProps) {
         windowId={w.id}
         initialMode={w.meta.initialMode}
       >
-        <InteractiveChatContent frameProps={frameProps} windowTitle={w.title} />
+        <InteractiveChatContent
+          frameProps={frameProps}
+          windowTitle={w.title}
+          sessionId={w.meta.sessionId ?? null}
+        />
       </ChatWindowProvider>
     )
   }

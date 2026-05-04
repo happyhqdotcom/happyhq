@@ -275,7 +275,12 @@ export function DesktopInitializer() {
   // (playbook, specs, samples, chats) and only fetches task content + task list.
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isRunActiveRef = useRef(isRunActive)
-  isRunActiveRef.current = isRunActive
+  // Mirror `isRunActive` into a ref so the debounced setTimeout below sees
+  // the latest value without re-creating the timer when it changes. Effect
+  // commits before the next setTimeout tick, so the ref is fresh when read.
+  useEffect(() => {
+    isRunActiveRef.current = isRunActive
+  }, [isRunActive])
 
   const debouncedRefresh = useCallback(() => {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
