@@ -77,11 +77,9 @@ function SubagentStreamingRenderer({
     setPreview({ ...data })
   }, [stop, data])
 
-  // Reset when variant changes
-  useEffect(() => {
-    stop()
-    setPreview({ ...data })
-  }, [data.parentToolUseId, stop, data])
+  // Variant changes are handled by `<Fragment key={variantKey}>` in
+  // playground/page.tsx, which fully remounts this renderer — no manual
+  // reset effect needed.
 
   const setCanvasActions = usePlaygroundStore((s) => s.setCanvasActions)
   const setIsStreaming = usePlaygroundStore((s) => s.setIsStreaming)
@@ -99,14 +97,12 @@ function SubagentStreamingRenderer({
     setIsStreaming(isRunning)
   }, [isRunning, setIsStreaming])
 
-  // Sync isActive control when not simulating
-  useEffect(() => {
-    if (!isRunning) {
-      setPreview((prev) => ({ ...prev, isActive }))
-    }
-  }, [isActive, isRunning])
+  // While simulating, `preview.isActive` is driven by the running animation;
+  // when idle, mirror the `isActive` control through to the rendered preview
+  // without round-tripping through state.
+  const displayedPreview = isRunning ? preview : { ...preview, isActive }
 
-  return <WritingPreviewCard preview={preview} />
+  return <WritingPreviewCard preview={displayedPreview} />
 }
 
 // ---------------------------------------------------------------------------

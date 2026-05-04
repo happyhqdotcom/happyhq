@@ -24,7 +24,11 @@
    - Is there a smaller fix? A deeper one? Does the issue describe a symptom whose root cause lives one layer up?
    - Are there sites the body missed that fall under the same rule? (Note them in the PR body but don't widen the diff to cover them — that's a separate issue.)
    - **Adjacent latent issues.** While reading the code to make this change, did you notice an unrelated bug nearby (a leak, a stale closure, a missing guard, a TODO that's actually live)? If surgical (one or two lines) → fix in this PR and document in the PR body. If larger → file a follow-up `tech-debt` issue and link it. Don't walk past a real bug just because it's not in the directive.
-   - **Same fix applied twice = duplication signal.** If you find yourself applying near-identical changes to ≥2 sites — same control flow, mostly same code, same fix — the structural problem isn't the rule, it's that the logic is duplicated. Don't widen this PR to refactor (out of scope), but file a follow-up `tech-debt` issue describing the duplication and noting that the loop just paid the same cost twice. The pain of applying the fix in parallel is the signal worth capturing for the next reader.
+   - **Same shape across sites = duplication signal.** Two ways this shows up:
+     - **Same fix applied twice** — you find yourself applying near-identical changes to ≥2 sites (same control flow, mostly same code, same patch).
+     - **Same pre-fix shape across sites** — ≥2 sites have the same anti-pattern + same context (e.g., "reset child state when X changes" effect inside a dialog), even when you choose a per-line disable for both. The shape being patched is duplicated, regardless of whether the patch differs.
+
+     Either way, the structural problem isn't the rule, it's that the logic is duplicated. Don't widen this PR to refactor (out of scope), but file a follow-up `tech-debt` issue describing the shape and pointing at the sites. The pain of editing the parallel code — or the consistency of choosing the same hedge for it — is the signal worth capturing for the next reader.
 
    **If the body is wrong** (the proposed approach won't produce a good outcome on inspection) → apply `ralphie:skip-needs-rescope` (rubric rule 5), post the rubric-shaped comment with the alternative shape concrete enough that the maintainer can decide whether to update the body, exit. **Do not ship a thoughtless implementation** just because the loop reached this issue.
 

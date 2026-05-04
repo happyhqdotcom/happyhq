@@ -27,6 +27,9 @@ export function useAnimatedText(
 
   useEffect(() => {
     if (!enabled) {
+      // When animation is disabled, snap the cursor to the end so a future
+      // re-enable starts from the current text rather than replaying from 0.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCursor(text.split(delimiter).length)
       return
     }

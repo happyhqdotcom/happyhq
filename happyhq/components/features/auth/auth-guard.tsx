@@ -51,6 +51,9 @@ function AllowlistGate({ children }: { children: React.ReactNode }) {
     if (!token) return
     // Already verified this exact token
     if (token === verifiedToken) {
+      // Sync from the module-level cache so we skip the network round-trip
+      // and don't flash a blank during soft navigations.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStatus('allowed')
       return
     }

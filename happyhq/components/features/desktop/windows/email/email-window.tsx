@@ -84,6 +84,9 @@ export function EmailWindow({
 
   useEffect(() => {
     if (!jsonPath) return
+    // Show the spinner immediately while the new fetch resolves — the
+    // canonical fetch-then-update shape.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     fetch(`/api/fs/file?path=${encodeURIComponent(jsonPath)}`)
       .then((res) => {

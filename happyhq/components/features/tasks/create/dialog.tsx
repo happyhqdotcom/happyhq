@@ -47,6 +47,10 @@ export function TaskCreateDialog({
 
   useEffect(() => {
     if (open) {
+      // Reset the new-task form each time the dialog (re)opens so the next
+      // user sees a clean slate, regardless of whether the underlying Dialog
+      // unmounts its children between opens.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTitle('')
       setDescription('')
       setSelectedStream(null)
