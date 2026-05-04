@@ -76,6 +76,7 @@ export function WindowFrame({
   const height = useMotionValue(size.height)
   const windowRef = useRef<HTMLDivElement>(null)
   const resizeStateRef = useRef<ResizeState | null>(null)
+  const resizeAbortRef = useRef<AbortController | null>(null)
 
   // Sync from store when position/size changes externally (e.g. window reopened, maximize)
   useEffect(() => {
@@ -162,12 +163,12 @@ export function WindowFrame({
       resizeStateRef.current = null
       document.body.style.userSelect = ''
       ;(e.target as Element)?.releasePointerCapture?.(e.pointerId)
-      document.removeEventListener('pointermove', handleResizeMove)
-      document.removeEventListener('pointerup', handleResizeEnd)
+      resizeAbortRef.current?.abort()
+      resizeAbortRef.current = null
       onResize?.({ width: width.get(), height: height.get() })
       onDragEnd({ x: x.get(), y: y.get() })
     },
-    [handleResizeMove, onResize, onDragEnd, width, height, x, y],
+    [onResize, onDragEnd, width, height, x, y],
   )
 
   const handleResizeStart = useCallback(
@@ -193,8 +194,17 @@ export function WindowFrame({
       }
 
       document.body.style.userSelect = 'none'
-      document.addEventListener('pointermove', handleResizeMove)
-      document.addEventListener('pointerup', handleResizeEnd)
+      // Defensive: abort any in-flight resize before starting a new one, so a
+      // double pointerdown can't leak the previous gesture's listeners.
+      resizeAbortRef.current?.abort()
+      const controller = new AbortController()
+      resizeAbortRef.current = controller
+      document.addEventListener('pointermove', handleResizeMove, {
+        signal: controller.signal,
+      })
+      document.addEventListener('pointerup', handleResizeEnd, {
+        signal: controller.signal,
+      })
     },
     [
       onFocus,
