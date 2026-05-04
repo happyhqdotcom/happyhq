@@ -11,7 +11,7 @@
    - Has someone else already addressed part of it?
 
    **Drift handling:**
-   - If the directive is fully obsolete (terminal action done, all sites cleared) → apply `ralphie:skip-stale` (rubric rule 5), post the rubric-shaped comment, exit.
+   - If the directive is fully obsolete (terminal action done, all sites cleared) → apply `ralphie:skip-stale` (rubric rule 4), post the rubric-shaped comment, exit.
    - If significantly drifted but salvageable → proceed with what's left, note the drift in the PR body's "Verification" section.
    - If under-drifted → continue.
 
@@ -20,13 +20,13 @@
    - Is there a smaller fix? A deeper one? Does the issue describe a symptom whose root cause lives one layer up?
    - Are there sites the body missed that fall under the same rule? (Note them in the PR body but don't widen the diff to cover them — that's a separate issue.)
 
-   **If the body is wrong** (the proposed approach won't produce a good outcome on inspection) → apply `ralphie:skip-needs-rescope` (rubric rule 6), post the rubric-shaped comment with the alternative shape concrete enough that the maintainer can decide whether to update the body, exit. **Do not ship a thoughtless implementation** just because the loop reached this issue.
+   **If the body is wrong** (the proposed approach won't produce a good outcome on inspection) → apply `ralphie:skip-needs-rescope` (rubric rule 5), post the rubric-shaped comment with the alternative shape concrete enough that the maintainer can decide whether to update the body, exit. **Do not ship a thoughtless implementation** just because the loop reached this issue.
 
 4. **Branch.** The wrapper has already snapped `${BASE_BRANCH}` to latest `origin/main`. From `${BASE_BRANCH}`: `git checkout -b chore/${ISSUE_NUMBER}-<short-slug>`. The slug is 2–4 hyphenated words derived from the issue title (per [CLAUDE.md](CLAUDE.md) prefixes — `chore/`, not `fix/`).
 
 5. **Implement.** Apply the change with judgment. Where you deviate from the body, document the deviation in the PR body — that's where reviewers will look for the reasoning. If the body lists per-site decisions ("decide one of: fix / disable / refactor"), apply the bucket guidance the body provides, but override the bucket per site when the code says you should.
 
-6. **Verify.** From the `happyhq/` directory: `pnpm format`, `pnpm lint`, `pnpm check-types`, `pnpm --filter=happyhq test`. If a re-enable step is in scope (an `'off'` line was removed in eslint.config.mjs), `pnpm lint` must pass with the rule active. If any check fails, fix and re-run. If they fail twice, apply `ralphie:skip-verification-failed` (rubric rule 7), post the rubric-shaped comment with the failing output included, exit.
+6. **Verify.** From the `happyhq/` directory: `pnpm format`, `pnpm lint`, `pnpm check-types`, `pnpm --filter=happyhq test`. If a re-enable step is in scope (an `'off'` line was removed in eslint.config.mjs), `pnpm lint` must pass with the rule active. If any check fails, fix and re-run. If they fail twice, apply `ralphie:skip-verification-failed` (rubric rule 6), post the rubric-shaped comment with the failing output included, exit.
 
 7. **Risk gate.** With the diff in hand, apply the rubric's "Risk gate" decision tree:
    - Run `git diff --stat origin/main...HEAD -- ':!*.md' ':!*.mdx'` to get the size.
