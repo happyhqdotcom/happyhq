@@ -1,9 +1,14 @@
 'use client'
 
+import { useEffect, useState } from 'react'
+
 import { getTierLimits } from '@/ee/lib/billing/plans'
 import type { TierName } from '@/ee/lib/billing/types'
 import { useCurrentUser } from '@/lib/accounts/hooks'
 import { db } from '@/lib/database/instant'
+
+// Cadence for re-checking the active billing period (see `now` state below).
+const PERIOD_TICK_MS = 60_000
 
 export type UsageData = {
   currentTier: TierName
@@ -40,7 +45,16 @@ export function useBillingData(): UsageData | null {
   const currentTier: TierName = (activeSubscription?.tier as TierName) ?? 'free'
   const tierLimits = getTierLimits(currentTier)
 
-  const now = Date.now()
+  // Re-evaluate the active period periodically so the meter switches over when
+  // a billing period boundary crosses while the page is open. Cadence is
+  // sub-minute because monthly boundaries don't need higher precision and the
+  // re-render is cheap.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), PERIOD_TICK_MS)
+    return () => clearInterval(id)
+  }, [])
+
   const currentUsage = usageRecords.find(
     (u: { periodStart: string | number; periodEnd: string | number }) =>
       Number(u.periodStart) <= now && Number(u.periodEnd) >= now,
