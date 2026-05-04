@@ -194,6 +194,9 @@ export function WindowFrame({
       }
 
       document.body.style.userSelect = 'none'
+      // Defensive: abort any in-flight resize before starting a new one, so a
+      // double pointerdown can't leak the previous gesture's listeners.
+      resizeAbortRef.current?.abort()
       const controller = new AbortController()
       resizeAbortRef.current = controller
       document.addEventListener('pointermove', handleResizeMove, {
