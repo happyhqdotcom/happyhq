@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect, useState } from 'react'
+
 import { Link } from '@/components/common/catalyst/link'
 import { getTierLimits } from '@/ee/lib/billing/plans'
 import type { TierName } from '@/ee/lib/billing/types'
@@ -34,8 +36,14 @@ export function UsageSettings() {
   const currentTier: TierName = (activeSubscription?.tier as TierName) ?? 'free'
   const tierLimits = getTierLimits(currentTier)
 
-  // Find the current usage period (the one covering now)
-  const now = Date.now()
+  // Re-evaluate the active period periodically so the meter switches over when
+  // a billing period boundary crosses while the page is open.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(id)
+  }, [])
+
   const currentUsage = usageRecords.find(
     (u: { periodStart: string | number; periodEnd: string | number }) =>
       Number(u.periodStart) <= now && Number(u.periodEnd) >= now,

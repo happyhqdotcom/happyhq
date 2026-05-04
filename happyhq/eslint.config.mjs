@@ -19,14 +19,12 @@ const eslintConfig = [
       // (via eslint-config-next 16). Disabled to land the toolchain upgrade
       // non-blocking; addressing the findings is its own piece of work.
       'react-hooks/set-state-in-effect': 'off',
-      'react-hooks/purity': 'off',
       // The findings have been resolved (see git history), but the rule
       // misclassifies DOM-property writes on `useState<HTMLElement>` values
       // as state mutations. Re-enabling would force false-positive workarounds
       // across a recurring codebase pattern. Audit `useState<HTMLElement>`
       // sites before flipping this on.
       'react-hooks/immutability': 'off',
-      'react/use': 'off',
     },
   },
 ]
