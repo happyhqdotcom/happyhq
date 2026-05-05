@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node scripts/check-standalone-sdk-binary.mjs",
+    "build": "next build && node scripts/repair-standalone-symlinks.mjs && node scripts/check-standalone-sdk-binary.mjs",
     "start": "next start",
     "lint": "eslint .",
     "check-types": "tsc --noEmit",

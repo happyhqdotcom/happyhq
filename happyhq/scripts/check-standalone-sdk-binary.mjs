@@ -43,7 +43,40 @@ for (const pkg of platformPkgs) {
   try {
     statSync(binary)
   } catch {
-    console.error(`Platform package ${pkg} is present but binary missing at ${binary}`)
+    console.error(
+      `Platform package ${pkg} is present but binary missing at ${binary}`,
+    )
+    process.exit(1)
+  }
+}
+
+// Verify the SDK wrapper can actually resolve the platform package via Node's
+// resolver — i.e., the pnpm symlinks survived the standalone copy. The package
+// files being present on disk isn't enough; the SDK does
+// `require('@anthropic-ai/claude-agent-sdk-${platform}-${arch}')` and that
+// fails silently if the symlinks were dropped.
+const wrapperPkgs = entries.filter((d) =>
+  /^@anthropic-ai\+claude-agent-sdk@/.test(d),
+)
+for (const wrapper of wrapperPkgs) {
+  const wrapperAtNs = join(PNPM_DIR, wrapper, 'node_modules', '@anthropic-ai')
+  let entriesUnder
+  try {
+    entriesUnder = readdirSync(wrapperAtNs)
+  } catch {
+    console.error(`SDK wrapper missing @anthropic-ai dir: ${wrapperAtNs}`)
+    process.exit(1)
+  }
+  const platformLinks = entriesUnder.filter((e) =>
+    e.startsWith('claude-agent-sdk-'),
+  )
+  if (platformLinks.length === 0) {
+    console.error(
+      `SDK wrapper ${wrapper} has no platform-binary symlinks under @anthropic-ai/.`,
+    )
+    console.error(
+      `Found: ${entriesUnder.join(', ')}. Run scripts/repair-standalone-symlinks.mjs.`,
+    )
     process.exit(1)
   }
 }
