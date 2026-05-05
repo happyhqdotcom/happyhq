@@ -49,16 +49,15 @@
 
 6a. **Exercise.** Try the change end-to-end the way a real user would experience it, before opening the PR. Code-only checks (lint/types/test) prove the plumbing; this step proves nothing visible regressed. Tech-debt fixes are usually behavior-preserving, which is exactly when this matters most — the diff says "nothing should change," and you need to see that's true. Apply this to every fix — pick the right tool for the surface, don't skip because "it's just a refactor."
 
-- Boot the dev server: `npx tsx scripts/dev-server.ts start && npx tsx scripts/dev-server.ts wait-ready`. Default port 3000.
+- **Read [@.dev/exercising-the-ui.md](.dev/exercising-the-ui.md) first.** It owns the UI-driving knowledge: helpers (`scripts/dev-server.ts`, Playwright MCP), pitfalls (`networkidle` lies in dev mode, hotkeys need focus, dynamic button labels, slow first-compile, route-gated menu items, env-specific slugs), and the routing cheat-sheet. Saves you rediscovering them.
 - Pick the right tool for the surface(s) you touched in step 5:
-  - **UI-visible** — Playwright MCP tools (`browser_navigate`, `browser_click`, `browser_type`, `browser_take_screenshot`, etc.) to drive each affected surface. Capture screenshots.
-  - **Server-only** — drive the API per [CLAUDE.md](CLAUDE.md) "Using HappyHQ's API for verification": curl the endpoints, watch `~/HappyHQ/.logs/$(date +%Y-%m-%d).jsonl` via `npx tsx scripts/read-logs.ts`. Capture the relevant log excerpt or response.
+  - **UI-visible** — Playwright MCP tools to drive each affected surface. Capture screenshots.
+  - **Server-only** — drive the API per [CLAUDE.md](CLAUDE.md) "Using HappyHQ's API for verification". Capture the relevant log excerpt or API response.
   - **Mixed** (server change with a UI surface) — both.
 - Drive the happy path on each surface in your per-site list from step 3. For each: does the surface still do what it did before? Sweep for adjacent regressions — the diff says nothing should change; the evidence has to confirm that.
-- **If something is broken:** rework once. If still broken on the second attempt, apply `ralphie:skip-cannot-verify` (rubric rule 7) with the evidence showing what you saw vs. what was expected, stop the dev server, exit.
+- **If something is broken:** rework once. If still broken on the second attempt, apply `ralphie:skip-cannot-verify` (rubric rule 7) with evidence showing what you saw vs. what was expected, stop the dev server, exit.
 - **If you can't reach a surface** (heavy seed state needed, environment can't be produced, etc.): apply `ralphie:skip-cannot-verify` with a one-paragraph note. Don't ship a refactor without evidence the touched surfaces still work.
-- **If everything still works:** keep the evidence path(s) — they go in the PR body in step 9.
-- Always stop the dev server before moving on: `npx tsx scripts/dev-server.ts stop`. Orphan dev servers collide with the next session.
+- **If everything still works:** keep the evidence path(s) — they go in the PR body in step 9. Always stop the dev server when done: `npx tsx scripts/dev-server.ts stop`.
 
 7. **Risk gate.** With the diff in hand, apply the rubric's "Risk gate" decision tree:
    - Run `git diff --stat origin/main...HEAD -- ':!*.md' ':!*.mdx'` to get the size.
