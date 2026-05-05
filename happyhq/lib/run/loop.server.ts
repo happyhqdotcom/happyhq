@@ -467,6 +467,7 @@ async function runPlanningIteration(
   let iterationCost = 0
   let peakInputTokens = 0
   let tokenMetrics: Partial<IterationMetrics> = {}
+  let receivedAnyMessage = false
 
   try {
     const notifyClient = (event: ChatStreamEvent) => {
@@ -497,6 +498,7 @@ async function runPlanningIteration(
     let resultSubtype: string | undefined
     for await (const msg of sdkQuery) {
       if (parentSignal.aborted) throw new Error('Aborted')
+      receivedAnyMessage = true
       peakInputTokens = trackPeakInputTokens(msg, peakInputTokens)
       const event = filterMessage(msg)
       if (event) {
@@ -510,6 +512,13 @@ async function runPlanningIteration(
           )
         }
       }
+    }
+
+    // Silent fast-fail: subprocess exited before emitting any SDK message
+    // (e.g. missing ~/.claude.json, startup auth failure). Without this, the
+    // loop falls through to plan_ready below despite producing nothing.
+    if (!receivedAnyMessage && stderrBuf.getLines().length > 0) {
+      throw new Error('Agent exited before producing any output')
     }
 
     const metrics: IterationMetrics = {
@@ -612,7 +621,9 @@ async function runPlanningIteration(
 
     const errMsg = error instanceof Error ? error.message : String(error)
     const stderrTail = stderrBuf.getTail()
-    // Planning failed — write stopped with error
+    // Planning failed — write stopped with error and broadcast an error event
+    // so the UI surfaces a toast. Without the broadcast, fast-fail subprocess
+    // exits (e.g. missing config, startup auth) ended the run silently.
     await writeRunInfo(taskName, {
       status: 'stopped',
       stoppedDuring: 'planning',
@@ -626,12 +637,14 @@ async function runPlanningIteration(
       iterations: [metrics],
       planningSessionId,
     })
+    broadcastErrorEvent(error, stderrTail)
     log('run.error', {
       task: taskName,
       stream: streamName,
       mode: 'planning',
       session: planningSessionId,
       error: errMsg,
+      stderr: stderrTail || undefined,
       cost: iterationCost,
     })
     return 'stopped'
@@ -738,6 +751,7 @@ async function runWorkingLoop(
     let tokenMetrics: Partial<IterationMetrics> = {}
     let billingCapped = false
     let resultSubtype: string | undefined
+    let receivedAnyMessage = false
 
     try {
       const notifyClient = (event: ChatStreamEvent) => {
@@ -768,6 +782,7 @@ async function runWorkingLoop(
       const sdkQuery = query({ prompt: 'Begin.', options })
       for await (const msg of sdkQuery) {
         if (parentSignal.aborted) throw new Error('Aborted')
+        receivedAnyMessage = true
         peakInputTokens = trackPeakInputTokens(msg, peakInputTokens)
         const event = filterMessage(msg)
         if (event) {
@@ -781,6 +796,13 @@ async function runWorkingLoop(
             )
           }
         }
+      }
+
+      // Silent fast-fail: subprocess exited before emitting any SDK message.
+      // Throw into the catch path so the iteration is treated as errored
+      // (and the user sees a toast) rather than continuing as a silent no-op.
+      if (!receivedAnyMessage && stderrBuf.getLines().length > 0) {
+        throw new Error('Agent exited before producing any output')
       }
     } catch (error) {
       cleanup()
@@ -858,6 +880,7 @@ async function runWorkingLoop(
           planningSessionId,
           workingSessionIds,
         })
+        broadcastErrorEvent(error, stderrTail)
         log('run.error', {
           task: taskName,
           stream: streamName,
@@ -865,6 +888,7 @@ async function runWorkingLoop(
           session: iterSessionId,
           iteration,
           error: errMsg,
+          stderr: stderrTail || undefined,
           cost: totalCost,
         })
         return 'stopped'
@@ -873,6 +897,7 @@ async function runWorkingLoop(
       // Iteration timeout or other error — continue to next iteration.
       // "Fresh context self-heals problems."
       const iterErrMsg = error instanceof Error ? error.message : String(error)
+      const iterStderrTail = stderrBuf.getTail()
       await writeRunInfo(taskName, {
         status: 'working',
         iteration,
@@ -885,6 +910,13 @@ async function runWorkingLoop(
         planningSessionId,
         workingSessionIds,
       })
+      // Surface only when stderr was captured — that's the silent fast-fail
+      // pattern (subprocess died before emitting). Other transient errors
+      // (SDK timeouts, network blips) self-heal on the next iteration and
+      // don't deserve a toast.
+      if (iterStderrTail) {
+        broadcastErrorEvent(error, iterStderrTail)
+      }
       log('run.iteration', {
         task: taskName,
         iteration,
@@ -892,6 +924,7 @@ async function runWorkingLoop(
         cost: iterationCost,
         duration_ms: Date.now() - iterStartMs,
         error: iterErrMsg,
+        stderr: iterStderrTail || undefined,
       })
 
       // No-progress check applies to errored iterations too — if the agent
@@ -1102,6 +1135,21 @@ async function runWorkingLoop(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Push an error toast to subscribers. `auth_error` is special-cased because
+ * the client redirects to /setup on receipt — using a plain `error` event for
+ * auth failures would surface the toast but skip the redirect.
+ */
+function broadcastErrorEvent(error: unknown, stderrTail: string): void {
+  const message =
+    error instanceof Error ? error.message : String(error || 'Run failed')
+  const composed = stderrTail ? `${message}\n\n${stderrTail}` : message
+  const event: ChatStreamEvent = isAuthError(error)
+    ? { type: 'auth_error', message: composed }
+    : { type: 'error', message: composed }
+  broadcast(encodeEvent(event))
+}
 
 /**
  * Broadcast a chunk to all subscriber streams — fire-and-forget.
