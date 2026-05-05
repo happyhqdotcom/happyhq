@@ -28,11 +28,6 @@ import {
 import { buildLearningReminders } from './reminders.server'
 import { createQsMcpServer, MCP_SERVER_NAME, mcpToolName } from './tools.server'
 
-/** In Docker the standalone build strips node_modules; point to the global install. */
-const claudeExecutable = process.env.Q_PASSWORD
-  ? '/usr/local/bin/claude'
-  : undefined
-
 /**
  * Env vars that suppress Claude Code CLI harness behaviors we don't want
  * leaking into our agents: project-memory auto-loading (MEMORY.md) and
@@ -233,7 +228,6 @@ export async function learningAgentOptions(
         maxTurns: 10,
       },
     },
-    ...(claudeExecutable && { pathToClaudeCodeExecutable: claudeExecutable }),
     ...(opts?.abortController && { abortController: opts.abortController }),
     // New session: set sessionId. Resume: set resume to the session ID.
     ...(opts?.resume ? { resume: sessionId } : { sessionId }),
@@ -421,7 +415,6 @@ export async function chatAgentOptions(params: {
             },
           }
         : {},
-    ...(claudeExecutable && { pathToClaudeCodeExecutable: claudeExecutable }),
     ...(params.abortController && { abortController: params.abortController }),
     ...(params.resume ? { resume: sessionId } : { sessionId }),
   }
@@ -541,7 +534,6 @@ export async function planningAgentOptions(
         },
       ],
     },
-    ...(claudeExecutable && { pathToClaudeCodeExecutable: claudeExecutable }),
     ...(opts?.sessionId && { sessionId: opts.sessionId }),
   }
 }
@@ -619,7 +611,6 @@ export async function workingAgentOptions(
         },
       ],
     },
-    ...(claudeExecutable && { pathToClaudeCodeExecutable: claudeExecutable }),
     ...(opts?.sessionId && { sessionId: opts.sessionId }),
   }
 }

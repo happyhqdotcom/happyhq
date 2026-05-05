@@ -4,6 +4,18 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   reactStrictMode: false,
   serverExternalPackages: ['@hyzyla/pdfium'],
+  // The Agent SDK loads its CLI binary from a platform-specific package whose
+  // name is computed at runtime (`@anthropic-ai/claude-agent-sdk-${platform}-${arch}`).
+  // Next's static tracer can't follow that, so the package gets stripped from
+  // the standalone output. Force-include all platform variants so the deployed
+  // image always has the binary that matches the resolved SDK version.
+  //
+  // Known minor over-install: on Alpine builds, pnpm installs both linux-x64
+  // and linux-x64-musl variants because optional-deps can't disambiguate libc.
+  // Tracked: https://github.com/happyhqdotcom/happyhq/issues/226
+  outputFileTracingIncludes: {
+    '*': ['../node_modules/.pnpm/@anthropic-ai+claude-agent-sdk-*/**'],
+  },
   images: {
     remotePatterns: [
       {

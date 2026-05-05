@@ -55,7 +55,7 @@ importers:
   happyhq:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.2.92
+        specifier: 0.2.114
         version: 0.2.114(zod@4.4.2)
       '@headlessui/react':
         specifier: ^2.2.9
