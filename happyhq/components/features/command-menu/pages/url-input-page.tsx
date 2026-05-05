@@ -106,8 +106,102 @@ export function UrlInputPage({
   onActionChange,
 }: UrlInputPageProps) {
   const isTopicInput = source === 'research-topic'
+
+  if (isTopicInput) {
+    return (
+      <TopicInputView
+        search={search}
+        onSubmit={onSubmit}
+        onActionChange={onActionChange}
+      />
+    )
+  }
+
+  // Remount on every new search value so previously-fetched unfurl state
+  // can't render against the wrong URL — structural reset replaces an effect.
+  return (
+    <UrlPreviewView
+      key={search}
+      source={source}
+      search={search}
+      onSubmit={onSubmit}
+      onActionChange={onActionChange}
+    />
+  )
+}
+
+interface TopicInputViewProps {
+  search: string
+  onSubmit: (url: string, unfurl: UnfurlResult | null) => void
+  onActionChange?: (action: UrlInputAction) => void
+}
+
+function TopicInputView({
+  search,
+  onSubmit,
+  onActionChange,
+}: TopicInputViewProps) {
+  const config = SOURCE_CONFIGS['research-topic']
   const hasInput = search.trim().length > 0
-  const isValid = isTopicInput ? hasInput : isValidUrl(search)
+
+  useEffect(() => {
+    if (!onActionChange) return
+    if (!hasInput) {
+      onActionChange({ type: 'disabled' })
+    } else {
+      onActionChange({ type: 'submit', onAction: () => onSubmit(search, null) })
+    }
+  }, [hasInput, onActionChange, onSubmit, search])
+
+  return (
+    <div className="flex h-full flex-col items-center justify-center p-6">
+      {hasInput ? (
+        <div className="text-center">
+          <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-blue-100">
+            <Search className="size-6 text-blue-600" />
+          </div>
+          <p className="text-sm font-medium text-zinc-900">
+            Research: {search}
+          </p>
+        </div>
+      ) : (
+        <div className="max-w-sm text-center">
+          <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-blue-100">
+            <Search className="size-6 text-blue-600" />
+          </div>
+          <p className="text-sm font-medium text-zinc-900">{config.title}</p>
+          <p className="mt-2 text-sm text-zinc-500">{config.description}</p>
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            {config.examples.map((example) => (
+              <span
+                key={example}
+                className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-600"
+              >
+                {example}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface UrlPreviewViewProps {
+  source: string
+  search: string
+  onSubmit: (url: string, unfurl: UnfurlResult | null) => void
+  onActionChange?: (action: UrlInputAction) => void
+}
+
+function UrlPreviewView({
+  source,
+  search,
+  onSubmit,
+  onActionChange,
+}: UrlPreviewViewProps) {
+  const hasInput = search.trim().length > 0
+  const isValid = isValidUrl(search)
 
   const [unfurlData, setUnfurlData] = useState<UnfurlResult | null>(null)
   const [unfurlError, setUnfurlError] = useState(false)
@@ -117,18 +211,9 @@ export function UrlInputPage({
   const config = SOURCE_CONFIGS[source] || SOURCE_CONFIGS['save-link']
   const Icon = config.icon
 
-  useEffect(() => {
-    // Reset preview state when the search input changes — previously fetched
-    // unfurl data is now stale and would render against the wrong URL.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setUnfurlData(null)
-    setUnfurlError(false)
-    setHasPreviewed(false)
-  }, [search])
-
   // Fetch unfurl data
   const fetchPreview = () => {
-    if (!isTopicInput && isValid && !hasPreviewed) {
+    if (isValid && !hasPreviewed) {
       const url = search.trim()
       setHasPreviewed(true)
 
@@ -154,17 +239,6 @@ export function UrlInputPage({
   useEffect(() => {
     if (!onActionChange) return
 
-    // For topics: just submit when valid
-    if (isTopicInput) {
-      if (!isValid) {
-        onActionChange({ type: 'disabled' })
-      } else {
-        onActionChange({ type: 'submit', onAction: handleSubmit })
-      }
-      return
-    }
-
-    // For URLs: preview → loading → submit flow
     if (!isValid) {
       onActionChange({ type: 'disabled' })
     } else if (!hasPreviewed) {
@@ -174,43 +248,7 @@ export function UrlInputPage({
     } else {
       onActionChange({ type: 'submit', onAction: handleSubmit })
     }
-  }, [isTopicInput, isValid, hasPreviewed, isPending, search])
-
-  // Topic input view
-  if (isTopicInput) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center p-6">
-        {hasInput ? (
-          <div className="text-center">
-            <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-blue-100">
-              <Search className="size-6 text-blue-600" />
-            </div>
-            <p className="text-sm font-medium text-zinc-900">
-              Research: {search}
-            </p>
-          </div>
-        ) : (
-          <div className="max-w-sm text-center">
-            <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-blue-100">
-              <Search className="size-6 text-blue-600" />
-            </div>
-            <p className="text-sm font-medium text-zinc-900">{config.title}</p>
-            <p className="mt-2 text-sm text-zinc-500">{config.description}</p>
-            <div className="mt-4 flex flex-wrap justify-center gap-2">
-              {config.examples.map((example) => (
-                <span
-                  key={example}
-                  className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-600"
-                >
-                  {example}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
+  }, [isValid, hasPreviewed, isPending, search])
 
   // Determine card state
   const isEmpty = !hasInput

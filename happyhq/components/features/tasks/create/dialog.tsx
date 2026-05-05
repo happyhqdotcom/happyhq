@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import { useSidebarOptional } from '@/components/common/ui/sidebar'
 import { FileRow } from '@/components/features/desktop/windows/shared/file-row'
@@ -25,6 +25,29 @@ export function TaskCreateDialog({
   open: boolean
   onClose: () => void
 }) {
+  // Bump a key each time the dialog opens so the inner shell remounts with
+  // fresh form state — structural reset replaces a setState-in-effect that
+  // had to hedge for both "Headless UI unmounts its children" and "consumer
+  // keeps them mounted during the close transition." The "adjust state during
+  // render" pattern is the canonical alternative to a derived useEffect (see
+  // https://react.dev/learn/you-might-not-need-an-effect#resetting-all-state-when-a-prop-changes).
+  const [mountId, setMountId] = useState(0)
+  const [prevOpen, setPrevOpen] = useState(open)
+  if (open !== prevOpen) {
+    setPrevOpen(open)
+    if (open) setMountId((id) => id + 1)
+  }
+
+  return <TaskCreateDialogShell key={mountId} open={open} onClose={onClose} />
+}
+
+function TaskCreateDialogShell({
+  open,
+  onClose,
+}: {
+  open: boolean
+  onClose: () => void
+}) {
   const sidebar = useSidebarOptional()
   const streams = useStreams()
   const { mutate } = useSWRConfig()
@@ -33,30 +56,11 @@ export function TaskCreateDialog({
   const [description, setDescription] = useState('')
   const [selectedStream, setSelectedStream] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
-  const {
-    stagedFiles,
-    fileInputRef,
-    addFiles,
-    removeFile,
-    clearFiles,
-    openFilePicker,
-  } = useFileStaging()
+  const { stagedFiles, fileInputRef, addFiles, removeFile, openFilePicker } =
+    useFileStaging()
   const { isDragOver, dragHandlers } = useFileDrop(addFiles)
 
   const canSubmit = title.trim().length > 0
-
-  useEffect(() => {
-    if (open) {
-      // Reset the new-task form each time the dialog (re)opens so the next
-      // user sees a clean slate, regardless of whether the underlying Dialog
-      // unmounts its children between opens.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setTitle('')
-      setDescription('')
-      setSelectedStream(null)
-      clearFiles()
-    }
-  }, [open, clearFiles])
 
   const handleClose = () => {
     if (!isCreating) onClose()
