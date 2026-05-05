@@ -21,7 +21,7 @@ npx tsx scripts/dev-server.ts stop        # kill the dev server
 npx tsx scripts/dev-server.ts status      # check if it's running
 ```
 
-Default port 3000. Override with `PORT=3030 npx tsx ...` if 3000 is in use (e.g. by your interactive dev session). PID + log paths are per-CWD under `/tmp/happyhq-dev-server.<hash>.{pid,log}` so concurrent worktrees don't collide.
+Default port 3000. Override with `PORT=3030 npx tsx ...` if 3000 is in use (e.g. by your interactive dev session). PID + log paths are per-CWD under `~/HappyHQ/.cache/dev-server/<hash>.{pid,log}` so concurrent worktrees don't collide.
 
 ### `@playwright/mcp` — browser tools
 

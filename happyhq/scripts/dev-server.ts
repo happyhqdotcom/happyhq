@@ -26,13 +26,23 @@ const READY_TIMEOUT_MS =
   Number(process.env.DEV_SERVER_READY_TIMEOUT_MS) || 90_000
 const POLL_INTERVAL_MS = 500
 
+// State (pid + log) lives under the user's home, not /tmp — avoids the
+// world-readable, predictable-filename pitfalls of os.tmpdir() on multi-user
+// systems (CodeQL js/insecure-temporary-file). Per-CWD hash so concurrent
+// worktrees don't collide.
+const STATE_DIR = path.join(
+  process.env.HAPPYHQ_ROOT || path.join(os.homedir(), 'HappyHQ'),
+  '.cache',
+  'dev-server',
+)
+fs.mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
 const cwdHash = crypto
   .createHash('sha1')
   .update(process.cwd())
   .digest('hex')
   .slice(0, 8)
-const PID_FILE = path.join(os.tmpdir(), `happyhq-dev-server.${cwdHash}.pid`)
-const LOG_FILE = path.join(os.tmpdir(), `happyhq-dev-server.${cwdHash}.log`)
+const PID_FILE = path.join(STATE_DIR, `${cwdHash}.pid`)
+const LOG_FILE = path.join(STATE_DIR, `${cwdHash}.log`)
 
 function readPid(): number | null {
   if (!fs.existsSync(PID_FILE)) return null
