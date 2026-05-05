@@ -91,7 +91,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/turndown": "^5.0.6",
     "aws4": "^1.13.2",
-    "eslint": "^9.39.4",
+    "eslint": "^10.3.0",
     "eslint-config-next": "16.2.4",
     "fast-check": "^4.6.0",
     "jsdom": "^29.1.1",
