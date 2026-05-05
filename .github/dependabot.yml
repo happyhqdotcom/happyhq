@@ -8,19 +8,31 @@ updates:
     # so the traditional "don't overwhelm the maintainer" cap matters less.
     # The constraint now is loop session cost + queue management.
     open-pull-requests-limit: 15
+    # Cooldown only applies to the anthropic LLM clients: claude-agent-sdk
+    # ships ~daily for Claude Code parity, and ~half of releases are pure
+    # version bumps. A 7-day cooldown collapses the parity churn so the
+    # PR that does open contains real surface-area changes worth reviewing.
+    cooldown:
+      default-days: 7
+      include:
+        - '@anthropic-ai/*'
     groups:
-      # Two principles for grouping:
+      # Three principles for grouping:
       # - Packages that release together get a group (one PR keeps versions
       #   in lockstep). Add new SDK families here as we encounter them.
-      # - Packages whose behavior tests can't catch get their own PR
-      #   (excluded from groups; LLM clients are the canonical case).
+      # - LLM clients can be grouped *with each other* (related surface area,
+      #   often need coordinated bumps) but not with the broader patch
+      #   firehose, since behavior tests can't catch model/SDK regressions.
+      # - Everything else flows through npm-minor-patch.
+      anthropic-llm-clients:
+        patterns:
+          - '@anthropic-ai/*'
       npm-minor-patch:
         update-types:
           - minor
           - patch
         exclude-patterns:
-          - '@anthropic-ai/claude-agent-sdk'
-          - '@anthropic-ai/sdk'
+          - '@anthropic-ai/*'
       instantdb:
         # @instantdb/core, @instantdb/react, @instantdb/admin release in
         # lockstep; bumping one without the others causes type-inference
