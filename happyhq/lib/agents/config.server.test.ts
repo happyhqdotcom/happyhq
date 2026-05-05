@@ -389,6 +389,26 @@ describe('planningAgentOptions', () => {
     })
   })
 
+  it('preserves process.env when no override is given', async () => {
+    const original = process.env.ANTHROPIC_API_KEY
+    process.env.ANTHROPIC_API_KEY = 'sk-from-process-env'
+    try {
+      const opts = await planningAgentOptions(
+        'my-stream',
+        'my-task',
+        new AbortController(),
+      )
+      expect(opts.env).toMatchObject({
+        ANTHROPIC_API_KEY: 'sk-from-process-env',
+        CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+        ENABLE_TOOL_SEARCH: 'false',
+      })
+    } finally {
+      if (original === undefined) delete process.env.ANTHROPIC_API_KEY
+      else process.env.ANTHROPIC_API_KEY = original
+    }
+  })
+
   describe('PreToolUse Write/Edit gate', () => {
     type PreHookResult = {
       continue?: boolean

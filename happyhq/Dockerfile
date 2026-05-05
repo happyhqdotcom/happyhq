@@ -86,9 +86,11 @@ COPY --from=build /build/happyhq/prompts /app/happyhq/prompts
 COPY --from=build /build/happyhq/q /app/happyhq/q
 
 ENV PORT=3000 HOSTNAME=0.0.0.0
+# Point HOME at the mounted volume so ~/.claude.json and ~/.claude/ both
+# persist across machine restarts. See docker-entrypoint.sh for the migration
+# from the previous symlink-based layout.
+ENV HOME=/data/home
 EXPOSE 3000
 
-# Persist Claude Code state (~/.claude) across machine restarts by symlinking
-# to the mounted volume. The volume at /data survives stop/start cycles; the
-# root filesystem does not.
-CMD ["sh", "-c", "mkdir -p /data/.claude && ln -sfn /data/.claude /root/.claude && exec node server.js"]
+COPY --chmod=755 happyhq/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+CMD ["docker-entrypoint.sh"]
