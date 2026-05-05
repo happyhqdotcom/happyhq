@@ -60,6 +60,7 @@ Thumbs.db
 
 # Claude Code user-local overrides
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 
 # Spec reference images
 happyhq/specs/refs/
