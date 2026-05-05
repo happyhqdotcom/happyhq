@@ -16,6 +16,8 @@ export type UsageData = {
   includedMinutes: number
   remainingMinutes: number
   remainingPercent: number
+  isPastDue: boolean
+  periodEnd: number | null
 }
 
 /**
@@ -68,6 +70,9 @@ export function useBillingData(): UsageData | null {
   const remainingMinutes = Math.max(includedMinutes - usedMinutes, 0)
   const remainingPercent =
     includedMinutes > 0 ? (remainingMinutes / includedMinutes) * 100 : 0
+  const isPastDue = activeSubscription?.status === 'past_due'
+  const periodEnd =
+    currentUsage?.periodEnd != null ? Number(currentUsage.periodEnd) : null
 
   return {
     currentTier,
@@ -75,5 +80,7 @@ export function useBillingData(): UsageData | null {
     includedMinutes,
     remainingMinutes,
     remainingPercent,
+    isPastDue,
+    periodEnd,
   }
 }

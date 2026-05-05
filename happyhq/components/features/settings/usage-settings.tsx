@@ -1,70 +1,28 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-
 import { Link } from '@/components/common/catalyst/link'
+import { useBillingData } from '@/components/features/billing/use-billing-data'
 import { getTierLimits } from '@/ee/lib/billing/plans'
-import type { TierName } from '@/ee/lib/billing/types'
-import { useCurrentUser } from '@/lib/accounts/hooks'
-import { db } from '@/lib/database/instant'
 import { formatMinutes, formatPrice } from '@/lib/format'
-
-// Cadence for re-checking the active billing period (see `now` state below).
-const PERIOD_TICK_MS = 60_000
 
 /**
  * Usage settings — shows current plan and runtime usage meter.
  * Extracted from BillingSettings so usage has its own page.
  */
 export function UsageSettings() {
-  const { user } = useCurrentUser()
+  const billing = useBillingData()
 
-  const billingQuery = db?.useQuery(
-    user
-      ? {
-          subscriptions: { $: { where: { 'user.id': user.id } } },
-          usage: { $: { where: { 'user.id': user.id } } },
-        }
-      : null,
-  )
+  if (!billing) {
+    return null
+  }
 
-  const subscriptions = billingQuery?.data?.subscriptions ?? []
-  const usageRecords = billingQuery?.data?.usage ?? []
-
-  // Find the active subscription (active or past_due)
-  const activeSubscription = subscriptions.find(
-    (s: { status: string }) => s.status === 'active' || s.status === 'past_due',
-  )
-
-  const currentTier: TierName = (activeSubscription?.tier as TierName) ?? 'free'
+  const { currentTier, usedMinutes, includedMinutes, isPastDue, periodEnd } =
+    billing
   const tierLimits = getTierLimits(currentTier)
-
-  // Re-evaluate the active period periodically so the meter switches over when
-  // a billing period boundary crosses while the page is open. Cadence is
-  // sub-minute because monthly boundaries don't need higher precision and the
-  // re-render is cheap.
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), PERIOD_TICK_MS)
-    return () => clearInterval(id)
-  }, [])
-
-  const currentUsage = usageRecords.find(
-    (u: { periodStart: string | number; periodEnd: string | number }) =>
-      Number(u.periodStart) <= now && Number(u.periodEnd) >= now,
-  )
-
-  const usedMinutes = currentUsage?.usedMinutes ?? 0
-  const includedMinutes =
-    currentUsage?.includedMinutes ?? tierLimits.runtimeMinutes
   const usagePercent =
     includedMinutes > 0
       ? Math.min((usedMinutes / includedMinutes) * 100, 100)
       : 0
-
-  if (!user) {
-    return null
-  }
 
   return (
     <div>
@@ -77,7 +35,7 @@ export function UsageSettings() {
             {' — '}
             {formatPrice(tierLimits.priceMonthly)}
           </p>
-          {activeSubscription?.status === 'past_due' && (
+          {isPastDue && (
             <p className="text-sm font-medium text-amber-600">
               Payment past due
             </p>
@@ -101,13 +59,13 @@ export function UsageSettings() {
             style={{ width: `${usagePercent}%` }}
           />
         </div>
-        {currentUsage?.periodEnd && (
+        {periodEnd != null && (
           <p className="mt-1 text-sm text-zinc-500">
             Resets{' '}
-            {new Date(Number(currentUsage.periodEnd)).toLocaleDateString(
-              'en-US',
-              { month: 'short', day: 'numeric' },
-            )}
+            {new Date(periodEnd).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+            })}
           </p>
         )}
         {usagePercent >= 90 && (

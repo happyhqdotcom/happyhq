@@ -137,7 +137,7 @@ When `NEXT_PUBLIC_ACCOUNTS_ENABLED` is `'true'`, `SidebarFooter` renders `Accoun
 
 **Loading state:** `AccountFooter` returns `null` while `isLoading` is true or `user` is missing — no skeleton; the footer area collapses cleanly.
 
-> The footer does not currently surface tier, usage minutes, or a billing link. `usage-indicator.tsx` defines `TierBadge` / `UsageIndicator` / `useBillingData()` for use elsewhere; integration into the footer is deferred.
+> The footer does not currently surface tier, usage minutes, or a billing link. `usage-indicator.tsx` defines `TierBadge` / `UsageIndicator` (with `useBillingData()` in `components/features/billing/use-billing-data.ts`) for use elsewhere; integration into the footer is deferred.
 
 ### Development Footer Item
 
