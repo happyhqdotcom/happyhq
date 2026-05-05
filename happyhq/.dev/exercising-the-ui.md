@@ -99,20 +99,59 @@ const slug = items[0]?.slug
 
 For tasks-with-stream, `items[0].frontmatter.stream` gives the stream slug. For tasks without a stream, the URL is `/task/<slug>` (desktop) or `/tasks/inbox/<slug>` (inline-on-home).
 
+### 7. Run-trigger button labels depend on task state
+
+The button that starts a run changes label based on `run.status`:
+
+- **Fresh task** (no prior run, has description + stream): "Start Task" — direct click, no dialog.
+- **Stopped task** (previous run failed/finished): "Restart" and "Continue" — Restart fires a "Start Over?" confirmation dialog, Continue resumes from where the previous run left off.
+
+Either label triggers the same `/api/run/start` code path. Match both:
+
+```js
+const runBtn = page.locator(
+  'button:has-text("Start Task"), button:has-text("Restart")',
+)
+```
+
+### 8. Confirmation dialogs gate destructive actions
+
+Some clicks open a confirmation modal before firing the underlying action. Restart opens "Start Over?" with Cancel / Start. After the trigger click, look for and click through the confirmation conditionally — fresh-task clicks don't have one:
+
+```js
+await runBtn.first().click()
+await page.waitForTimeout(500)
+const confirmStart = page.getByRole('button', { name: /^start$/i })
+if (await confirmStart.count()) {
+  await confirmStart.first().click()
+}
+```
+
+### 9. SSE subscription mounts late — drive via UI, not raw API
+
+[components/features/desktop/hooks/use-run-activity.ts](../components/features/desktop/hooks/use-run-activity.ts) only subscribes to `/api/run/stream` when `run.status` flips to `'planning'` or `'working'`. The gate avoids open SSE connections from idle pages.
+
+If you trigger a run via raw `POST /api/run/start`, the server can fire its broadcast (the run loop's catch path, e.g. an `error` event after a fast SDK failure) before the client's SWR refetch picks up the status change and mounts the subscription. The event lands in a channel with no subscribers — toast missed.
+
+**Drive run-loop dogfoods via the UI button click, not raw API.** The button's click handler does an optimistic SWR update that mounts the subscription before the server's broadcast fires.
+
+(There's also a real bug in the broadcast — events aren't buffered for late subscribers. Tracked in #227. Until that's fixed, this pitfall is the workaround.)
+
 ## Routing cheat-sheet
 
 What URL gets you which surface. Add to this as you discover more.
 
-| Surface                 | Route                                | Notes                                                                                                                  |
-| ----------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| Home / task list        | `/` → redirects to `/tasks`          | The redirect is fine; let it happen.                                                                                   |
-| Task page (desktop)     | `/task/[task]`                       | Sets `openPanel.type === 'task'`; gates command-menu's "Add from the web" and friends.                                 |
-| Task page (with stream) | `/[stream]/[task]`                   | Same `openPanel` semantics as above.                                                                                   |
-| Task inline on home     | `/tasks/inbox/[task]`                | Renders home with task expanded inline. **Does not** set `openPanel` — task-aware command-menu items are missing here. |
-| Stream                  | `/[stream]`                          |                                                                                                                        |
-| Chat                    | `/chat/[id]`                         |                                                                                                                        |
-| Command menu            | `/` keystroke from any page (hotkey) | Toggles overlay. Needs document focus, not an input — see Pitfall 3.                                                   |
-| Task-create dialog      | Click "+ New task" in the sidebar    | Or use [shell.tsx](../components/features/desktop/shell.tsx)'s shortcut if there is one.                               |
+| Surface                 | Route                                         | Notes                                                                                                                                                               |
+| ----------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Home / task list        | `/` → redirects to `/tasks`                   | The redirect is fine; let it happen.                                                                                                                                |
+| Task page (desktop)     | `/task/[task]`                                | Sets `openPanel.type === 'task'`; gates command-menu's "Add from the web" and friends.                                                                              |
+| Task page (with stream) | `/[stream]/[task]`                            | Same `openPanel` semantics as above.                                                                                                                                |
+| Task inline on home     | `/tasks/inbox/[task]`                         | Renders home with task expanded inline. **Does not** set `openPanel` — task-aware command-menu items are missing here.                                              |
+| Stream                  | `/[stream]`                                   |                                                                                                                                                                     |
+| Chat                    | `/chat/[id]`                                  |                                                                                                                                                                     |
+| Command menu            | `/` keystroke from any page (hotkey)          | Toggles overlay. Needs document focus, not an input — see Pitfall 3.                                                                                                |
+| Task-create dialog      | Click "+ New task" in the sidebar             | Or use [shell.tsx](../components/features/desktop/shell.tsx)'s shortcut if there is one.                                                                            |
+| Run a task              | Click "Start Task" / "Restart" on a task page | Restart gates on a "Start Over?" confirmation dialog. Both end up at `POST /api/run/start`. UI path mounts the SSE subscription via optimistic SWR — see Pitfall 9. |
 
 ## Conventions
 
@@ -121,6 +160,7 @@ What URL gets you which surface. Add to this as you discover more.
 - **Pre-clean screenshot dir before each run** so a stale shot from a prior attempt doesn't masquerade as success: `for (const f of fs.readdirSync(OUT_DIR)) fs.unlinkSync(path.join(OUT_DIR, f))`.
 - **Wait between actions, but not blindly.** Prefer `waitForSelector` / `waitForFunction` over `waitForTimeout`. A 500ms `waitForTimeout` after a click is fine for letting CSS transitions settle; a 30s `waitForTimeout` waiting for compile is a sign you should be waiting on a signal instead.
 - **Capture a screenshot at every step**, not just the final one. When something fails, the trail of screenshots is what tells you which step broke. Cheap insurance.
+- **Synthetic tasks for failure-mode dogfooding.** When you need a stream-bound task to exercise a run-loop failure path (and don't want to disturb the user's real tasks), write directly to `~/HappyHQ/tasks/<slug>/task.md` with frontmatter that includes a `stream:` field. The API picks it up immediately. Delete the directory after the dogfood.
 
 ## Updating this doc
 
