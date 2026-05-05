@@ -10,7 +10,11 @@ export default defineConfig({
     setupFiles: ['./vitest.setup.ts'],
     globals: true,
     testTimeout: 10_000,
-    exclude: [...configDefaults.exclude, 'tests/**/*.spec.ts'],
+    exclude: [
+      ...configDefaults.exclude,
+      'tests/**/*.spec.ts',
+      '.next/**',
+    ],
     pool: process.env.CI ? 'forks' : 'threads',
     maxWorkers: 2,
     clearMocks: true,
