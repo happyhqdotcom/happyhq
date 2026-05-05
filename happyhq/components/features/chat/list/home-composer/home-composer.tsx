@@ -80,7 +80,7 @@ export function HomeComposer() {
           files.map((file) => {
             const formData = new FormData()
             formData.append('file', file)
-            return uploadFile(sessionId, formData, token, streamSlug)
+            return uploadFile(sessionId, formData, token)
           }),
         )
       }

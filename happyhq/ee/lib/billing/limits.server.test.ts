@@ -41,12 +41,7 @@ vi.mock('@/lib/fs/paths', () => ({
   streamPath: mockStreamPath,
 }))
 
-import {
-  canCreateSpec,
-  canCreateStream,
-  canStartTask,
-  canUploadSample,
-} from './limits.server'
+import { canCreateSpec, canCreateStream, canStartTask } from './limits.server'
 
 describe('limits.server', () => {
   beforeEach(() => {
@@ -57,7 +52,6 @@ describe('limits.server', () => {
       runtimeMinutes: 5,
       storageBytes: 104857600,
       streams: 1,
-      samplesPerStream: 3,
       specsPerStream: 1,
       users: 1,
     })
@@ -192,7 +186,6 @@ describe('limits.server', () => {
       })
       mockGetTierLimits.mockReturnValue({
         streams: Infinity,
-        samplesPerStream: Infinity,
         specsPerStream: Infinity,
       })
 
@@ -239,65 +232,6 @@ describe('limits.server', () => {
     })
   })
 
-  describe('canUploadSample', () => {
-    it('allows when billing is disabled', async () => {
-      mockIsBillingEnabled.mockReturnValue(false)
-      const result = await canUploadSample('user-1', 'my-stream')
-      expect(result).toMatchObject({ allowed: true })
-    })
-
-    it('allows when tier has unlimited samples', async () => {
-      mockQuery.mockResolvedValue({
-        subscriptions: [{ tier: 'starter', status: 'active' }],
-      })
-      mockGetTierLimits.mockReturnValue({
-        streams: Infinity,
-        samplesPerStream: Infinity,
-        specsPerStream: Infinity,
-      })
-
-      const result = await canUploadSample('user-1', 'my-stream')
-      expect(result).toMatchObject({ allowed: true })
-      expect(mockListDirectory).not.toHaveBeenCalled()
-    })
-
-    it('allows when under the sample limit', async () => {
-      mockQuery.mockResolvedValue({ subscriptions: [] })
-      mockListDirectory.mockResolvedValue([
-        { name: 'sample1.csv', type: 'file' },
-        { name: 'sample2.csv', type: 'file' },
-      ])
-
-      const result = await canUploadSample('user-1', 'my-stream')
-      expect(result).toMatchObject({ allowed: true })
-    })
-
-    it('blocks when at the sample limit', async () => {
-      mockQuery.mockResolvedValue({ subscriptions: [] })
-      mockListDirectory.mockResolvedValue([
-        { name: 'sample1.csv', type: 'file' },
-        { name: 'sample2.csv', type: 'file' },
-        { name: 'sample3.csv', type: 'file' },
-      ])
-
-      const result = await canUploadSample('user-1', 'my-stream')
-      expect(result.allowed).toBe(false)
-      if (!result.allowed) {
-        expect(result.reason).toContain('Free plan')
-        expect(result.reason).toContain('3 samples')
-        expect(result.reason).toContain('Upgrade')
-      }
-    })
-
-    it('reads the correct samples directory for the stream', async () => {
-      mockQuery.mockResolvedValue({ subscriptions: [] })
-      mockListDirectory.mockResolvedValue([])
-
-      await canUploadSample('user-1', 'my-stream')
-      expect(mockListDirectory).toHaveBeenCalledWith('/root/my-stream/samples')
-    })
-  })
-
   describe('canCreateSpec', () => {
     it('allows when billing is disabled', async () => {
       mockIsBillingEnabled.mockReturnValue(false)
@@ -311,7 +245,6 @@ describe('limits.server', () => {
       })
       mockGetTierLimits.mockReturnValue({
         streams: Infinity,
-        samplesPerStream: Infinity,
         specsPerStream: Infinity,
       })
 
@@ -365,7 +298,6 @@ describe('limits.server', () => {
       })
       mockGetTierLimits.mockReturnValue({
         streams: Infinity,
-        samplesPerStream: Infinity,
         specsPerStream: Infinity,
       })
 
@@ -379,7 +311,6 @@ describe('limits.server', () => {
       })
       mockGetTierLimits.mockReturnValue({
         streams: Infinity,
-        samplesPerStream: Infinity,
         specsPerStream: Infinity,
       })
 

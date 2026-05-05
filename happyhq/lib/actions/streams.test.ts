@@ -36,18 +36,11 @@ vi.mock('@/lib/git/sync.server', () => ({
   commitGitState: mockCommitGitState,
 }))
 
-// Billing mocks — used by createStream limit checks
-const {
-  mockIsBillingEnabled,
-  mockVerifyToken,
-  mockIsEmailAllowed,
-  mockCanCreateStream,
-} = vi.hoisted(() => ({
-  mockIsBillingEnabled: vi.fn(() => false),
-  mockVerifyToken: vi.fn(
+// Auth + billing mocks — used by createStream limit checks
+const { mockAssertAuthorizedRequest, mockCanCreateStream } = vi.hoisted(() => ({
+  mockAssertAuthorizedRequest: vi.fn(
     async (): Promise<{ id: string; email: string } | null> => null,
   ),
-  mockIsEmailAllowed: vi.fn(() => true),
   mockCanCreateStream: vi.fn(
     async (): Promise<{ allowed: boolean; reason?: string }> => ({
       allowed: true,
@@ -55,16 +48,9 @@ const {
   ),
 }))
 
-vi.mock('@/ee/lib/billing/config', () => ({
-  isBillingEnabled: mockIsBillingEnabled,
-}))
-
 vi.mock('@/lib/accounts/auth.server', () => ({
-  verifyToken: mockVerifyToken,
-}))
-
-vi.mock('@/lib/accounts/config', () => ({
-  isEmailAllowed: mockIsEmailAllowed,
+  assertAuthorizedRequest: mockAssertAuthorizedRequest,
+  verifyToken: vi.fn(),
 }))
 
 vi.mock('@/ee/lib/billing/limits.server', () => ({
@@ -142,8 +128,7 @@ describe('createStream', () => {
   })
 
   it('throws when billing limit blocks stream creation', async () => {
-    mockIsBillingEnabled.mockReturnValue(true)
-    mockVerifyToken.mockResolvedValue({
+    mockAssertAuthorizedRequest.mockResolvedValue({
       id: 'user-123',
       email: 'test@example.com',
     })
@@ -158,10 +143,9 @@ describe('createStream', () => {
     expect(mockMkdir).not.toHaveBeenCalled()
   })
 
-  it('creates stream when billing allows it', async () => {
+  it('creates stream when authorized and billing allows it', async () => {
     mockMkdir.mockResolvedValue(undefined)
-    mockIsBillingEnabled.mockReturnValue(true)
-    mockVerifyToken.mockResolvedValue({
+    mockAssertAuthorizedRequest.mockResolvedValue({
       id: 'user-123',
       email: 'test@example.com',
     })
@@ -169,13 +153,14 @@ describe('createStream', () => {
 
     await createStream('my-stream', MOCK_TOKEN)
 
+    expect(mockAssertAuthorizedRequest).toHaveBeenCalledWith(MOCK_TOKEN)
     expect(mockCanCreateStream).toHaveBeenCalledWith('user-123')
     expect(mockMkdir).toHaveBeenCalled()
   })
 
-  it('skips billing check when billing is disabled', async () => {
+  it('skips billing check when authorization returns null (billing disabled)', async () => {
     mockMkdir.mockResolvedValue(undefined)
-    mockIsBillingEnabled.mockReturnValue(false)
+    mockAssertAuthorizedRequest.mockResolvedValue(null)
 
     await createStream('my-stream')
 
@@ -183,22 +168,12 @@ describe('createStream', () => {
     expect(mockMkdir).toHaveBeenCalled()
   })
 
-  it('throws when billing is enabled but no token is provided', async () => {
-    mockIsBillingEnabled.mockReturnValue(true)
-
-    await expect(createStream('my-stream')).rejects.toThrow(
-      'Sign in required to create a stream.',
+  it('throws when authorization fails', async () => {
+    mockAssertAuthorizedRequest.mockRejectedValue(
+      new Error('Sign in required.'),
     )
-    expect(mockMkdir).not.toHaveBeenCalled()
-  })
 
-  it('throws when billing is enabled but token is invalid', async () => {
-    mockIsBillingEnabled.mockReturnValue(true)
-    mockVerifyToken.mockResolvedValue(null)
-
-    await expect(createStream('my-stream', 'bad-token')).rejects.toThrow(
-      'Sign in required to create a stream.',
-    )
+    await expect(createStream('my-stream')).rejects.toThrow('Sign in required.')
     expect(mockMkdir).not.toHaveBeenCalled()
   })
 })

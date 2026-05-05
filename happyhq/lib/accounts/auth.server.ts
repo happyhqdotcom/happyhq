@@ -22,6 +22,27 @@ export async function verifyToken(token: string): Promise<VerifiedUser | null> {
   }
 }
 
+/**
+ * Server-action auth gate. No-op when billing is disabled (self-hosted /
+ * local-first); otherwise verifies the client-provided token and the email
+ * allowlist. Returns the verified user when authorized, throws otherwise.
+ *
+ * Use as the first await in a server action that mutates user-scoped state
+ * on a hosted/multi-tenant deployment.
+ */
+export async function assertAuthorizedRequest(
+  token: string | undefined,
+): Promise<VerifiedUser | null> {
+  const { isBillingEnabled } = await import('@/ee/lib/billing/config')
+  if (!isBillingEnabled()) return null
+  if (!token) throw new Error('Sign in required.')
+  const verified = await verifyToken(token)
+  if (!verified) throw new Error('Sign in required.')
+  if (!isEmailAllowed(verified.email))
+    throw new Error('This instance is restricted.')
+  return verified
+}
+
 type AuthResult =
   | { userId: string; error?: never }
   | { userId?: never; error: Response }

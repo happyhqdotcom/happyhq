@@ -118,12 +118,7 @@ export function useChatActions(): ChatActions {
             files.map((file) => {
               const formData = new FormData()
               formData.append('file', file)
-              return uploadFile(
-                sessionIdRef.current!,
-                formData,
-                token,
-                streamSlug,
-              )
+              return uploadFile(sessionIdRef.current!, formData, token)
             }),
           )
         } catch {

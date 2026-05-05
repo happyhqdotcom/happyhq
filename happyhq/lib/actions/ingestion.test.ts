@@ -73,39 +73,16 @@ vi.mock('@/lib/git/sync.server', () => ({
   commitGitState: mockCommitGitState,
 }))
 
-// Billing mocks — used by uploadFile limit checks
-const {
-  mockIsBillingEnabled,
-  mockVerifyToken,
-  mockIsEmailAllowed,
-  mockCanUploadSample,
-} = vi.hoisted(() => ({
-  mockIsBillingEnabled: vi.fn(() => false),
-  mockVerifyToken: vi.fn(
+// Auth mock — used by upload/ingest paths via assertAuthorizedRequest
+const { mockAssertAuthorizedRequest } = vi.hoisted(() => ({
+  mockAssertAuthorizedRequest: vi.fn(
     async (): Promise<{ id: string; email: string } | null> => null,
   ),
-  mockIsEmailAllowed: vi.fn(() => true),
-  mockCanUploadSample: vi.fn(
-    async (): Promise<{ allowed: boolean; reason?: string }> => ({
-      allowed: true,
-    }),
-  ),
-}))
-
-vi.mock('@/ee/lib/billing/config', () => ({
-  isBillingEnabled: mockIsBillingEnabled,
 }))
 
 vi.mock('@/lib/accounts/auth.server', () => ({
-  verifyToken: mockVerifyToken,
-}))
-
-vi.mock('@/lib/accounts/config', () => ({
-  isEmailAllowed: mockIsEmailAllowed,
-}))
-
-vi.mock('@/ee/lib/billing/limits.server', () => ({
-  canUploadSample: mockCanUploadSample,
+  assertAuthorizedRequest: mockAssertAuthorizedRequest,
+  verifyToken: vi.fn(),
 }))
 
 const MOCK_TOKEN = 'test-refresh-token'
@@ -354,73 +331,28 @@ describe('uploadFile', () => {
     )
   })
 
-  it('throws when billing limit blocks sample upload', async () => {
-    mockIsBillingEnabled.mockReturnValue(true)
-    mockVerifyToken.mockResolvedValue({
-      id: 'user-456',
-      email: 'test@example.com',
-    })
-    mockCanUploadSample.mockResolvedValue({
-      allowed: false,
-      reason: 'Free plan allows 3 samples per stream. Upgrade to add more.',
-    })
-
-    const fd = makeFormData('report.pdf', 'content')
-    await expect(
-      uploadFile('sess-1', fd, MOCK_TOKEN, 'my-stream'),
-    ).rejects.toThrow(
-      'Free plan allows 3 samples per stream. Upgrade to add more.',
-    )
-    // File should not be written
-    expect(mockWriteFile).not.toHaveBeenCalled()
-  })
-
-  it('uploads when billing allows it', async () => {
+  it('uploads when authorized', async () => {
     mockMkdir.mockResolvedValue(undefined)
     mockWriteFile.mockResolvedValue(undefined)
-    mockIsBillingEnabled.mockReturnValue(true)
-    mockVerifyToken.mockResolvedValue({
+    mockAssertAuthorizedRequest.mockResolvedValue({
       id: 'user-456',
       email: 'test@example.com',
     })
-    mockCanUploadSample.mockResolvedValue({ allowed: true })
 
     const fd = makeFormData('report.pdf', 'content')
-    const result = await uploadFile('sess-1', fd, MOCK_TOKEN, 'my-stream')
+    const result = await uploadFile('sess-1', fd, MOCK_TOKEN)
 
     expect(result).toBe('report')
-    expect(mockCanUploadSample).toHaveBeenCalledWith('user-456', 'my-stream')
+    expect(mockAssertAuthorizedRequest).toHaveBeenCalledWith(MOCK_TOKEN)
   })
 
-  it('skips upload billing check when billing is disabled', async () => {
-    mockMkdir.mockResolvedValue(undefined)
-    mockWriteFile.mockResolvedValue(undefined)
-    mockIsBillingEnabled.mockReturnValue(false)
-
-    const fd = makeFormData('report.pdf', 'content')
-    await uploadFile('sess-1', fd)
-
-    expect(mockCanUploadSample).not.toHaveBeenCalled()
-  })
-
-  it('throws when billing is enabled but no token is provided for upload', async () => {
-    mockIsBillingEnabled.mockReturnValue(true)
-
-    const fd = makeFormData('report.pdf', 'content')
-    await expect(uploadFile('sess-1', fd)).rejects.toThrow(
-      'Sign in required to upload files.',
+  it('throws when authorization fails', async () => {
+    mockAssertAuthorizedRequest.mockRejectedValue(
+      new Error('Sign in required.'),
     )
-    expect(mockWriteFile).not.toHaveBeenCalled()
-  })
-
-  it('throws when billing is enabled but token is invalid for upload', async () => {
-    mockIsBillingEnabled.mockReturnValue(true)
-    mockVerifyToken.mockResolvedValue(null)
 
     const fd = makeFormData('report.pdf', 'content')
-    await expect(
-      uploadFile('sess-1', fd, 'bad-token', 'stream'),
-    ).rejects.toThrow('Sign in required to upload files.')
+    await expect(uploadFile('sess-1', fd)).rejects.toThrow('Sign in required.')
     expect(mockWriteFile).not.toHaveBeenCalled()
   })
 

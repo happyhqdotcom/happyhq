@@ -17,7 +17,6 @@ describe('getTierLimits', () => {
         runtimeMinutes: expect.any(Number),
         storageBytes: expect.any(Number),
         streams: expect.any(Number),
-        samplesPerStream: expect.any(Number),
         specsPerStream: expect.any(Number),
         users: expect.any(Number),
       })
@@ -29,7 +28,6 @@ describe('getTierLimits', () => {
     expect(limits.priceMonthly).toBe(0)
     expect(limits.runtimeMinutes).toBe(5)
     expect(limits.streams).toBe(1)
-    expect(limits.samplesPerStream).toBe(3)
     expect(limits.specsPerStream).toBe(1)
     expect(limits.users).toBe(1)
   })
@@ -54,12 +52,11 @@ describe('getTierLimits', () => {
     expect(limits.runtimeMinutes).toBe(2000)
   })
 
-  it('paid tiers have unlimited streams, samples, and specs', () => {
+  it('paid tiers have unlimited streams and specs', () => {
     const paidTiers: TierName[] = ['starter', 'pro', 'max']
     for (const tier of paidTiers) {
       const limits = getTierLimits(tier)
       expect(limits.streams).toBe(Infinity)
-      expect(limits.samplesPerStream).toBe(Infinity)
       expect(limits.specsPerStream).toBe(Infinity)
     }
   })
