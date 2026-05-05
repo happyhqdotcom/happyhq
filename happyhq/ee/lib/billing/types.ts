@@ -16,8 +16,6 @@ export type TierLimits = {
   storageBytes: number
   /** Maximum number of streams. Infinity for unlimited. */
   streams: number
-  /** Maximum number of samples per stream. Infinity for unlimited. */
-  samplesPerStream: number
   /** Maximum number of specs per stream. Infinity for unlimited. */
   specsPerStream: number
   /** Maximum number of users. Infinity for unlimited. */

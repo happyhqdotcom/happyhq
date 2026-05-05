@@ -140,17 +140,11 @@ function TypeGroupHeader({
 }) {
   const [renaming, setRenaming] = useState(isNew ?? false)
   const [showDeleteAlert, setShowDeleteAlert] = useState(false)
-  const { token } = useCurrentUser()
   const isOther = type === 'other'
 
   async function handleDelete(deleteSamples: boolean) {
     try {
-      await deleteSampleType(
-        streamSlug,
-        type,
-        deleteSamples,
-        token ?? undefined,
-      )
+      await deleteSampleType(streamSlug, type, deleteSamples)
       onDeleted?.()
     } catch {
       toastError('Failed to delete type')
@@ -167,14 +161,9 @@ function TypeGroupHeader({
         if (!isNew) onPendingTitle?.(newTitle)
         try {
           if (isNew) {
-            await createSampleType(streamSlug, newTitle, token ?? undefined)
+            await createSampleType(streamSlug, newTitle)
           } else {
-            await renameSampleCategory(
-              streamSlug,
-              type,
-              newTitle,
-              token ?? undefined,
-            )
+            await renameSampleCategory(streamSlug, type, newTitle)
           }
           onRenamed()
         } catch {
@@ -334,13 +323,7 @@ export function SamplesWindow({
 
   async function handleMove(sample: SampleEntry, toType: string) {
     try {
-      await moveSampleCategory(
-        streamSlug,
-        sample.name,
-        sample.category,
-        toType,
-        token ?? undefined,
-      )
+      await moveSampleCategory(streamSlug, sample.name, sample.category, toType)
       onSampleIngested()
     } catch {
       toastError('Failed to move sample')
@@ -423,7 +406,6 @@ export function SamplesWindow({
                 sample.name,
                 sample.category,
                 newTitle,
-                token ?? undefined,
               )
               onSampleIngested()
             } catch {
@@ -474,12 +456,7 @@ export function SamplesWindow({
         key={sample.originalPath}
         filePath={sample.originalPath}
         onDelete={async () => {
-          await deleteSample(
-            streamSlug,
-            sample.name,
-            sample.category,
-            token ?? undefined,
-          )
+          await deleteSample(streamSlug, sample.name, sample.category)
           onSampleIngested()
         }}
         extraContent={

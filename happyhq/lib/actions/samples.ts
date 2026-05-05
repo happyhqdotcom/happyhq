@@ -44,7 +44,6 @@ export async function moveSampleCategory(
   sampleName: string,
   fromCategory: string,
   toCategory: string,
-  token?: string,
 ): Promise<void> {
   const safeStream = assertSafeStreamName(streamName)
   const safeName = assertSafePathSegment(sampleName, 'sample name')
@@ -95,7 +94,6 @@ export async function deleteSample(
   streamName: string,
   sampleName: string,
   category: string,
-  token?: string,
 ): Promise<void> {
   const safeStream = assertSafeStreamName(streamName)
   const safeName = assertSafePathSegment(sampleName, 'sample name')
@@ -128,7 +126,6 @@ export async function writeSampleTitle(
   sampleName: string,
   category: string,
   title: string,
-  token?: string,
 ): Promise<void> {
   assertSafeStreamName(streamName)
   assertSafePathSegment(sampleName, 'sample name')
@@ -147,7 +144,6 @@ export async function deleteSampleType(
   streamName: string,
   categorySlug: string,
   deleteSamples: boolean,
-  token?: string,
 ): Promise<void> {
   assertSafeStreamName(streamName)
   assertSafePathSegment(categorySlug, 'sample category')
@@ -185,7 +181,6 @@ export async function renameSampleCategory(
   streamName: string,
   categorySlug: string,
   title: string,
-  token?: string,
 ): Promise<void> {
   assertSafeStreamName(streamName)
   assertSafePathSegment(categorySlug, 'sample category')
@@ -197,7 +192,6 @@ export async function renameSampleCategory(
 export async function createSampleType(
   streamName: string,
   typeName: string,
-  token?: string,
 ): Promise<string> {
   assertSafeStreamName(streamName)
   const slug = typeName

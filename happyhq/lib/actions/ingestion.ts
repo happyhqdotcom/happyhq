@@ -41,14 +41,11 @@ function unsupportedTypeMessage(filename: string): string {
  * Stage an uploaded file to the chat's uploads/ directory.
  * Creates a directory per upload: .chats/{sessionId}/uploads/{slug}/original.{ext}
  * Returns the slug (directory name), not the original filename.
- *
- * When billing is enabled, checks free tier sample limits before upload.
  */
 export async function uploadFile(
   sessionId: string,
   formData: FormData,
   token?: string,
-  streamSlug?: string | null,
 ): Promise<string> {
   const safeSessionId = assertSafeSessionId(sessionId)
 
@@ -61,27 +58,8 @@ export async function uploadFile(
     throw new Error(unsupportedTypeMessage(file.name))
   }
 
-  // Billing limit check — dynamic import to keep core/EE separation.
-  // Token is passed from the client (db.useAuth().user.refresh_token)
-  // and verified server-side, following InstantDB's recommended pattern.
-  const { isBillingEnabled } = await import('@/ee/lib/billing/config')
-  if (isBillingEnabled()) {
-    if (!token) throw new Error('Sign in required to upload files.')
-    const { verifyToken } = await import('@/lib/accounts/auth.server')
-    const verified = await verifyToken(token)
-    if (!verified) throw new Error('Sign in required to upload files.')
-    const { isEmailAllowed } = await import('@/lib/accounts/config')
-    if (!isEmailAllowed(verified.email))
-      throw new Error('This instance is restricted.')
-    const userId = verified.id
-    if (streamSlug) {
-      const { canUploadSample } = await import('@/ee/lib/billing/limits.server')
-      const result = await canUploadSample(userId, streamSlug)
-      if (!result.allowed) {
-        throw new Error(result.reason)
-      }
-    }
-  }
+  const { assertAuthorizedRequest } = await import('@/lib/accounts/auth.server')
+  await assertAuthorizedRequest(token)
 
   // Derive slug: kebab-case from filename minus extension
   const ext = path.extname(file.name) // e.g. ".pdf"
@@ -288,7 +266,7 @@ export async function deleteFile(
 /**
  * Shared helper: ingest a file into a destination directory.
  * Creates {destDir}/{slug}/original.{ext} + raw.txt (for PDFs).
- * Handles slug derivation, collision avoidance, billing checks, and git commit.
+ * Handles slug derivation, collision avoidance, auth, and git commit.
  */
 async function ingestFile(
   destDir: string,
@@ -297,7 +275,6 @@ async function ingestFile(
     commitMessage: (slug: string) => string
     fallbackSlug?: string
     token?: string
-    streamName?: string // for billing check
   },
 ): Promise<{ slug: string; quality?: InputQuality }> {
   const file = formData.get('file') as File
@@ -310,25 +287,8 @@ async function ingestFile(
     throw new Error(unsupportedTypeMessage(file.name))
   }
 
-  // Billing limit check
-  if (opts.streamName) {
-    const { isBillingEnabled } = await import('@/ee/lib/billing/config')
-    if (isBillingEnabled()) {
-      if (!opts.token) throw new Error('Sign in required to upload files.')
-      const { verifyToken } = await import('@/lib/accounts/auth.server')
-      const verified = await verifyToken(opts.token)
-      if (!verified) throw new Error('Sign in required to upload files.')
-      const { isEmailAllowed } = await import('@/lib/accounts/config')
-      if (!isEmailAllowed(verified.email))
-        throw new Error('This instance is restricted.')
-      const userId = verified.id
-      const { canUploadSample } = await import('@/ee/lib/billing/limits.server')
-      const result = await canUploadSample(userId, opts.streamName)
-      if (!result.allowed) {
-        throw new Error(result.reason)
-      }
-    }
-  }
+  const { assertAuthorizedRequest } = await import('@/lib/accounts/auth.server')
+  await assertAuthorizedRequest(opts.token)
 
   // Derive slug from filename
   const baseName = file.name.slice(0, -ext.length || undefined)
@@ -426,7 +386,6 @@ export async function ingestSample(
     commitMessage: (slug) => `[${streamName}] Add sample ${slug}`,
     fallbackSlug: 'sample',
     token,
-    streamName,
   })
   log('sample.added', { stream: streamName, file: result.slug })
   return result

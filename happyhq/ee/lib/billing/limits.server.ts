@@ -123,35 +123,6 @@ export async function canCreateStream(
 }
 
 /**
- * Can the user upload a sample to this stream?
- * Free tier: 3 samples per stream. Paid tiers: unlimited.
- * Counts existing samples in the stream's samples/ directory.
- * Bypasses when billing is disabled.
- */
-export async function canUploadSample(
-  userId: string,
-  streamSlug: string,
-): Promise<ObjectLimitResult> {
-  if (!isBillingEnabled()) return { allowed: true }
-
-  const tier = await getUserTier(userId)
-  const limits = getTierLimits(tier)
-
-  if (limits.samplesPerStream === Infinity) return { allowed: true }
-
-  const samplesDir = path.join(streamPath(streamSlug), 'samples')
-  const samples = await listDirectory(samplesDir)
-  if (samples.length >= limits.samplesPerStream) {
-    return {
-      allowed: false,
-      reason: `Free plan allows ${limits.samplesPerStream} sample${limits.samplesPerStream === 1 ? '' : 's'} per stream. Upgrade to add more.`,
-    }
-  }
-
-  return { allowed: true }
-}
-
-/**
  * Can the user create a spec in this stream?
  * Free tier: 1 spec per stream. Paid tiers: unlimited.
  * Counts existing specs in the stream's specs/ directory.

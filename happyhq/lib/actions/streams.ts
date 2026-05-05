@@ -34,21 +34,11 @@ export async function createStream(
     )
   const root = safePath(streamPath(slug))
 
-  // Billing limit check — dynamic import to keep core/EE separation.
-  // Token is passed from the client (db.useAuth().user.refresh_token)
-  // and verified server-side, following InstantDB's recommended pattern.
-  const { isBillingEnabled } = await import('@/ee/lib/billing/config')
-  if (isBillingEnabled()) {
-    if (!token) throw new Error('Sign in required to create a stream.')
-    const { verifyToken } = await import('@/lib/accounts/auth.server')
-    const verified = await verifyToken(token)
-    if (!verified) throw new Error('Sign in required to create a stream.')
-    const { isEmailAllowed } = await import('@/lib/accounts/config')
-    if (!isEmailAllowed(verified.email))
-      throw new Error('This instance is restricted.')
-    const userId = verified.id
+  const { assertAuthorizedRequest } = await import('@/lib/accounts/auth.server')
+  const verified = await assertAuthorizedRequest(token)
+  if (verified) {
     const { canCreateStream } = await import('@/ee/lib/billing/limits.server')
-    const result = await canCreateStream(userId)
+    const result = await canCreateStream(verified.id)
     if (!result.allowed) {
       throw new Error(result.reason)
     }
