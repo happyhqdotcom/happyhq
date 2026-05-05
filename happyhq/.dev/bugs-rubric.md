@@ -112,6 +112,8 @@ These are guidance, not gates. The rubric above is pass/fail; these tune _how_ t
 
 **Look around before you write.** Before drafting a fix or skip, scan for prior art on the concern: existing consumers/handlers of the same data shape, recent open/closed issues with the same shape, in-flight PRs touching the same surface, specs documenting the affected behavior. Anchor the work to what's already there. Most "we keep fixing this" pain comes from rederiving in isolation when a reference exists that would have constrained the fix.
 
+**Pattern fit, not pattern match.** Think about the most appropriate decision factoring in the user experience and the developer experience. Simple, maintainable, understandable. If prior art fits, follow it. If it doesn't, don't scope-creep to make it fit — do the right thing for the context.
+
 **A fix isn't just the diff.** Leave the surrounding system coherent. If the fix changes documented behavior, update the spec/doc in the same PR. If you notice a pattern that spans multiple recent issues, surface it for the maintainer rather than fixing one instance silently. If you skip, leave a rationale specific enough that a human can act on it without re-investigating.
 
 **Tests defend behavior, not lines.** Apply `testing.md`'s litmus test before adding a regression test: "what bug would this catch?" If the only answer is "someone reverted this exact line" — asserting a hardcoded asset path, a class name, copy text, or that a specific element exists — it's a vanity test that locks in implementation. Skip it. Asset swaps, copy tweaks, and CSS-only fixes are visually verified, not test-locked. A good regression test would still catch the bug under any reasonable reimplementation; a vanity test only catches the literal revert.
