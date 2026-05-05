@@ -64,14 +64,14 @@ importers:
         specifier: ^2.1.6
         version: 2.1.12
       '@instantdb/admin':
-        specifier: ^0.22.155
-        version: 0.22.185
+        specifier: ^1.0.23
+        version: 1.0.23
       '@instantdb/core':
-        specifier: ^0.22.155
-        version: 0.22.185
+        specifier: ^1.0.23
+        version: 1.0.23
       '@instantdb/react':
-        specifier: ^0.22.155
-        version: 0.22.185(react@19.2.5)
+        specifier: ^1.0.23
+        version: 1.0.23(react@19.2.5)
       '@radix-ui/react-accordion':
         specifier: ^1.2.8
         version: 1.2.12(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -892,24 +892,28 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@instantdb/admin@0.22.185':
-    resolution: {integrity: sha512-ifCx7ZA4om7aNogQJbEX8Bf6KUJMbRpL9YVJnNtttu9U+3CBf4k/1Iv9SgYD6+AKDaLStAXRzfaO3hfcedXdlA==}
+  '@instantdb/admin@1.0.23':
+    resolution: {integrity: sha512-zDuTdeQzlV8Z10GRIHBZPSk3hWwFCbJuqKn084n6tesvKCXqV9gcnfQ3+JfGk8XiXr99AgBm0/4XHygHuE1r6g==}
 
-  '@instantdb/core@0.22.185':
-    resolution: {integrity: sha512-mSXN7Efz2SXvz3zVWTtgwcb/NFzgpvcan+pzv21EKGNRcR3zV6WEq04MPxpT+aTji+x4NNG9Xy427YHi8jVlnA==}
+  '@instantdb/core@1.0.23':
+    resolution: {integrity: sha512-trGEl/Sc2pWQzHlMQcun+mUhfKRYNQirQmLlTiWEYQp8ych36jzOkqvG+A14pfm688AAFS1JfOJXiyYUiVk9zg==}
 
-  '@instantdb/react-common@0.22.185':
-    resolution: {integrity: sha512-ed6r8WlIZmonJ5Hyt0teszcRZ5+ZmuNE2YPzzHOo1pPV/QA+eB0rjTtzHJ5Oqam1D4Vc5CHadXHN906UFVAPtg==}
+  '@instantdb/eventsource@4.1.0-2':
+    resolution: {integrity: sha512-k2uzhsRzdD7hzV3fv+eoCRNeluZcj4pDfUKKAhvIS6xshc7zHkaM9/m3vxBgaYoNVmvOyaGp84TcHG0/Bp7k4g==}
+    engines: {node: '>=20.0.0'}
+
+  '@instantdb/react-common@1.0.23':
+    resolution: {integrity: sha512-acFqF7yShrgeIhtSTJN0clICOdrXz+idhzIV00bIPTp9TXwcxnZyPdRzoOwR4B3gwMzjNklWE6IB8ixPzuadJg==}
     peerDependencies:
       react: '>=16'
 
-  '@instantdb/react@0.22.185':
-    resolution: {integrity: sha512-QO8/dwFt6noAhAFkOaX0n8JcAkHjf3EKhOAHhehlYm3yk27WkYxauc74+6VzLG5wvhdhyOuOJNZB/twI1Pop6g==}
+  '@instantdb/react@1.0.23':
+    resolution: {integrity: sha512-ZuuKVaWvvZV7Nv2CGOk6YVlowrJ/3hLrFNJmdAo+lA5nwikE4JzYJ0gmPXH+8ex85HMouTax+DaDJhBBDa+WSA==}
     peerDependencies:
       react: '>=16'
 
-  '@instantdb/version@0.22.185':
-    resolution: {integrity: sha512-5sRInnIpxyeeyV7JOFLlLpQC+qPqtDijmHjKH4dlzh/qEado5gJWHSpn6/Xz4YmVJLm3FGtWcxsfef9Jj9ANAA==}
+  '@instantdb/version@1.0.23':
+    resolution: {integrity: sha512-h/8+gFhycePfuZEl5NAn0VMOtj0gKFsc8cdxUbDi5frqBGQdkXtMCrzuN9gfjfwpD6FU20ajNLrr/QX5fF5Ijw==}
 
   '@internationalized/date@3.12.1':
     resolution: {integrity: sha512-6IedsVWXyq4P9Tj+TxuU8WGWM70hYLl12nbYU8jkikVpa6WXapFazPUcHUMDMoWftIDE2ILDkFFte6W2nFCkRQ==}
@@ -5439,35 +5443,39 @@ snapshots:
   '@img/sharp-win32-x64@0.34.5':
     optional: true
 
-  '@instantdb/admin@0.22.185':
+  '@instantdb/admin@1.0.23':
     dependencies:
-      '@instantdb/core': 0.22.185
-      '@instantdb/version': 0.22.185
+      '@instantdb/core': 1.0.23
+      '@instantdb/eventsource': 4.1.0-2
+      '@instantdb/version': 1.0.23
       cookie: 1.1.1
-      eventsource: 4.1.0
       uuid: 11.1.1
 
-  '@instantdb/core@0.22.185':
+  '@instantdb/core@1.0.23':
     dependencies:
-      '@instantdb/version': 0.22.185
+      '@instantdb/version': 1.0.23
       mutative: 1.3.0
       uuid: 11.1.1
 
-  '@instantdb/react-common@0.22.185(react@19.2.5)':
+  '@instantdb/eventsource@4.1.0-2':
     dependencies:
-      '@instantdb/core': 0.22.185
-      '@instantdb/version': 0.22.185
+      eventsource-parser: 3.0.7
+
+  '@instantdb/react-common@1.0.23(react@19.2.5)':
+    dependencies:
+      '@instantdb/core': 1.0.23
+      '@instantdb/version': 1.0.23
       react: 19.2.5
 
-  '@instantdb/react@0.22.185(react@19.2.5)':
+  '@instantdb/react@1.0.23(react@19.2.5)':
     dependencies:
-      '@instantdb/core': 0.22.185
-      '@instantdb/react-common': 0.22.185(react@19.2.5)
-      '@instantdb/version': 0.22.185
+      '@instantdb/core': 1.0.23
+      '@instantdb/react-common': 1.0.23(react@19.2.5)
+      '@instantdb/version': 1.0.23
       eventsource: 4.1.0
       react: 19.2.5
 
-  '@instantdb/version@0.22.185': {}
+  '@instantdb/version@1.0.23': {}
 
   '@internationalized/date@3.12.1':
     dependencies:
