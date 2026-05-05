@@ -1137,17 +1137,15 @@ async function runWorkingLoop(
 // ---------------------------------------------------------------------------
 
 /**
- * Push an error toast to subscribers. `auth_error` is special-cased because
- * the client redirects to /setup on receipt — using a plain `error` event for
- * auth failures would surface the toast but skip the redirect.
+ * Push an error toast to subscribers. Runs are background work, so even
+ * auth-shaped failures emit a plain `error` (toast only) — the chat path
+ * handles its own `auth_error` → redirect when the user is foreground.
  */
 function broadcastErrorEvent(error: unknown, stderrTail: string): void {
   const message =
     error instanceof Error ? error.message : String(error || 'Run failed')
   const composed = stderrTail ? `${message}\n\n${stderrTail}` : message
-  const event: ChatStreamEvent = isAuthError(error)
-    ? { type: 'auth_error', message: composed }
-    : { type: 'error', message: composed }
+  const event: ChatStreamEvent = { type: 'error', message: composed }
   broadcast(encodeEvent(event))
 }
 

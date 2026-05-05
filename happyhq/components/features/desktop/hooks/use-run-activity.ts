@@ -510,12 +510,8 @@ export function useRunActivity(isActive: boolean): RunActivityState {
           } else if (event.type === 'error') {
             // Run loop broadcasts this when an iteration fails (notably the
             // silent fast-fail case where the subprocess exits before
-            // producing any SDK message — see #216). The /api/chat consumer
-            // shows the same shape via chatStore.
+            // producing any SDK message — see #216).
             toastError(event.message)
-          } else if (event.type === 'auth_error') {
-            toastError('API key is invalid. Redirecting to setup…')
-            window.location.href = '/setup'
           } else if (event.type === 'result') {
             setLastResultAt(Date.now())
             setActivitySteps([]) // iteration boundary — reset
