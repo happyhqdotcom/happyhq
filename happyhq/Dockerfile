@@ -56,10 +56,6 @@ FROM node:20-alpine AS runtime
 # git: required by instrumentation.ts (git init) and lib/git/sync.server.ts
 RUN apk add --no-cache git bash
 
-# Claude Code CLI — required for `claude auth login` and `claude auth status`.
-# Pin to the version bundled in claude-agent-sdk to avoid behavior drift.
-RUN npm install -g @anthropic-ai/claude-code@2.1.92
-
 # standalone output mirrors monorepo structure:
 #   .next/standalone/
 #   ├── node_modules/
