@@ -47,6 +47,18 @@
 
 6. **Verify.** From the `happyhq/` directory: `pnpm format`, `pnpm lint`, `pnpm check-types`, `pnpm --filter=happyhq test`. If a re-enable step is in scope (an `'off'` line was removed in eslint.config.mjs), `pnpm lint` must pass with the rule active. If any check fails, fix and re-run. If they fail twice, apply `ralphie:skip-verification-failed` (rubric rule 6), post the rubric-shaped comment with the failing output included, exit.
 
+6a. **Exercise.** Try the change end-to-end the way a real user would experience it, before opening the PR. Code-only checks (lint/types/test) prove the plumbing; this step proves nothing visible regressed. Tech-debt fixes are usually behavior-preserving, which is exactly when this matters most — the diff says "nothing should change," and you need to see that's true. Apply this to every fix — pick the right tool for the surface, don't skip because "it's just a refactor."
+
+- **Read [@.dev/exercising-the-ui.md](.dev/exercising-the-ui.md) first.** It owns the UI-driving knowledge: helpers (`scripts/dev-server.ts`, Playwright MCP), pitfalls (`networkidle` lies in dev mode, hotkeys need focus, dynamic button labels, slow first-compile, route-gated menu items, env-specific slugs), and the routing cheat-sheet. Saves you rediscovering them.
+- Pick the right tool for the surface(s) you touched in step 5:
+  - **UI-visible** — Playwright MCP tools to drive each affected surface. Capture screenshots.
+  - **Server-only** — drive the API per [CLAUDE.md](CLAUDE.md) "Using HappyHQ's API for verification". Capture the relevant log excerpt or API response.
+  - **Mixed** (server change with a UI surface) — both.
+- Drive the happy path on each surface in your per-site list from step 3. For each: does the surface still do what it did before? Sweep for adjacent regressions — the diff says nothing should change; the evidence has to confirm that.
+- **If something is broken:** rework once. If still broken on the second attempt, apply `ralphie:skip-cannot-verify` (rubric rule 7) with evidence showing what you saw vs. what was expected, stop the dev server, exit.
+- **If you can't reach a surface** (heavy seed state needed, environment can't be produced, etc.): apply `ralphie:skip-cannot-verify` with a one-paragraph note. Don't ship a refactor without evidence the touched surfaces still work.
+- **If everything still works:** keep the evidence path(s) — they go in the PR body in step 9. Always stop the dev server when done: `npx tsx scripts/dev-server.ts stop`.
+
 7. **Risk gate.** With the diff in hand, apply the rubric's "Risk gate" decision tree:
    - Run `git diff --stat origin/main...HEAD -- ':!*.md' ':!*.mdx'` to get the size.
    - If under threshold (≤10 files AND ≤300 net lines added) → proceed to step 8.
@@ -64,6 +76,7 @@
    - **Deviations from the issue body** (if any) — what you did differently and why
    - **"Why this is over threshold but low risk"** section (if rule 8 sub-case applied)
    - Verification summary (lint/types/test all green; rule active if applicable)
+   - **Visual evidence** — one sentence per surface exercised in step 6a, plus the screenshot(s) or log excerpt(s). For UI changes, embed screenshots via `gh pr comment` or upload as PR attachments. For server-only changes, paste the relevant log lines or API response in a fenced block.
    - AI-assistance disclosure per [CONTRIBUTING.md](CONTRIBUTING.md) (e.g., "Authored by the tech-debt loop. Reviewed by maintainer before merge.")
 
 10. **Label.** `gh issue edit ${ISSUE_NUMBER} --add-label "ralphie:fixed-in-pr"`. The PR's `Closes #` is the rest of the breadcrumb.

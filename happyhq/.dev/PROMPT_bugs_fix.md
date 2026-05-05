@@ -18,6 +18,20 @@
 
 5. **Verify.** From the `happyhq/` directory, run `pnpm format`, `pnpm lint`, `pnpm check-types`, `pnpm --filter=happyhq test`. If any fail, fix and re-run. If they fail twice, apply `ralphie:skip-verification-failed` (rubric rule 9), post the rubric-shaped comment with the failing output included, exit.
 
+5b. **Exercise.** Try the change end-to-end the way a real user would experience it, before opening the PR. Code-only checks (lint/types/test) prove the plumbing; this step proves the behavior. Apply this to every fix — pick the right tool for the surface, don't skip because "it's not a UI change."
+
+- **Read [@.dev/exercising-the-ui.md](.dev/exercising-the-ui.md) first.** It owns the UI-driving knowledge: helpers (`scripts/dev-server.ts`, Playwright MCP), pitfalls (`networkidle` lies in dev mode, hotkeys need focus, dynamic button labels, slow first-compile, route-gated menu items, env-specific slugs), and the routing cheat-sheet. Saves you rediscovering them.
+- Pick the right tool for the surface:
+  - **UI-visible** — Playwright MCP tools to drive the affected screen. Capture screenshots.
+  - **Server-only** — drive the API per [CLAUDE.md](CLAUDE.md) "Using HappyHQ's API for verification". Capture the relevant log excerpt or API response.
+  - **Mixed** (server change with a UI surface, e.g. a toast triggered by a server event) — both.
+- For a **behavior fix**: induce the failure mode the issue describes and confirm the new state appears.
+- For a **behavior-preserving fix**: drive the happy path on each surface you touched and confirm nothing visible regressed.
+- Look at the evidence. Does the issue's user-visible contract actually hold? Sweep for adjacent regressions — the symptom you fixed is one part; "did anything else break" is the other.
+- **If it doesn't work:** rework once. If still broken on the second attempt, apply `ralphie:skip-cannot-verify` (rubric rule 10) with evidence showing what you saw vs. what was expected, stop the dev server, exit.
+- **If you can't reach the surface** (heavy seed state needed, failure environment can't be produced, etc.): apply `ralphie:skip-cannot-verify` with a one-paragraph note. Don't ship a fix without evidence.
+- **If it works:** keep the evidence path(s) — they go in the PR body in step 8. Always stop the dev server when done: `npx tsx scripts/dev-server.ts stop`.
+
 6. **Risk gate.** With the diff in hand, apply the rubric's "Risk gate" decision tree:
    - Run `git diff --stat origin/main...HEAD -- ':!*.md' ':!*.mdx'`. (Use `origin/main`, not the local `main` ref — when running from a worktree the local `main` may be stale.) Spec/doc updates (`*.md`/`*.mdx`) are excluded from the count — they don't carry the same review burden as code, and bundling them with the fix keeps design and implementation in sync.
    - If under threshold (≤10 files AND ≤300 net lines added) → proceed to step 7.
@@ -32,6 +46,7 @@
    - **Deviations from the report's framing** (if any) — what you concluded was actually broken vs. what was reported
    - **"Why this is over threshold but low risk"** section (if rule 6 sub-case applied)
    - Link to the regression test (`<file>:<line>`) if one was written
+   - **Visual evidence** — one sentence on what was exercised in step 5b, plus the screenshot(s) or log excerpt(s). For UI changes, embed screenshots via `gh pr comment` or upload as PR attachments. For server-only changes, paste the relevant log lines or API response in a fenced block.
    - AI-assistance disclosure per @CONTRIBUTING.md (e.g., "Authored by Ralphie, the autonomous bug-fix loop. Reviewed by maintainer before merge.")
 
 9. **Label.** `gh issue edit ${ISSUE_NUMBER} --add-label "ralphie:fixed-in-pr"`. The PR's `Closes #` is the rest of the breadcrumb.
