@@ -20,3 +20,5 @@ paths-ignore:
   - '**/build/**'
   - '**/*.test.ts'
   - '**/*.test.tsx'
+  # Local dev tooling.
+  - 'happyhq/scripts/**'

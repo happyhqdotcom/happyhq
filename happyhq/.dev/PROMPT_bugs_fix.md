@@ -46,7 +46,7 @@
    - **Deviations from the report's framing** (if any) — what you concluded was actually broken vs. what was reported
    - **"Why this is over threshold but low risk"** section (if rule 6 sub-case applied)
    - Link to the regression test (`<file>:<line>`) if one was written
-   - **Visual evidence** — one sentence on what was exercised in step 5b, plus the screenshot(s) or log excerpt(s). For UI changes, embed screenshots via `gh pr comment` or upload as PR attachments. For server-only changes, paste the relevant log lines or API response in a fenced block.
+   - **Visual evidence** — one sentence on what was exercised in step 5b, plus the screenshot(s) or log excerpt(s). For UI changes, upload screenshots via `npx tsx scripts/upload-evidence.ts ${PR_NUMBER} <screenshot-dir>` and embed the returned URLs as inline `![alt](url)` markdown. For server-only changes, paste the relevant log lines or API response in a fenced block.
    - AI-assistance disclosure per @CONTRIBUTING.md (e.g., "Authored by Ralphie, the autonomous bug-fix loop. Reviewed by maintainer before merge.")
 
 9. **Label.** `gh issue edit ${ISSUE_NUMBER} --add-label "ralphie:fixed-in-pr"`. The PR's `Closes #` is the rest of the breadcrumb.

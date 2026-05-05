@@ -35,6 +35,28 @@ npm install playwright && npx playwright install chromium
 # write your script, run with `node script.mjs`
 ```
 
+### `scripts/upload-evidence.ts` — push screenshots to R2 for inline-rendering in PR comments
+
+```sh
+npx tsx scripts/upload-evidence.ts <pr-number> <local-dir>
+```
+
+Uploads every `.png` / `.jpg` / `.gif` / `.webp` in `<local-dir>` to `ralphie.happyhq.com/pr/<n>/<uuid>/` and prints the public URLs to stdout (one per line) plus ready-to-paste markdown to stderr. Pipe stdout into a file or paste the markdown block into `gh pr comment --body-file`.
+
+Example:
+
+```sh
+$ npx tsx scripts/upload-evidence.ts 220 /tmp/happyhq-dogfood/screenshots-216
+Uploading 4 file(s) to pr/220/<uuid>/ on ralphie
+https://ralphie.happyhq.com/pr/220/<uuid>/01-task-page-pre-start.png
+...
+Paste into a comment:
+![01-task-page-pre-start](https://ralphie.happyhq.com/pr/220/<uuid>/01-task-page-pre-start.png)
+...
+```
+
+The bucket auto-deletes objects under `pr/` after 90 days (R2 lifecycle rule), so don't rely on these URLs for long-term reference. GitHub's Camo proxy caches each image on first fetch though, so already-rendered comments keep working even after the source expires.
+
 ## Pitfalls (the things we keep tripping on)
 
 ### 1. `networkidle` lies in Next dev mode
@@ -156,11 +178,50 @@ What URL gets you which surface. Add to this as you discover more.
 ## Conventions
 
 - **Where to put exercise scripts.** For Ralphie's autonomous loop, `/tmp/ralphie-exercise-<issue>.mjs`. For ad-hoc maintainer use, `/tmp/happyhq-dogfood/<name>.mjs`. Don't commit these — they're scratch.
-- **Where to put screenshots.** `/tmp/ralphie-screenshots/<issue>/` or `/tmp/happyhq-dogfood/screenshots/`. Reference the absolute path in the PR body so reviewers can `open` it.
+- **Where to put screenshots.** Local working dir: `/tmp/ralphie-screenshots/<issue>/` or `/tmp/happyhq-dogfood/screenshots/`. **Then upload to R2** with `npx tsx scripts/upload-evidence.ts <pr> <dir>` and embed the returned URLs as inline images in the PR-body Visual evidence section. Don't reference local `/tmp` paths in the PR — reviewers can't `open` them, and a screenshot embedded inline is the whole point.
 - **Pre-clean screenshot dir before each run** so a stale shot from a prior attempt doesn't masquerade as success: `for (const f of fs.readdirSync(OUT_DIR)) fs.unlinkSync(path.join(OUT_DIR, f))`.
 - **Wait between actions, but not blindly.** Prefer `waitForSelector` / `waitForFunction` over `waitForTimeout`. A 500ms `waitForTimeout` after a click is fine for letting CSS transitions settle; a 30s `waitForTimeout` waiting for compile is a sign you should be waiting on a signal instead.
 - **Capture a screenshot at every step**, not just the final one. When something fails, the trail of screenshots is what tells you which step broke. Cheap insurance.
 - **Synthetic tasks for failure-mode dogfooding.** When you need a stream-bound task to exercise a run-loop failure path (and don't want to disturb the user's real tasks), write directly to `~/HappyHQ/tasks/<slug>/task.md` with frontmatter that includes a `stream:` field. The API picks it up immediately. Delete the directory after the dogfood.
+
+## Maintainer setup (one-time, per machine)
+
+Most of the helpers above work out of the box. The exception is `upload-evidence.ts` — it talks to a Cloudflare R2 bucket, so each machine that runs it (your laptop, any Fly machine running an autonomous loop) needs the bucket creds.
+
+**One-time on the Cloudflare side** (already done as of this writing — listed for re-creation if the bucket is ever rebuilt or someone else needs to set it up on a fresh account):
+
+```sh
+# Wrangler is the Cloudflare CLI — global install if you don't have it.
+npm install -g wrangler
+wrangler login
+
+# Create the bucket.
+wrangler r2 bucket create ralphie
+
+# Attach the custom domain. Look up your zone-id with:
+#   curl -sS "https://api.cloudflare.com/client/v4/zones?name=happyhq.com" \
+#     -H "Authorization: Bearer $(grep '^oauth_token' ~/Library/Preferences/.wrangler/config/default.toml | cut -d'"' -f2)"
+wrangler r2 bucket domain add ralphie --domain ralphie.happyhq.com --zone-id <zone-id> --min-tls 1.2 --force
+
+# 90-day auto-expire on PR evidence.
+wrangler r2 bucket lifecycle add ralphie --name "expire-evidence-90d" --prefix "pr/" --expire-days 90 --force
+```
+
+**One-time per machine:**
+
+1. Generate an S3-compatible token at `https://dash.cloudflare.com/<account-id>/r2/api-tokens`. Pick **Account API Token**, **Object Read & Write** permission, scoped to the `ralphie` bucket. Save the **Access Key ID** + **Secret Access Key** — Cloudflare only shows the secret once.
+2. Add to `happyhq/.env.local` (gitignored). On a multi-worktree setup, mirror to each worktree's `.env.local`:
+
+   ```
+   # Cloudflare R2 — Ralphie evidence bucket
+   R2_ACCOUNT_ID=<account-id>
+   R2_BUCKET=ralphie
+   R2_ACCESS_KEY_ID=<from dashboard>
+   R2_SECRET_ACCESS_KEY=<from dashboard>
+   R2_PUBLIC_BASE_URL=https://ralphie.happyhq.com
+   ```
+
+3. Smoke-test: `npx tsx scripts/upload-evidence.ts 1 /path/to/some/screenshots`. Should print URLs and `curl -sI <url>` should return `200 image/png` from `server: cloudflare`.
 
 ## Updating this doc
 
