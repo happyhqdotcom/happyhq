@@ -16,7 +16,7 @@
     "db:push": "pnpm dlx instant-cli push schema && pnpm dlx instant-cli push perms"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.2.114",
+    "@anthropic-ai/claude-agent-sdk": "0.2.122",
     "@headlessui/react": "^2.2.9",
     "@hyzyla/pdfium": "^2.1.6",
     "@instantdb/admin": "^1.0.23",
