@@ -292,6 +292,29 @@ describe('planning mode', () => {
     })
   })
 
+  it('treats stderr-only fast-fail as an error rather than silent plan_ready', async () => {
+    // Simulates Claude Code subprocess that writes to stderr (e.g. missing
+    // ~/.claude.json) and exits before emitting any SDK message. Without
+    // detection, the for-await would complete cleanly and the loop would
+    // mark the run plan_ready despite producing no plan — see #216.
+    mockQuery.mockImplementation(({ options }: any) => {
+      options.stderr?.('Claude configuration file not found\n')
+      return fakeQuery([])
+    })
+
+    await startRun('s1', 't1', 'planning')
+    await _waitForLoop()
+
+    const writes = getRunInfoWrites()
+    const terminal = writes[writes.length - 1]
+    expect(terminal).toMatchObject({
+      status: 'stopped',
+      stoppedDuring: 'planning',
+      stopReason: 'error',
+    })
+    expect(terminal.error).toContain('Claude configuration file not found')
+  })
+
   it('writes stopped without error when user stops during planning', async () => {
     mockQuery.mockImplementation(blockingQueryImpl)
 
