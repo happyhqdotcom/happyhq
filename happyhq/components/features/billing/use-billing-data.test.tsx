@@ -93,6 +93,43 @@ describe('useBillingData', () => {
     expect(result!.includedMinutes).toBe(60)
     expect(result!.remainingMinutes).toBe(30)
     expect(result!.remainingPercent).toBe(50)
+    expect(result!.isPastDue).toBe(false)
+    expect(result!.periodEnd).toBe(now + 86400000)
+  })
+
+  it('flags isPastDue when the active subscription is past_due', async () => {
+    const now = Date.now()
+    mockUseCurrentUser.mockReturnValue({
+      user: { id: 'user-1', email: 'test@example.com', createdAt: 0 },
+      isLoading: false,
+      isAuthenticated: true,
+    })
+    mockUseQuery.mockReturnValue({
+      data: {
+        subscriptions: [{ id: 'sub-1', tier: 'starter', status: 'past_due' }],
+        usage: [
+          {
+            id: 'usage-1',
+            periodStart: now - 86400000,
+            periodEnd: now + 86400000,
+            usedMinutes: 10,
+            includedMinutes: 60,
+          },
+        ],
+      },
+    })
+
+    const { useBillingData } = await import('./use-billing-data')
+    let result: UsageData | null | undefined
+
+    function TestComponent() {
+      result = useBillingData()
+      return null
+    }
+
+    render(<TestComponent />)
+    expect(result!.currentTier).toBe('starter')
+    expect(result!.isPastDue).toBe(true)
   })
 
   it('defaults to free tier when no active subscription exists', async () => {
@@ -121,6 +158,8 @@ describe('useBillingData', () => {
     expect(result!.currentTier).toBe('free')
     expect(result!.includedMinutes).toBe(5)
     expect(result!.remainingMinutes).toBe(5)
+    expect(result!.isPastDue).toBe(false)
+    expect(result!.periodEnd).toBeNull()
   })
 
   it('clamps remaining minutes to zero when usage exceeds limit', async () => {

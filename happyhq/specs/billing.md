@@ -275,7 +275,7 @@ Current plan display, usage meter (visual bar showing hours used vs remaining), 
 
 ### Usage Indicator
 
-`UsageIndicator` component in the sidebar account footer dropdown. Shows remaining time as compact text (e.g., "42m left", "2h 15m left", "No runtime left"). Color-coded: muted (>50% remaining), amber (25–50%), red (<25% or exhausted). Updates in real-time via `db.useQuery()` on usage and subscription records. The `useBillingData()` hook (in `usage-indicator.tsx`) provides the shared data source.
+`UsageIndicator` component in the sidebar account footer dropdown. Shows remaining time as compact text (e.g., "42m left", "2h 15m left", "No runtime left"). Color-coded: muted (>50% remaining), amber (25–50%), red (<25% or exhausted). Updates in real-time via `db.useQuery()` on usage and subscription records. The `useBillingData()` hook (in `components/features/billing/use-billing-data.ts`) provides the shared data source.
 
 `TierBadge` shows the capitalized tier name (e.g., "Starter") in the dropdown.
 
@@ -373,7 +373,8 @@ For local dev with billing, use Stripe test mode keys. Webhooks are handled by t
 | `app/api/billing/checkout/route.ts`                     | Create Stripe Checkout session (thin wrapper)                                                          |
 | `app/api/billing/portal/route.ts`                       | Create Stripe Customer Portal session (thin wrapper)                                                   |
 | `components/features/settings/billing-settings.tsx`     | Billing card in settings: plan, usage meter, manage/upgrade                                            |
-| `components/features/sidebar/atoms/usage-indicator.tsx` | `UsageIndicator`, `TierBadge`, `useBillingData()` hook                                                 |
+| `components/features/sidebar/atoms/usage-indicator.tsx` | `UsageIndicator`, `TierBadge` (presentational)                                                         |
+| `components/features/billing/use-billing-data.ts`       | `useBillingData()` hook — shared data source for usage indicators and the Usage settings page          |
 | `components/features/billing/upgrade-prompt.tsx`        | Reusable upgrade CTA (inline + overlay variants)                                                       |
 | `components/features/billing/limit-reached.tsx`         | `LimitReachedOverlay`, `LowBalanceWarning`                                                             |
 

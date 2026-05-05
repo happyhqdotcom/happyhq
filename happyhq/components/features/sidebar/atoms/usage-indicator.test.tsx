@@ -16,6 +16,8 @@ describe('UsageIndicator', () => {
           includedMinutes: 60,
           remainingMinutes: 42,
           remainingPercent: 70,
+          isPastDue: false,
+          periodEnd: null,
         }}
       />,
     )
@@ -32,6 +34,8 @@ describe('UsageIndicator', () => {
           includedMinutes: 300,
           remainingMinutes: 135,
           remainingPercent: 45,
+          isPastDue: false,
+          periodEnd: null,
         }}
       />,
     )
@@ -48,6 +52,8 @@ describe('UsageIndicator', () => {
           includedMinutes: 60,
           remainingMinutes: 0,
           remainingPercent: 0,
+          isPastDue: false,
+          periodEnd: null,
         }}
       />,
     )
@@ -64,6 +70,8 @@ describe('UsageIndicator', () => {
           includedMinutes: 60,
           remainingMinutes: 10,
           remainingPercent: 16.7,
+          isPastDue: false,
+          periodEnd: null,
         }}
       />,
     )
@@ -81,6 +89,8 @@ describe('UsageIndicator', () => {
           includedMinutes: 60,
           remainingMinutes: 20,
           remainingPercent: 33.3,
+          isPastDue: false,
+          periodEnd: null,
         }}
       />,
     )
@@ -98,6 +108,8 @@ describe('UsageIndicator', () => {
           includedMinutes: 60,
           remainingMinutes: 50,
           remainingPercent: 83.3,
+          isPastDue: false,
+          periodEnd: null,
         }}
       />,
     )
