@@ -49,10 +49,10 @@ evals/scenarios/{scenario-name}/
       INDEX.md
       extracted.md
   tasks/{task-name}/                        # The task being planned
+    task.md                                 # frontmatter + description (body)
     inputs/
       brief/
         original.md
-      context.md
 ```
 
 This mirrors the real filesystem layout (see [Filesystem Layout](filesystem-layout.md)). The runner sets up a temp git repo from this directory so git commits work normally.

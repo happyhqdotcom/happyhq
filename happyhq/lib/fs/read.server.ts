@@ -287,8 +287,10 @@ export async function listFileItems(dir: string): Promise<FileItem[]> {
     }),
   )
 
-  // Also pick up loose files (e.g. context.md) that sit directly in the
-  // directory rather than inside a slug subdirectory.
+  // Also pick up loose files that sit directly in the directory rather than
+  // inside a slug subdirectory. The only known case is the legacy
+  // `inputs/context.md` from before task descriptions moved to `task.md` body
+  // — kept here so legacy tasks still expose their description as an input.
   const looseFiles = dirEntries.filter(
     (e) => e.isFile() && !e.name.startsWith('.'),
   )
@@ -654,6 +656,10 @@ export async function readTaskContent(
     throw error
   }
 
+  // `inputs/context.md` is the legacy home for the task description; new
+  // tasks store it in `task.md` body. Read both so pre-migration tasks still
+  // surface their description in the UI. Safe to drop once no live task has
+  // an empty `task.md` body alongside a populated `inputs/context.md`.
   const [taskMd, plan, runJson, fallbackDescription, inputs, working, outputs] =
     await Promise.all([
       readTaskMd(taskDir),

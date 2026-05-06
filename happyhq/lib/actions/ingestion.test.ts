@@ -412,18 +412,17 @@ describe('uploadFile', () => {
 // --- setupTaskFromChat ---
 
 describe('setupTaskFromChat', () => {
-  it('writes context.md at root task path', async () => {
+  it('does not write context.md (description lives in task.md body now)', async () => {
     mockMkdir.mockResolvedValue(undefined)
     mockWriteFile.mockResolvedValue(undefined)
 
-    await setupTaskFromChat('my-task-01abc', 'sess-1', 'Analyze Q4 data.', [])
+    await setupTaskFromChat('my-task-01abc', 'sess-1', [])
 
     const taskDir = path.join(MOCK_ROOT, 'tasks', 'my-task-01abc')
-    expect(mockWriteFile).toHaveBeenCalledWith(
-      path.join(taskDir, 'inputs', 'context.md'),
-      'Analyze Q4 data.',
-      'utf-8',
+    const wroteContext = mockWriteFile.mock.calls.some(
+      (c) => c[0] === path.join(taskDir, 'inputs', 'context.md'),
     )
+    expect(wroteContext).toBe(false)
   })
 
   it('moves upload directories from root .chats/ to task inputs', async () => {
@@ -432,7 +431,7 @@ describe('setupTaskFromChat', () => {
     mockRename.mockResolvedValue(undefined)
     mockExistsSync.mockReturnValue(true)
 
-    await setupTaskFromChat('my-task-01abc', 'sess-1', 'Ctx', [
+    await setupTaskFromChat('my-task-01abc', 'sess-1', [
       'acme-report',
       'budget-data',
     ])
@@ -459,13 +458,9 @@ describe('setupTaskFromChat', () => {
       mockRename.mockResolvedValue(undefined)
       mockExistsSync.mockReturnValueOnce(true).mockReturnValueOnce(false)
 
-      await setupTaskFromChat('my-task-01abc', 'sess-1', 'Ctx', [
-        'exists',
-        'gone',
-      ])
+      await setupTaskFromChat('my-task-01abc', 'sess-1', ['exists', 'gone'])
 
       expect(mockRename).toHaveBeenCalledTimes(1)
-      expect(mockWriteFile).toHaveBeenCalled()
     } finally {
       warnSpy.mockRestore()
     }
@@ -475,7 +470,7 @@ describe('setupTaskFromChat', () => {
     mockMkdir.mockResolvedValue(undefined)
     mockWriteFile.mockResolvedValue(undefined)
 
-    await setupTaskFromChat('my-task-01abc', 'sess-1', 'Ctx', [])
+    await setupTaskFromChat('my-task-01abc', 'sess-1', [])
 
     expect(mockCommitGitState).toHaveBeenCalledWith(
       '[tasks/my-task-01abc] Chat inputs',

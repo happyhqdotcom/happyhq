@@ -36,7 +36,7 @@ export interface RunInfo {
 export interface TaskContent {
   frontmatter: TaskFrontmatter | null // Parsed YAML frontmatter from task.md (null if missing/malformed)
   plan: string | null // Contents of plan.md (null if not yet generated)
-  description: string | null // Contents of inputs/context.md (null if not yet written)
+  description: string | null // task.md body (the task description) — null if empty
   run: RunInfo | null // Parsed .run.json (null if no run state exists)
   inputs: FileItem[] // Flattened file items from inputs/ directory
   working: FileEntry[] // Contents of working/ directory (breadcrumbs)
@@ -128,5 +128,5 @@ export interface TaskItem {
   slug: string // directory name
   frontmatter: TaskFrontmatter
   run: RunInfo | null // agent run state from .run.json
-  description: string | null // task.md body or inputs/context.md content
+  description: string | null // task.md body — the task description
 }

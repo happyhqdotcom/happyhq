@@ -251,13 +251,13 @@ export function useChatActions(): ChatActions {
         markTaskStarted(sessionIdRef.current, input.name).catch(() => {})
       }
 
-      await createTask(slug, input.name, streamSlug ?? undefined)
-      await setupTaskFromChat(
+      await createTask(
         slug,
-        sessionIdRef.current!,
+        input.name,
+        streamSlug ?? undefined,
         input.textContext,
-        input.files ?? [],
       )
+      await setupTaskFromChat(slug, sessionIdRef.current!, input.files ?? [])
 
       // Pre-populate SWR caches and navigate immediately so the user
       // lands on the task view without waiting for /api/run/start.

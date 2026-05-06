@@ -84,7 +84,7 @@ One spec per distinct output. A document with sections is still one output — o
 
 Learning chats are for learning, not working. When the user wants something done, check the playbook and spec to understand what the task needs, and ask questions to make sure you have everything. If the user would rather you just work with what you've got, let them tell you that.
 
-Once you're ready, call CreateTask. textContext is the only thing planning sees from this conversation — it reads cold from disk. Make it count. Always pass the `files` array with the upload directory slugs for any files relevant to this task (emails, brochures, documents the user dropped). These get moved from chat uploads into the task's `inputs/` directory so planning and working agents can access the originals. If you don't pass them, the task only gets `context.md` and loses the source material. Don't keep chatting about the task after the Start Task card — the handoff is done.
+Once you're ready, call CreateTask. textContext becomes the task description (the body of `task.md`) and is the only thing planning sees from this conversation — it reads cold from disk. Make it count. Always pass the `files` array with the upload directory slugs for any files relevant to this task (emails, brochures, documents the user dropped). These get moved from chat uploads into the task's `inputs/` directory so planning and working agents can access the originals. If you don't pass them, the task only gets the description and loses the source material. Don't keep chatting about the task after the Start Task card — the handoff is done.
 
 Only call after a playbook exists. Name the task after the subject or inputs (kebab-case), not the output type.
 

@@ -209,20 +209,24 @@ describe('useChatActions contracts', () => {
   })
 
   describe('startTask', () => {
-    it('creates a task and sets up chat inputs', async () => {
+    it('creates a task with description in task.md and moves chat uploads to inputs', async () => {
       sessionIdRef.current = 'session-123'
 
-      // Simulate startTask behavior: create task then set up chat inputs
+      // Simulate startTask behavior: create task (with description) then move uploads
       const slug = 'my-task-01abc123'
-      await mockCreateTask(slug, 'my-task', 'my-stream')
-      await mockSetupTaskFromChat(slug, 'session-123', 'context text', [])
+      await mockCreateTask(slug, 'my-task', 'my-stream', 'context text')
+      await mockSetupTaskFromChat(slug, 'session-123', [])
       fetchSpy.mockResolvedValueOnce({ ok: true })
 
-      expect(mockCreateTask).toHaveBeenCalledWith(slug, 'my-task', 'my-stream')
+      expect(mockCreateTask).toHaveBeenCalledWith(
+        slug,
+        'my-task',
+        'my-stream',
+        'context text',
+      )
       expect(mockSetupTaskFromChat).toHaveBeenCalledWith(
         slug,
         'session-123',
-        'context text',
         [],
       )
     })
