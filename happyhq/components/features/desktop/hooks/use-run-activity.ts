@@ -99,7 +99,11 @@ function stripMcpPrefix(name: string): string {
   return idx > 0 && name.startsWith('mcp__') ? name.slice(idx + 2) : name
 }
 
-export function useRunActivity(isActive: boolean): RunActivityState {
+export function useRunActivity(
+  isActive: boolean,
+  runStartedAt?: string | null,
+  onStreamNotFound?: () => void,
+): RunActivityState {
   const [statusLine, setStatusLine] = useState<string | null>(null)
   const [lastResultAt, setLastResultAt] = useState<number | null>(null)
   const [lastContentChangeAt, setLastContentChangeAt] = useState<number | null>(
@@ -170,11 +174,24 @@ export function useRunActivity(isActive: boolean): RunActivityState {
         })
 
         if (!response.ok) {
-          // 404 likely means the run is still initialising (optimistic
-          // update set isActive before the server was ready). Retry
-          // after a short delay — cleanup will stop retries if the run
-          // ends and isActive flips to false.
+          // 404 means the server has no active run. Two cases:
+          // (a) Run is still initialising — `streamActive` flips on
+          //     synchronously inside startRun before the POST returns 200,
+          //     but a slow event loop / cold compile can land the SSE GET
+          //     ahead of the loop's first broadcast.
+          // (b) Run already terminated — fast-fail in planning, or any
+          //     other path where `streamActive` flipped back to false
+          //     between the optimistic update mounting this hook and the
+          //     fetch landing.
+          //
+          // Fire the parent's onStreamNotFound callback so it can refetch
+          // SWR-backed run state. For (a) the refetch sees status='planning'
+          // (already on disk before POST returned) and the cache reconciles
+          // without disrupting the optimistic update; for (b) the refetch
+          // surfaces status='stopped'+error and useTerminalErrorToast picks
+          // it up — closes #227.
           setIsConnected(false)
+          onStreamNotFound?.()
           if (mounted) {
             reconnectTimeout = setTimeout(connect, RECONNECT_DELAY_MS)
           }
@@ -508,10 +525,15 @@ export function useRunActivity(isActive: boolean): RunActivityState {
           } else if (event.type === 'task_content_changed') {
             setLastContentChangeAt(Date.now())
           } else if (event.type === 'error') {
-            // Run loop broadcasts this when an iteration fails (notably the
-            // silent fast-fail case where the subprocess exits before
-            // producing any SDK message — see #216).
-            toastError(event.message)
+            // Run loop broadcasts this on terminal failure. Live subscribers
+            // get the toast immediately. The same terminal state lands in
+            // .run.json and is also picked up by useTaskData's SWR-observed
+            // effect (covers fast-fails where SSE never mounts) — both paths
+            // use the run.startedAt-keyed id so Sonner dedupes.
+            toastError(
+              event.message,
+              runStartedAt ? { id: `run-error:${runStartedAt}` } : undefined,
+            )
           } else if (event.type === 'result') {
             setLastResultAt(Date.now())
             setActivitySteps([]) // iteration boundary — reset

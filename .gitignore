@@ -68,3 +68,8 @@ happyhq/specs/refs/
 # Cloudflare Workers
 .wrangler/
 .dev.vars
+
+# Playwright MCP runtime artifacts
+# Snapshot YAMLs, console logs, and Exercise screenshots — see the screenshot
+# convention in happyhq/.dev/exercising-the-ui.md ("write into .playwright-mcp/").
+.playwright-mcp/

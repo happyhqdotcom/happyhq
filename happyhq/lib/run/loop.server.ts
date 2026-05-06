@@ -58,13 +58,6 @@ interface RunLoopState {
   activeRunTask: string | null
   heartbeatInterval: ReturnType<typeof setInterval> | null
   selfPingInterval: ReturnType<typeof setInterval> | null
-  // Replays the most recent broadcast `error` event to a subscriber that
-  // connects after the run has already failed. Without this, runs that fail
-  // before the client mounts /api/run/stream (fast subprocess fail in
-  // planning, or any startRun → broadcastErrorEvent → cleanup window faster
-  // than SWR-driven `isRunActive` propagation) deliver the error to an empty
-  // subscriber set and the toast never reaches the user. See #227.
-  pendingErrorEvent: { chunk: Uint8Array; expiresAt: number } | null
 }
 
 const STATE_KEY = Symbol.for('__happyhq_run_loop_state__')
@@ -82,18 +75,10 @@ function getState(): RunLoopState {
       activeRunTask: null,
       heartbeatInterval: null,
       selfPingInterval: null,
-      pendingErrorEvent: null,
     }
   }
   return g[STATE_KEY]
 }
-
-// How long after a run fails the buffered `error` chunk remains replayable to
-// a late subscriber. Covers the gap between broadcast firing and the client's
-// SWR refetch + SSE mount. 30s is comfortably above SWR's polling cadence
-// while still bounded so a stale toast never surfaces a run later than its
-// own session.
-const ERROR_REPLAY_WINDOW_MS = 30_000
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -156,8 +141,6 @@ export async function startRun(
     s.subscribers = new Set()
     s.activeRunStream = streamName
     s.activeRunTask = taskName
-    // A new run supersedes any buffered terminal error from a prior run.
-    s.pendingErrorEvent = null
     startKeepalives(s)
 
     // Defer heavy work (commitGitState shells out to git synchronously) with
@@ -276,45 +259,12 @@ export function stopRun(): void {
  */
 export function getActiveStream(): ReadableStream<Uint8Array> | null {
   const s = getState()
-  if (s.streamActive) {
-    const ts = new TransformStream<Uint8Array, Uint8Array>()
-    const writer = ts.writable.getWriter()
-    s.subscribers.add(writer)
-    // Replay a still-fresh buffered error to subscribers that mount mid-run
-    // (e.g. just after a transient working-iteration failure that was
-    // broadcast into an earlier subscriber set). Fire-and-forget; the live
-    // path does the same.
-    replayPendingError(s, writer)
-    return ts.readable
+  if (!s.streamActive) {
+    return null
   }
-  // Run already ended — but if it failed within the replay window, hand a
-  // one-shot stream that emits the buffered error and closes. This is the
-  // fix for #227: a client whose subscription mounts after the broadcast
-  // fired (because SWR hadn't yet propagated `run.status`) still sees the
-  // toast instead of getting a 404.
-  const pending = s.pendingErrorEvent
-  if (pending && pending.expiresAt > Date.now()) {
-    const chunk = pending.chunk
-    return new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(chunk)
-        controller.close()
-      },
-    })
-  }
-  return null
-}
-
-function replayPendingError(
-  s: RunLoopState,
-  writer: WritableStreamDefaultWriter<Uint8Array>,
-): void {
-  const pending = s.pendingErrorEvent
-  if (!pending || pending.expiresAt <= Date.now()) return
-  writer.write(pending.chunk).catch(() => {
-    writer.close().catch(() => {})
-    s.subscribers.delete(writer)
-  })
+  const ts = new TransformStream<Uint8Array, Uint8Array>()
+  s.subscribers.add(ts.writable.getWriter())
+  return ts.readable
 }
 
 /**
@@ -946,6 +896,15 @@ async function runWorkingLoop(
 
       // Iteration timeout or other error — continue to next iteration.
       // "Fresh context self-heals problems."
+      //
+      // Transient (non-terminal) iteration errors stay in the runtime log
+      // (`run.iteration` below) and are not toasted. The toast surface is
+      // reserved for terminal errors that flip `.run.json` to `stopped` —
+      // those are picked up by the client's SWR-observed terminal-error
+      // toast in useTaskData (see #227). Surfacing transient stderr-fails
+      // on top would create a second timing-sensitive surface for very
+      // little user value (the run continues; the next iteration usually
+      // self-heals).
       const iterErrMsg = error instanceof Error ? error.message : String(error)
       const iterStderrTail = stderrBuf.getTail()
       await writeRunInfo(taskName, {
@@ -960,13 +919,6 @@ async function runWorkingLoop(
         planningSessionId,
         workingSessionIds,
       })
-      // Surface only when stderr was captured — that's the silent fast-fail
-      // pattern (subprocess died before emitting). Other transient errors
-      // (SDK timeouts, network blips) self-heal on the next iteration and
-      // don't deserve a toast.
-      if (iterStderrTail) {
-        broadcastErrorEvent(error, iterStderrTail)
-      }
       log('run.iteration', {
         task: taskName,
         iteration,
@@ -1196,16 +1148,7 @@ function broadcastErrorEvent(error: unknown, stderrTail: string): void {
     error instanceof Error ? error.message : String(error || 'Run failed')
   const composed = stderrTail ? `${message}\n\n${stderrTail}` : message
   const event: ChatStreamEvent = { type: 'error', message: composed }
-  const chunk = encodeEvent(event)
-  broadcast(chunk)
-  // Also stash for replay so a subscriber that mounts after the run has
-  // already failed still sees the toast. See `pendingErrorEvent` doc on
-  // RunLoopState for the race this closes.
-  const s = getState()
-  s.pendingErrorEvent = {
-    chunk,
-    expiresAt: Date.now() + ERROR_REPLAY_WINDOW_MS,
-  }
+  broadcast(encodeEvent(event))
 }
 
 /**
