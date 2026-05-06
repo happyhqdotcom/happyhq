@@ -144,6 +144,28 @@ describe('learningAgentOptions', () => {
     })
   })
 
+  it('preserves process.env when no override is given', async () => {
+    // Regression: the SDK passes opts.env verbatim to the spawned process, so
+    // when there's no override we must spread process.env ourselves. A bug
+    // where the spread was conditional stripped ANTHROPIC_API_KEY, HOME, and
+    // PATH on the env-var auth path and the agent failed with "Not logged in".
+    const original = process.env.ANTHROPIC_API_KEY
+    process.env.ANTHROPIC_API_KEY = 'sk-from-process-env'
+    try {
+      const opts = await learningAgentOptions('my-stream', 'session-uuid-1')
+      expect(opts.env).toMatchObject({
+        ANTHROPIC_API_KEY: 'sk-from-process-env',
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
+        CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+        ENABLE_TOOL_SEARCH: 'false',
+      })
+    } finally {
+      if (original === undefined) delete process.env.ANTHROPIC_API_KEY
+      else process.env.ANTHROPIC_API_KEY = original
+    }
+  })
+
   describe('canUseTool', () => {
     async function getCanUseTool(
       notifyClient?: (event: ChatStreamEvent) => void,
@@ -390,6 +412,10 @@ describe('planningAgentOptions', () => {
   })
 
   it('preserves process.env when no override is given', async () => {
+    // Regression: the SDK passes opts.env verbatim to the spawned process, so
+    // when there's no override we must spread process.env ourselves. A bug
+    // where the spread was conditional stripped ANTHROPIC_API_KEY, HOME, and
+    // PATH on the env-var auth path and the agent failed with "Not logged in".
     const original = process.env.ANTHROPIC_API_KEY
     process.env.ANTHROPIC_API_KEY = 'sk-from-process-env'
     try {
@@ -400,6 +426,8 @@ describe('planningAgentOptions', () => {
       )
       expect(opts.env).toMatchObject({
         ANTHROPIC_API_KEY: 'sk-from-process-env',
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
         CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
         ENABLE_TOOL_SEARCH: 'false',
       })
@@ -645,6 +673,32 @@ describe('workingAgentOptions', () => {
       CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
       ENABLE_TOOL_SEARCH: 'false',
     })
+  })
+
+  it('preserves process.env when no override is given', async () => {
+    // Regression: the SDK passes opts.env verbatim to the spawned process, so
+    // when there's no override we must spread process.env ourselves. A bug
+    // where the spread was conditional stripped ANTHROPIC_API_KEY, HOME, and
+    // PATH on the env-var auth path and the agent failed with "Not logged in".
+    const original = process.env.ANTHROPIC_API_KEY
+    process.env.ANTHROPIC_API_KEY = 'sk-from-process-env'
+    try {
+      const opts = await workingAgentOptions(
+        'my-stream',
+        'my-task',
+        new AbortController(),
+      )
+      expect(opts.env).toMatchObject({
+        ANTHROPIC_API_KEY: 'sk-from-process-env',
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
+        CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+        ENABLE_TOOL_SEARCH: 'false',
+      })
+    } finally {
+      if (original === undefined) delete process.env.ANTHROPIC_API_KEY
+      else process.env.ANTHROPIC_API_KEY = original
+    }
   })
 
   it('includes PostToolUse hook that notifies on Write/Edit', async () => {
