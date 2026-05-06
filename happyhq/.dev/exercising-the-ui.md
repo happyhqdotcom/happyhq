@@ -27,6 +27,8 @@ Default port 3000. Override with `PORT=3030 npx tsx ...` if 3000 is in use (e.g.
 
 Registered in `.mcp.json` at the repo root. Tools available to any Claude Code session in this checkout: `browser_navigate`, `browser_click`, `browser_type`, `browser_take_screenshot`, etc. Headless chromium by default.
 
+Write screenshots into `.playwright-mcp/` so they collocate with snapshot YAMLs / console logs and are covered by the existing gitignore — pass `filename: '.playwright-mcp/<name>.png'` to `browser_take_screenshot` rather than letting it default to cwd. Loose PNGs at repo root tend to leak into untracked status and clutter `git status` between Exercise runs.
+
 If you're driving Playwright directly (not through MCP), spawn a sandbox install rather than adding to package.json:
 
 ```sh
@@ -149,15 +151,24 @@ if (await confirmStart.count()) {
 }
 ```
 
-### 9. SSE subscription mounts late — drive via UI, not raw API
+### 9. SSE subscription mounts late — terminal-error toast comes from SWR
 
 [components/features/desktop/hooks/use-run-activity.ts](../components/features/desktop/hooks/use-run-activity.ts) only subscribes to `/api/run/stream` when `run.status` flips to `'planning'` or `'working'`. The gate avoids open SSE connections from idle pages.
 
-If you trigger a run via raw `POST /api/run/start`, the server can fire its broadcast (the run loop's catch path, e.g. an `error` event after a fast SDK failure) before the client's SWR refetch picks up the status change and mounts the subscription. The event lands in a channel with no subscribers — toast missed.
+For a fast-fail run the server can fire its terminal `error` broadcast before the client's SWR refetch ever observes `'planning'`/`'working'` — `useRunActivity` never mounts and the live broadcast lands in an empty subscriber set. Toast surfacing therefore comes through SWR-observed state instead of the live wire: [components/features/tasks/hooks/use-terminal-error-toast.ts](../components/features/tasks/hooks/use-terminal-error-toast.ts) watches `.run.json` (via SWR) for transitions into `status='stopped' && error`, and toasts deterministically. Live SSE error events still toast immediately for active subscribers — both paths key Sonner's `id` on `run.startedAt`, so the user sees exactly one toast per failed run.
 
-**Drive run-loop dogfoods via the UI button click, not raw API.** The button's click handler does an optimistic SWR update that mounts the subscription before the server's broadcast fires.
+That makes the raw `POST /api/run/start` path fully safe for dogfooding terminal-error UX — the toast will land within one SWR refresh cycle regardless of how fast the run failed. The UI-button path is still preferred when you need the optimistic-update side effects (status flips, action buttons re-render, etc.) to drive other surfaces too.
 
-(There's also a real bug in the broadcast — events aren't buffered for late subscribers. Tracked in #227. Until that's fixed, this pitfall is the workaround.)
+**Caveat — transient mid-iteration errors are not toasted.** When a working iteration fails with captured stderr but the run continues to the next iteration, that no longer surfaces as a toast (was previously broadcast over SSE; rolled back along with #227's server-side buffer). The error is still recorded in the runtime log (`~/HappyHQ/.logs/<date>.jsonl`, event `run.iteration`). If a transient triggers a terminal failure on a later iteration, the terminal-error path covers the toast.
+
+**Source-level fault injection for fast-fail dogfooding.** On macOS, "break SDK auth" doesn't reliably reproduce a fast-fail because Claude Code stores credentials in the keychain (`security find-generic-password -s "Claude Code-credentials"`), not in `~/.claude.json` or `CLAUDE_CODE_OAUTH_TOKEN`. Removing the file or unsetting the env var leaves auth intact and the run completes normally. The honest cheap reproducer is a one-line throw at the top of the planning iteration:
+
+```ts
+// in lib/run/loop.server.ts, top of runPlanningIteration's try block:
+throw new Error('synthetic fast-fail (#NNN)')
+```
+
+Restart the dev server, fire `POST /api/run/start` with a synthetic task that has a real `stream:` field in its frontmatter (the API picks up `~/HappyHQ/tasks/<slug>/task.md` immediately if the file is well-formed — `title:` and `createdAt:` are required), observe the toast, then `git checkout -- happyhq/lib/run/loop.server.ts`. The contract being tested is timing-shape (broadcast/SWR-observe race), not the cause of the failure, so any throw with the right placement reproduces the user-visible bug.
 
 ## Routing cheat-sheet
 

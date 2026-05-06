@@ -224,7 +224,11 @@ export function DesktopInitializer() {
   // activity state directly into the store.
   const mockMode = useDesktopStore((s) => s.mockMode)
   const { statusLine, lastResultAt, lastContentChangeAt, activitySteps } =
-    useRunActivity(isRunActive && !mockMode)
+    useRunActivity(
+      isRunActive && !mockMode,
+      data?.taskContent?.run?.startedAt ?? null,
+      mutateDesktop,
+    )
 
   // Push run state into store (client-only — from SSE, not server data).
   // In mock mode, the dev panel injects state directly — skip to avoid overwriting.

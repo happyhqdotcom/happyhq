@@ -10,6 +10,8 @@ import { useTaskStore } from '@/stores/taskStore'
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import useSWR, { mutate as globalMutate } from 'swr'
 
+import { useTerminalErrorToast } from './use-terminal-error-toast'
+
 interface TaskIdentity {
   taskSlug: string
   streamSlug: string | null
@@ -61,8 +63,15 @@ export function useTaskData(task: TaskIdentity | null) {
 
   // ── Real-time activity stream ───────────────────────────────────────
   // In mock mode, suppress SSE — the dev panel injects activity directly.
+  // The onStreamNotFound callback refetches SWR when the SSE endpoint says
+  // there's no active run — covers fast-fails where the run terminated
+  // between the optimistic mount and the SSE fetch landing.
   const { activitySteps, statusLine, lastResultAt, lastContentChangeAt } =
-    useRunActivity(hasStream && isRunActive && !mockMode)
+    useRunActivity(
+      hasStream && isRunActive && !mockMode,
+      content?.run?.startedAt ?? null,
+      mutate,
+    )
 
   // Push run state into store (client-only — from SSE, not server data).
   // In mock mode, the dev panel injects state directly — skip to avoid overwriting.
@@ -102,6 +111,9 @@ export function useTaskData(task: TaskIdentity | null) {
   useEffect(() => {
     if (lastContentChangeAt && !mockMode) debouncedRefresh()
   }, [lastContentChangeAt, debouncedRefresh, mockMode])
+
+  // ── Terminal-error toast (SWR-observed) ─────────────────────────────
+  useTerminalErrorToast(content?.run ?? null, mockMode)
 
   // ── Run-end detection ───────────────────────────────────────────────
   // When isRunActive transitions true → false, revalidate to pick up

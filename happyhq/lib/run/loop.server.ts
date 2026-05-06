@@ -896,6 +896,15 @@ async function runWorkingLoop(
 
       // Iteration timeout or other error — continue to next iteration.
       // "Fresh context self-heals problems."
+      //
+      // Transient (non-terminal) iteration errors stay in the runtime log
+      // (`run.iteration` below) and are not toasted. The toast surface is
+      // reserved for terminal errors that flip `.run.json` to `stopped` —
+      // those are picked up by the client's SWR-observed terminal-error
+      // toast in useTaskData (see #227). Surfacing transient stderr-fails
+      // on top would create a second timing-sensitive surface for very
+      // little user value (the run continues; the next iteration usually
+      // self-heals).
       const iterErrMsg = error instanceof Error ? error.message : String(error)
       const iterStderrTail = stderrBuf.getTail()
       await writeRunInfo(taskName, {
@@ -910,13 +919,6 @@ async function runWorkingLoop(
         planningSessionId,
         workingSessionIds,
       })
-      // Surface only when stderr was captured — that's the silent fast-fail
-      // pattern (subprocess died before emitting). Other transient errors
-      // (SDK timeouts, network blips) self-heal on the next iteration and
-      // don't deserve a toast.
-      if (iterStderrTail) {
-        broadcastErrorEvent(error, iterStderrTail)
-      }
       log('run.iteration', {
         task: taskName,
         iteration,

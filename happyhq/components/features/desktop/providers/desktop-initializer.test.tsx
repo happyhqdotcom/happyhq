@@ -178,7 +178,11 @@ describe('DesktopInitializer', () => {
   describe('run activity integration', () => {
     it('passes isRunActive=false when no active run', () => {
       renderProvider()
-      expect(mockUseRunActivity).toHaveBeenCalledWith(false)
+      expect(mockUseRunActivity).toHaveBeenCalledWith(
+        false,
+        null,
+        expect.any(Function),
+      )
     })
 
     it('passes isRunActive=true when task has a running status', () => {
@@ -190,10 +194,17 @@ describe('DesktopInitializer', () => {
       }))
 
       render(<DesktopInitializer />)
-      expect(mockUseRunActivity).toHaveBeenCalledWith(true)
+      expect(mockUseRunActivity).toHaveBeenCalledWith(
+        true,
+        TASK_CONTENT.run!.startedAt,
+        expect.any(Function),
+      )
     })
 
     it('passes isRunActive=false when task status is completed', () => {
+      // Set params before the SWR override so renderProvider's setupDefaults
+      // doesn't clobber it (setupDefaults wires both useParams and useSWR).
+      mockUseParams.mockReturnValue({ stream: 'test-stream', task: 'my-task' })
       mockUseSWR.mockImplementation(() => ({
         data: {
           ...DESKTOP_DATA,
@@ -206,8 +217,12 @@ describe('DesktopInitializer', () => {
         mutate: vi.fn(),
       }))
 
-      renderProvider('test-stream', 'my-task')
-      expect(mockUseRunActivity).toHaveBeenCalledWith(false)
+      render(<DesktopInitializer />)
+      expect(mockUseRunActivity).toHaveBeenCalledWith(
+        false,
+        TASK_CONTENT.run!.startedAt,
+        expect.any(Function),
+      )
     })
   })
 

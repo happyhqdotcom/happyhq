@@ -3,9 +3,12 @@
 import { Loader2Icon } from 'lucide-react'
 import { Toaster as Sonner, toast, ToasterProps } from 'sonner'
 
-// Error toasts persist until dismissed
-export const toastError = (message: string) =>
-  toast.error(message, { duration: Infinity })
+// Error toasts persist until dismissed.
+// `id` lets callers dedupe across paths that surface the same error
+// (live SSE broadcast vs. SWR-observed terminal state) — Sonner replaces
+// instead of stacking when ids match.
+export const toastError = (message: string, opts?: { id?: string }) =>
+  toast.error(message, { duration: Infinity, ...opts })
 
 // Warning toasts stay visible longer than the 4s default
 export const toastWarning = (message: string) =>
