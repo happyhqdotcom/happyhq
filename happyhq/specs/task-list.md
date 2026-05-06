@@ -29,9 +29,8 @@ Define the task-list-centric model: how tasks are created, stored, assigned, and
     call-dentist-01h8g3r7/                  # Task (no stream)
       task.md
     draft-q4-proposal-01h8k2w4/             # Task (assigned to acme-client stream)
-      task.md
+      task.md                               # frontmatter + description (body)
       inputs/
-        context.md
         acme-deck/
           original.pdf
           raw.txt

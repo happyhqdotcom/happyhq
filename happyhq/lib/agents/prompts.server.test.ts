@@ -158,9 +158,9 @@ describe('prompt loading', () => {
       inputs: [
         {
           name: 'brief.md',
-          type: 'file',
-          path: '',
-          title: null,
+          originalPath: 'tasks/my-task/inputs/brief.md',
+          originalName: 'brief.md',
+          rawPath: null,
           modifiedAt: '',
         },
       ],
@@ -171,6 +171,8 @@ describe('prompt loading', () => {
     const { planningPrompt } = await import('./prompts.server')
     const result = await planningPrompt('stream', 'my-task')
 
+    // task.md is listed first — frontmatter + description
+    expect(result).toContain('- tasks/my-task/task.md')
     // Specs listed by path (prefixed with stream slug since CWD is workspace root)
     expect(result).toContain('- stream/specs/tone.md')
     // Multiple samples in same category → INDEX.md listed, agent chooses
@@ -183,6 +185,85 @@ describe('prompt loading', () => {
     expect(result).toContain('workflow here')
     // Samples note
     expect(result).toContain('patterns, not as gospel')
+  })
+
+  it('reading list lists task.md before specs, samples, and inputs', async () => {
+    mockReadFileSync.mockReturnValue('{{READING_LIST}}\n{{PLAYBOOK}}')
+    mockReadStreamContent.mockResolvedValue({
+      playbook: '',
+      specs: [
+        {
+          name: 'tone.md',
+          type: 'file',
+          path: '',
+          title: null,
+          modifiedAt: '',
+        },
+      ],
+      samples: [],
+    })
+    mockReadTaskContent.mockResolvedValue({
+      frontmatter: null,
+      plan: null,
+      run: null,
+      inputs: [
+        {
+          name: 'brief',
+          originalPath: 'tasks/my-task/inputs/brief/original.pdf',
+          originalName: 'original.pdf',
+          rawPath: 'tasks/my-task/inputs/brief/raw.txt',
+          modifiedAt: '',
+        },
+      ],
+      working: [],
+      outputs: [],
+    })
+
+    const { planningPrompt } = await import('./prompts.server')
+    const result = await planningPrompt('stream', 'my-task')
+
+    const taskMdIdx = result.indexOf('- tasks/my-task/task.md')
+    const specIdx = result.indexOf('- stream/specs/tone.md')
+    const inputIdx = result.indexOf('- tasks/my-task/inputs/brief/raw.txt')
+
+    expect(taskMdIdx).toBeGreaterThanOrEqual(0)
+    expect(specIdx).toBeGreaterThan(taskMdIdx)
+    expect(inputIdx).toBeGreaterThan(specIdx)
+  })
+
+  it('reading list uses originalPath for loose input files (e.g. legacy context.md)', async () => {
+    mockReadFileSync.mockReturnValue('{{READING_LIST}}\n{{PLAYBOOK}}')
+    mockReadStreamContent.mockResolvedValue({
+      playbook: '',
+      specs: [],
+      samples: [],
+    })
+    mockReadTaskContent.mockResolvedValue({
+      frontmatter: null,
+      plan: null,
+      run: null,
+      inputs: [
+        // Loose file at inputs/ root — no rawPath, originalPath is the full
+        // workspace-relative path. Reproduces the legacy `context.md` shape.
+        {
+          name: 'context',
+          originalPath: 'tasks/my-task/inputs/context.md',
+          originalName: 'context.md',
+          rawPath: null,
+          modifiedAt: '',
+        },
+      ],
+      working: [],
+      outputs: [],
+    })
+
+    const { planningPrompt } = await import('./prompts.server')
+    const result = await planningPrompt('stream', 'my-task')
+
+    // Path uses originalPath verbatim — no synthetic
+    // `inputs/context/context.md` reconstruction.
+    expect(result).toContain('- tasks/my-task/inputs/context.md')
+    expect(result).not.toContain('inputs/context/context.md')
   })
 
   it('working prompt builds reading list with plan.md appended', async () => {
@@ -207,9 +288,9 @@ describe('prompt loading', () => {
       inputs: [
         {
           name: 'brief.md',
-          type: 'file',
-          path: '',
-          title: null,
+          originalPath: 'tasks/my-task/inputs/brief.md',
+          originalName: 'brief.md',
+          rawPath: null,
           modifiedAt: '',
         },
       ],
@@ -222,6 +303,7 @@ describe('prompt loading', () => {
 
     expect(result).toContain('stream')
     expect(result).not.toContain('{{STREAM_NAME}}')
+    expect(result).toContain('- tasks/my-task/task.md')
     expect(result).toContain('- stream/specs/tone.md')
     expect(result).toContain('- tasks/my-task/inputs/brief.md')
     expect(result).toContain('- tasks/my-task/plan.md')

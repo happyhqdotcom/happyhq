@@ -111,7 +111,10 @@ export function TaskPanel({
   // ── Local state (source of truth while editing) ─────────────────────
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  // Filter out context.md from visible inputs (it IS the description)
+  // Hide legacy `inputs/context.md` from the visible inputs list — its content
+  // is the description (now in `task.md` body) and `readTaskContent` already
+  // surfaces it via the description field for tasks that predate the migration.
+  // Safe to remove once no live task has a loose `inputs/context.md`.
   const visibleInputs: FileItem[] = (taskContent?.inputs ?? []).filter(
     (i) => i.name !== 'context',
   )
@@ -728,7 +731,7 @@ export function TaskPanel({
         {/* Right — metadata sidebar */}
         <Sidebar open={sidebarOpen} className="pt-4 pb-2">
           <SidebarSection>
-            <SidebarHeading className="!mb-0 px-3">Assigned To</SidebarHeading>
+            <SidebarHeading className="mb-0! px-3">Assigned To</SidebarHeading>
             <Listbox
               value={activeTask?.frontmatter.stream ?? null}
               onChange={async (slug: string | null) => {

@@ -24,7 +24,7 @@ import {
   taskPath,
 } from '@/lib/fs/paths'
 import { readTextFile } from '@/lib/fs/read.server'
-import { ensureDirectory, writeTextFile } from '@/lib/fs/write.server'
+import { ensureDirectory } from '@/lib/fs/write.server'
 import { commitGitState } from '@/lib/git/sync.server'
 import { extractTextFromPdf } from '@/lib/pdf/extract-text.server'
 
@@ -191,13 +191,13 @@ async function recordUploadDisplayName(
 
 /**
  * Set up a root task created from the chat flow — creates working
- * subdirectories, moves upload directories from .chats/{sessionId}/uploads/
- * to inputs/, and writes context.md. Call after createTask().
+ * subdirectories and moves upload directories from .chats/{sessionId}/uploads/
+ * to inputs/. The task description is written to task.md by createTask();
+ * this function only handles file movement. Call after createTask().
  */
 export async function setupTaskFromChat(
   taskSlug: string,
   sessionId: string,
-  textContext: string,
   files: string[],
 ): Promise<void> {
   const safeTaskSlug = assertSafeTaskSlug(taskSlug)
@@ -240,7 +240,6 @@ export async function setupTaskFromChat(
     await rename(from, to)
   }
 
-  await writeTextFile(path.join(taskDir, 'inputs', 'context.md'), textContext)
   commitGitState(`[tasks/${taskSlug}] Chat inputs`)
 }
 

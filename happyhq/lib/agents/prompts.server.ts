@@ -144,6 +144,10 @@ function buildReadingList(
 ): string {
   const bullets: string[] = []
 
+  // task.md — frontmatter (title, stream) and the user's task description.
+  // Listed first so the agent reads the brief before specs/samples/inputs.
+  bullets.push(`- tasks/${taskName}/task.md`)
+
   // Specs — list each by path (prefixed with stream slug since CWD is workspace root)
   const specFiles = stream.specs
     .filter((e) => e.type === 'file' && e.name.endsWith('.md'))
@@ -181,13 +185,13 @@ function buildReadingList(
     )
   }
 
-  // Inputs — workspace-relative (tasks are at root, not under stream)
-  const inputsPrefix = `tasks/${taskName}/inputs`
+  // Inputs — use the FileItem's pre-computed paths so this works for both
+  // upload subdirectories (`inputs/{slug}/raw.txt` or `original.{ext}`) and
+  // legacy loose files like `inputs/context.md` that sit at the inputs root.
+  // The legacy branch can be retired once no live task relies on a loose
+  // `inputs/context.md` — see `listFileItems` in lib/fs/read.server.ts.
   for (const input of task.inputs) {
-    const readable = input.rawPath
-      ? `${inputsPrefix}/${input.name}/raw.txt`
-      : `${inputsPrefix}/${input.name}/${input.originalName}`
-    bullets.push(`- ${readable}`)
+    bullets.push(`- ${input.rawPath ?? input.originalPath}`)
   }
 
   return bullets.join('\n')
