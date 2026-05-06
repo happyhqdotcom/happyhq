@@ -20,6 +20,7 @@
 
 5b. **Exercise.** Try the change end-to-end the way a real user would experience it, before opening the PR. Code-only checks (lint/types/test) prove the plumbing; this step proves the behavior. Apply this to every fix — pick the right tool for the surface, don't skip because "it's not a UI change."
 
+- **Exercise the contract the issue describes, at the surface it describes.** If the issue says "user sees X," drive the surface and watch for X. Unit tests below the surface complement the Exercise; they don't replace it.
 - **Read [@.dev/exercising-the-ui.md](.dev/exercising-the-ui.md) first.** It owns the UI-driving knowledge: helpers (`scripts/dev-server.ts`, Playwright MCP), pitfalls (`networkidle` lies in dev mode, hotkeys need focus, dynamic button labels, slow first-compile, route-gated menu items, env-specific slugs), and the routing cheat-sheet. Saves you rediscovering them.
 - Pick the right tool for the surface:
   - **UI-visible** — Playwright MCP tools to drive the affected screen. Capture screenshots.
@@ -28,8 +29,13 @@
 - For a **behavior fix**: induce the failure mode the issue describes and confirm the new state appears.
 - For a **behavior-preserving fix**: drive the happy path on each surface you touched and confirm nothing visible regressed.
 - Look at the evidence. Does the issue's user-visible contract actually hold? Sweep for adjacent regressions — the symptom you fixed is one part; "did anything else break" is the other.
+- **A synthetic trigger that hits the same code path is fine.** You're verifying the contract, not the cause. If the natural failure mode is hard to set up, trigger an equivalent one — a `throw` early in the same path, a bogus env var on the spawned process (`FOO= some-command`), a named file moved aside. Cheaper to set up wins.
+- **Restore what you touch.** Three rules:
+  - **Named allowlist.** Touch only what you set out to touch.
+  - **Atomic restore + watchdog.** `trap 'mv ~/.x.bak ~/.x' EXIT INT TERM` for the foreground, plus a `nohup bash -c 'sleep 600 && [ -f ~/.x.bak ] && mv ~/.x.bak ~/.x' &` watchdog so an abandoned session still restores. For source edits, `git checkout -- <file>` and `git status --short` to confirm clean. Verify the restore before reporting done.
+  - **Never touch:** shell/git config, `~/.ssh`, `~/.aws`, `~/.gnupg`, the macOS keychain, anything needing `sudo` / Touch ID. No `rm -rf` in $HOME.
 - **If it doesn't work:** rework once. If still broken on the second attempt, apply `ralphie:skip-cannot-verify` (rubric rule 10) with evidence showing what you saw vs. what was expected, stop the dev server, exit.
-- **If you can't reach the surface** (heavy seed state needed, failure environment can't be produced, etc.): apply `ralphie:skip-cannot-verify` with a one-paragraph note. Don't ship a fix without evidence.
+- **If you can't reach the surface:** name the tactics you tried and what each produced before applying `ralphie:skip-cannot-verify`. "Moved `~/.x` aside, run completed normally — failure didn't trigger" counts. "Couldn't reach the surface" with no attempt described doesn't. The trail goes in the skip-comment.
 - **If it works:** keep the evidence path(s) — they go in the PR body in step 8. Always stop the dev server when done: `npx tsx scripts/dev-server.ts stop`.
 
 6. **Risk gate.** With the diff in hand, apply the rubric's "Risk gate" decision tree:
