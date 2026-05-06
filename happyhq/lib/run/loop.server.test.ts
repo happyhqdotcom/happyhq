@@ -510,6 +510,19 @@ describe('module state after run ends', () => {
     await _waitForLoop()
 
     expect(isRunActive()).toBe(false)
+    // getActiveStream() intentionally returns a one-shot replay stream after
+    // an errored run (see #227 — covers the fast-fail late-subscriber race).
+    // The "no run active" 404 path is exercised by the test below.
+  })
+
+  it('returns null from getActiveStream after a clean (no-error) run', async () => {
+    mockQuery.mockReturnValue(fakeQuery([]))
+    mockIsTaskCompleted.mockReturnValue(true)
+
+    await startRun('s1', 't1', 'working')
+    await _waitForLoop()
+
+    expect(isRunActive()).toBe(false)
     expect(getActiveStream()).toBeNull()
   })
 })
@@ -615,6 +628,81 @@ describe('stream', () => {
 
     // stream2 should still be a valid readable stream
     expect(stream2.locked).toBe(false)
+  })
+
+  it('replays the buffered error to a subscriber that mounts after a fast-fail run', async () => {
+    // Pins the contract behind #227. When a planning run fails before the
+    // client mounts /api/run/stream (subprocess fast-fail / SDK throw before
+    // first SDK message), the broadcast lands in an empty subscriber set and
+    // — without the replay buffer — getActiveStream() returns null on the
+    // late connect, so the toast never reaches the user. The buffer turns a
+    // late connect into a one-shot stream carrying the same error event.
+    mockQuery.mockImplementation(({ options }: any) => {
+      options.stderr?.('Claude configuration file not found\n')
+      return fakeQuery([])
+    })
+
+    await startRun('s1', 't1', 'planning')
+    await _waitForLoop()
+
+    // Run is over server-side; subscribers were closed in the loop's finally
+    // block. A "real" client connecting now would have missed the live
+    // broadcast — getActiveStream still hands back a stream carrying the
+    // error so the toast surfaces.
+    const stream = getActiveStream()
+    expect(stream).not.toBeNull()
+
+    const reader = stream!.getReader()
+    const decoder = new TextDecoder()
+    let output = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      output += decoder.decode(value, { stream: true })
+    }
+
+    const events = output
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l))
+    const errorEvent = events.find((e: any) => e.type === 'error')
+    expect(errorEvent).toBeDefined()
+    expect(errorEvent.message).toContain('Claude configuration file not found')
+  })
+
+  it('clears the buffered error when a new run starts', async () => {
+    // The replay buffer must not leak across runs — once a fresh run begins
+    // the prior session's terminal error becomes irrelevant noise.
+    mockQuery.mockImplementationOnce(({ options }: any) => {
+      options.stderr?.('first run failed\n')
+      return fakeQuery([])
+    })
+    await startRun('s1', 't1', 'planning')
+    await _waitForLoop()
+
+    // Confirm the buffered error is replayable before the next run.
+    expect(getActiveStream()).not.toBeNull()
+
+    // Start a new (still-active) run; the previous error must no longer be
+    // replayed to a subscriber that connects fresh.
+    mockQuery.mockImplementation(blockingQueryImpl)
+    await startRun('s1', 't2', 'working')
+
+    const stream = getActiveStream()!
+    const reader = stream.getReader()
+    // Read with a short race — the live stream is blocking, so if the error
+    // chunk leaked into it we'd see it within the timeout.
+    const raced = await Promise.race([
+      reader.read(),
+      new Promise<{ value: undefined; done: false }>((resolve) =>
+        setTimeout(() => resolve({ value: undefined, done: false }), 30),
+      ),
+    ])
+    if (raced.value) {
+      const decoded = new TextDecoder().decode(raced.value as Uint8Array)
+      expect(decoded).not.toContain('first run failed')
+    }
+    await reader.cancel()
   })
 })
 

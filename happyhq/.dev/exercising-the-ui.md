@@ -149,15 +149,13 @@ if (await confirmStart.count()) {
 }
 ```
 
-### 9. SSE subscription mounts late — drive via UI, not raw API
+### 9. SSE subscription mounts late — late-connect replay covers the race
 
 [components/features/desktop/hooks/use-run-activity.ts](../components/features/desktop/hooks/use-run-activity.ts) only subscribes to `/api/run/stream` when `run.status` flips to `'planning'` or `'working'`. The gate avoids open SSE connections from idle pages.
 
-If you trigger a run via raw `POST /api/run/start`, the server can fire its broadcast (the run loop's catch path, e.g. an `error` event after a fast SDK failure) before the client's SWR refetch picks up the status change and mounts the subscription. The event lands in a channel with no subscribers — toast missed.
+For a fast-fail run the server can fire its terminal `error` broadcast before the client's SWR refetch picks up the status change and mounts the subscription. To stop the toast getting lost, the run loop now buffers the most recent `error` event for 30s; a subscriber that connects within that window receives a one-shot replay stream carrying the event (see [lib/run/loop.server.ts](../lib/run/loop.server.ts) `pendingErrorEvent`).
 
-**Drive run-loop dogfoods via the UI button click, not raw API.** The button's click handler does an optimistic SWR update that mounts the subscription before the server's broadcast fires.
-
-(There's also a real bug in the broadcast — events aren't buffered for late subscribers. Tracked in #227. Until that's fixed, this pitfall is the workaround.)
+That makes the raw `POST /api/run/start` path safe for dogfooding — but the UI-button path is still preferred when you need the optimistic-update side effects (status flips, action buttons re-render, etc.) to drive other surfaces too.
 
 ## Routing cheat-sheet
 
