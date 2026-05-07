@@ -1,6 +1,6 @@
 0a. Read @dependency-rules.md — this is the spec. Apply it literally.
 0b. Read @CLAUDE.md and @CONTRIBUTING.md (repo root) for repo conventions referenced by the rules.
-0c. The PR you are working: #${PR_NUMBER}. Read it: `gh pr view ${PR_NUMBER} --comments`. Phase 2 only processes Dependabot PRs that passed Rule 1 (no `ralphie:*` label).
+0c. The PR you are working: #${PR_NUMBER}. Read it: `gh pr view ${PR_NUMBER} --comments`. Phase 2 processes both Dependabot PRs and `chore/security-*` override PRs Ralphie opened during the alert sweep — both passed Rule 1 (no `ralphie:*` label) to be in this queue. For `chore/security-*` PRs, the security advisory plays the role of the changelog: read it from the linked GHSA page, treat it the same way you'd treat upstream release notes for investigation purposes.
 0d. **Classify upfront for elevated scrutiny.** Identify whether this PR is one of:
 
 - **Framework major** — `next`, `react`, `react-dom`, or similar coordinate-the-stack packages
