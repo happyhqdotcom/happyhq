@@ -11,6 +11,7 @@
     "check-types": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest --watch",
+    "smoke:e2e": "npx tsx scripts/smoke-e2e.ts",
     "db:push-schema": "pnpm dlx instant-cli push schema",
     "db:push-perms": "pnpm dlx instant-cli push perms",
     "db:push": "pnpm dlx instant-cli push schema && pnpm dlx instant-cli push perms"
@@ -95,6 +96,7 @@
     "eslint-config-next": "16.2.4",
     "fast-check": "^4.6.0",
     "jsdom": "^29.1.1",
+    "playwright": "^1.59.1",
     "postcss": "^8.5.14",
     "tailwindcss": "^4.2.4",
     "typescript": "^6.0.3",

@@ -107,7 +107,7 @@ Key endpoints:
 - `GET  /api/fs/task?task=<slug>` — read task content, inputs, outputs, run state
 - `GET  /api/fs/task-items` — list all tasks
 - `POST /api/run/start` — start a run: `{"task":"<slug>","stream":"<slug>","mode":"planning"|"working"}`
-- `GET  /api/run/active` — poll run status (404 means done)
+- `GET  /api/run/active` — poll run status (returns `{ stream, task }` while a run is active, `null` when idle — always status 200)
 - `POST /api/run/stop` — stop active run
 - `GET  /api/run/stream` — stream NDJSON run output in real time
 - `POST /api/chat` — chat with agent: `{"message":"...","sessionId":"<uuid>","streamSlug":"<slug>"}`
@@ -116,7 +116,7 @@ Verification workflow:
 
 1. Start HappyHQ in the background (`pnpm dev &` or production build)
 2. Trigger the behavior to verify (start a run, send a chat message, etc.)
-3. Poll `/api/run/active` until 404 (run finished)
+3. Poll `/api/run/active` until the body is `null` (run finished — body stays an object while active)
 4. Read logs: `npx tsx scripts/read-logs.ts --task=<slug>`
 5. Read outputs: `curl localhost:3000/api/fs/task?task=<slug>`
 6. Kill the server when done
@@ -127,8 +127,9 @@ Run these checks after making changes. Stop at first failure and fix.
 
 1. `pnpm check-types && pnpm lint && pnpm test` — must all pass
 2. If the dev server is running: `npx tsx scripts/smoke-test.ts` — API health + error check
-3. Check for client errors: `npx tsx scripts/read-logs.ts --event=client. --last=10`
-4. Check for server errors: `npx tsx scripts/read-logs.ts --event=api.error --last=10`
-5. If you changed agent behavior, start a run and check: `npx tsx scripts/read-logs.ts --event=run. --last=10`
+3. For changes that touch task creation, run loop, agent config, or file ingestion: `pnpm smoke:e2e` — golden-path end-to-end test that creates a task with an attached file, runs planning + working, and asserts outputs
+4. Check for client errors: `npx tsx scripts/read-logs.ts --event=client. --last=10`
+5. Check for server errors: `npx tsx scripts/read-logs.ts --event=api.error --last=10`
+6. If you changed agent behavior, start a run and check: `npx tsx scripts/read-logs.ts --event=run. --last=10`
 
 Client-side errors (React crashes, failed fetches, unhandled exceptions) are forwarded to the server log automatically via `reportError()` in `lib/report-error.ts`. They appear as `client.*` events in the same log files.
