@@ -5,7 +5,7 @@ import {
   readStreams,
   readTaskContent,
 } from '@/lib/fs/read.server'
-import { learningLayerPrompt } from '../prompts.server'
+import { learningPrompt } from '../prompts.server'
 import { firstTimeContext } from './first-time.server'
 import { generalContext } from './general.server'
 import { newStreamReminder } from './new-stream.server'
@@ -25,7 +25,7 @@ export async function buildLearningReminders(
   const reminders: string[] = []
 
   // Instructions (sync, no I/O)
-  reminders.push(learningLayerPrompt(streamSlug))
+  reminders.push(learningPrompt(streamSlug))
 
   // Context (situational)
   const content = await readStreamContent(streamSlug)

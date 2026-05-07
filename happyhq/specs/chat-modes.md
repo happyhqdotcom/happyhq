@@ -8,8 +8,6 @@ Define Q's two operating modes — general and learning — and how it transitio
 
 This spec owns the mode system: what each mode does, how transitions work, how the composer toggle and Q-initiated transitions interact, and how prompt injection works. It does not own the content of each mode's instructions — [Learning](learning.md) owns learning behavior, and the base prompt is defined separately.
 
-**Prompt refactoring note**: The existing `prompts/learning.md` is currently a standalone system prompt that includes Q's identity ("You're Q. Your job is to learn..."). With the mode system, Q's identity moves to the base prompt (`general.md`), and `learning.md` becomes an additive layer — just the learning-specific instructions (classification, interview, artifacts, stream context, tools). The identity preamble is removed from `learning.md` since it's already in the base. The draft additive version lives at `prompts/learning-layer.md` during development — it replaces `learning.md` when the mode system ships.
-
 ## Two Modes
 
 ### General Mode (default)
@@ -114,17 +112,13 @@ Custom MCP tool. Q calls this when it detects teaching intent or when the user t
 } // Which stream to learn in. Required.
 ```
 
-**Tool result**: Confirmation plus stream context summary — the same lightweight manifest from `formatStreamContext()`. Gives Q immediate orientation for the rest of the current turn.
+**Tool result**: Brief mode-framing sentence — what learning mode is in one breath. Mirrors Claude Code's `EnterPlanMode` pattern: the tool ack carries the headline; the reminder layer (injected via the PostToolUse hook on the same turn) carries the rules and the stream manifest.
 
 ```
-Entered learning mode for client-reports.
-Playbook: exists
-Specs: reports.md, tone.md
-Samples: 5 across reports
-Uploads: none
+Entered learning mode for client-reports. Your job here is to learn how this work gets done — ask great questions, read what's there, and capture what you learn into the playbook, specs, and samples. Call ExitLearningMode when the teaching is complete.
 ```
 
-**Side effects**: The server sets the session's mode to `'learning'` with the given `streamSlug`. Mode state lives in memory (like `active-sessions`), optionally persisted to `chat.json` for server restart resilience. On the next message, the server prepends the learning layer as a `<system-reminder>` block to the user's prompt.
+**Side effects**: The server sets the session's mode to `'learning'` with the given `streamSlug`. Mode state lives in memory (like `active-sessions`), optionally persisted to `chat.json` for server restart resilience. The PostToolUse hook injects the learning layer + stream manifest as `<system-reminder>` blocks on the same turn so Q acts on the new mode immediately; subsequent turns get the layer + manifest re-injected by the chat route.
 
 ### ExitLearningMode
 
