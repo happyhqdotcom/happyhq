@@ -1,12 +1,28 @@
 # Dependency Rules
 
-Source of truth for how the deps loop processes open Dependabot PRs. Both `PROMPT_dependency_triage.md` and `PROMPT_dependency_upgrade.md` load this file. Edit here, not in the prompts.
+Source of truth for how the deps loop processes open Dependabot PRs and Dependabot security alerts. Both `PROMPT_dependency_triage.md` and `PROMPT_dependency_upgrade.md` load this file. Edit here, not in the prompts.
 
-## Queue contract
+## PR queue
 
-- The queue is: open PRs authored by `app/dependabot` with no label starting with `ralphie:`.
+The queue is open PRs that are either:
+
+- authored by `app/dependabot` (Dependabot version bumps), **or**
+- on a branch matching `chore/security-*` (override PRs Ralphie opened in response to a Dependabot alert during the alert sweep — see "Alert queue" below).
+
+…with no label starting with `ralphie:`.
+
+Both kinds flow through Phase 1 (Rule 1 protected-paths check) and Phase 2 (verify + investigate) identically. The advisory plays the role the changelog plays — same investigation, same `ralphie:ready-to-merge` outcome when clean.
+
 - A `ralphie:*` label is terminal — Ralphie never re-evaluates a labeled PR. The human removes the label to re-queue.
 - One outcome per session (a label or a replacement PR). **Ralphie never merges. The human is the gate.**
+
+## Alert queue
+
+Open Dependabot **alerts** are the second input. They cover transitive vulnerabilities Dependabot won't open a PR for (the fix is a `pnpm.overrides` edit, which Dependabot doesn't author), plus direct-dep vulns where the alert arrives before the PR.
+
+- The queue is: open alerts from `gh api repos/:owner/:repo/dependabot/alerts --paginate --jq '[.[] | select(.state=="open")]'`.
+- Alerts don't carry labels. Dedup is by **GHSA/CVE ID** — if any open or recently-merged PR or issue references the advisory's `ghsa_id` or `cve_id` in title or body, the alert is already in flight; skip. (Both IDs are always cited in the override PR title and the issue body, so dedup is free.)
+- The alert sweep produces either an override PR (which then enters the PR queue above) or an issue tagged `security` for human attention. **Ralphie never dismisses alerts.**
 
 ## Rules
 
@@ -27,10 +43,25 @@ The loop's value is the verification + investigation work. We don't punt PRs to 
 
 A PR that passes Rule 1 is **eligible** — it stays unlabeled and Phase 2 picks it up. Phase 2 takes one of two paths:
 
-- **Path A — verify and signal.** Install + run lint/types/test/smoke. Skim the upstream changelog. Investigate flagged items by reading linked PRs/notes and grepping the repo for affected behavior. Form an evidence-cited verdict. If clean, post the summary comment and apply `ralphie:ready-to-merge`. If concerning, apply `ralphie:skip-needs-review` with what was investigated and what's still unclear. The human reads and decides.
+- **Path A — verify and signal.** Install + run lint/types/test/smoke. Skim the upstream changelog (or the security advisory, for `chore/security-*` PRs). Investigate flagged items by reading linked PRs/notes and grepping the repo for affected behavior. Form an evidence-cited verdict. If clean, post the summary comment and apply `ralphie:ready-to-merge`. If concerning, apply `ralphie:skip-needs-review` with what was investigated and what's still unclear. The human reads and decides.
 - **Path B — fixups.** When verification fails, generate the smallest changelog-cited fixups (or, for `pnpm install`-time errors like `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`, regenerate the lockfile via no-frozen install) on a fresh `chore/upgrade-<pkg>-vN` branch off `main` and open a replacement PR for human review.
 
 Ralphie never merges. The merge button is the maintainer's. Always.
+
+## Alert sweep outcomes
+
+Phase 1 sweeps alerts before the PR queue. After dedup by GHSA/CVE ID, each remaining alert gets exactly one outcome:
+
+| #   | Condition                                                                                                                              | Action                                                                                                                                                                                                                           |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1  | An open Dependabot **PR** exists for the same package and covers the patched version range                                             | Leave alone. The PR flow handles it; the alert auto-dismisses on merge.                                                                                                                                                          |
+| A2  | A patched version exists (transitive or direct, no covering PR)                                                                        | Open a `chore/security-<pkg>-<short-id>` PR off `main` adding/updating `pnpm.overrides.<pkg>`, with `dependencies` + `security` labels. The PR enters the PR queue and Phase 2 verifies + investigates it like any other dep PR. |
+| A3  | No patched version is available (or one exists but doesn't apply), AND advisory + repo grep confirm zero exposure to the affected APIs | Open a `security`-labeled issue recommending dismiss-as-not-vulnerable with the evidence. Maintainer dismisses in GHAS.                                                                                                          |
+| A4  | Ambiguous after investigation                                                                                                          | Open a `security`-labeled issue with the advisory link, what was investigated, and what's unclear.                                                                                                                               |
+
+The bar for A3 (recommend-dismiss) is high: the advisory itself must spell out which surfaces are vulnerable, and a repo grep must confirm zero callers. When in doubt, prefer A2 (override) if a patched version exists — an override drops the alert deterministically without requiring the human to read advisory text. Reserve A3 for the case where there is no patch.
+
+A2 PRs follow the same hard constraints as Path B replacement PRs (off `main`, `chore/` prefix, AI-assistance disclosure). Phase 1 stops at "open the PR" — Phase 2's standard verify-and-investigate flow takes it from there in the same loop iteration.
 
 ## Elevated scrutiny in Phase 2
 
@@ -112,6 +143,55 @@ Why: <one sentence — what breaking change(s) or lockfile issue the bump requir
 Changelog: <link, when applicable>
 
 Replacement: <link to new PR>
+```
+
+## PR shape (alert sweep override — rule A2)
+
+The override PR enters the standard PR queue, so its body should be the kind of thing Phase 2 expects to read. Cite the advisory like a changelog. Title: `chore(deps): override <pkg> to <patched-version>+ (<CVE or GHSA ID>)`.
+
+```
+## Summary
+
+- Adds/updates `pnpm.overrides.<pkg>` to `^<patched-version>` to clear Dependabot alert #<N> ([advisory link]).
+- Path into the tree: <output of `pnpm why <pkg> -r`, fenced>.
+- Exposure: <one paragraph — do we call the affected APIs? Cite the advisory's affected-surfaces list and any repo grep results.>
+
+## Test plan
+
+- [x] `pnpm install` succeeds; lockfile updated
+- [x] `pnpm why <pkg>` reports a version satisfying the patch
+- [ ] CI green
+
+<AI-assistance disclosure paragraph per CONTRIBUTING.md>
+```
+
+## Issue shape (alert dismiss-recommendation — rule A3)
+
+Title: `security: recommend dismissing alert #<N> as not vulnerable (<CVE or GHSA ID>)`. Label: `security`.
+
+```
+Advisory: <link to GHSA page>
+
+Why dismissal is appropriate:
+- <bullet — what the advisory itself states about the vulnerable surfaces>
+- <bullet — repo grep results showing we don't call those APIs>
+- <bullet — any other relevant context (e.g., advisory's own dependent-analysis findings)>
+
+Suggested GHAS dismissal reason: "Vulnerable code is not actually used."
+```
+
+## Issue shape (alert needs-review — rule A4)
+
+Title: `security: alert #<N> needs review (<CVE or GHSA ID>)`. Label: `security`.
+
+```
+Advisory: <link to GHSA page>
+
+What I investigated:
+- <bullet — code/configs grepped, what was found>
+- <bullet — advisory items checked>
+
+What's unclear: <1–2 sentences — why this needs human judgment.>
 ```
 
 ## Hard constraints (never violate)

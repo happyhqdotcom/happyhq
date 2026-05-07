@@ -197,12 +197,13 @@ fi
 # ── Phase 2: Upgrade loop (one session per eligible PR — oldest first) ──
 DEPS_DONE=0
 while [ $DEPS_DONE -lt $MAX_DEPS ]; do
+    # Queue: Dependabot PRs + Ralphie-opened security override PRs (chore/security-*),
+    # excluding any with a terminal ralphie:* label.
     NEXT=$(gh pr list \
-        --author "app/dependabot" \
         --state open \
         --limit 100 \
-        --json number,labels,createdAt \
-        --jq '[.[] | select(.labels | map(.name) | any(startswith("ralphie:")) | not)] | sort_by(.createdAt) | .[0].number // empty' 2>/dev/null)
+        --json number,labels,createdAt,headRefName,author \
+        --jq '[.[] | select(.author.login == "app/dependabot" or (.headRefName | startswith("chore/security-"))) | select(.labels | map(.name) | any(startswith("ralphie:")) | not)] | sort_by(.createdAt) | .[0].number // empty' 2>/dev/null)
 
     if [ -z "$NEXT" ]; then
         echo -e "\n  ${GREEN}✓${RESET} Queue empty. $DEPS_DONE PR(s) attempted. Exiting."
