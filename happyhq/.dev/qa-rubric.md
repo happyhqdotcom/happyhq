@@ -1,10 +1,10 @@
 # QA Rubric
 
-Source of truth for how Ralphie acts as the QA gate on PRs marked `ralphie:ready-to-merge`. Both `PROMPT_qa_triage.md` and `PROMPT_qa_execute.md` load this file. Edit here, not in the prompts.
+Source of truth for how Ralphie acts as the QA gate on PRs marked `ralphie:ready-to-merge` (loop-driven, e.g. dependency upgrades) or `needs-qa` (maintainer-flagged). Both `PROMPT_qa_triage.md` and `PROMPT_qa_execute.md` load this file. Edit here, not in the prompts.
 
 ## Queue contract
 
-- The queue is: GitHub PRs that are `state:open`, labeled `ralphie:ready-to-merge`, and have neither `ralphie:qa-pass` nor `ralphie:qa-fail`.
+- The queue is: GitHub PRs that are `state:open`, labeled `ralphie:ready-to-merge` OR `needs-qa`, and have neither `ralphie:qa-pass` nor `ralphie:qa-fail`. The two entry labels are equivalent for queueing — `ralphie:ready-to-merge` comes from the dependency/bugs loops, `needs-qa` is a manual maintainer flag for any other PR worth running through.
 - `ralphie:qa-pass` and `ralphie:qa-fail` are terminal — Ralphie never re-evaluates a labeled PR. The maintainer removes the label to re-queue (e.g., after rebasing past a fix).
 - One outcome per PR per session. Cohorts (multi-PR test units) may produce multiple terminal labels in a single execute pass.
 

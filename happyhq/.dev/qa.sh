@@ -1,7 +1,7 @@
 #!/bin/bash
 set -o pipefail
 # Usage: ./qa.sh [options]
-#   ./qa.sh                    # triage + execute on PRs labeled ralphie:ready-to-merge
+#   ./qa.sh                    # triage + execute on PRs labeled ralphie:ready-to-merge or needs-qa
 #   ./qa.sh --triage-only      # Phase 1 only — write the cohort plan, don't execute
 #   ./qa.sh --execute-only     # Phase 2 only — read latest plan, run it
 #   ./qa.sh --pr 240           # skip triage; QA one specific PR (treated as smoke-isolated)
