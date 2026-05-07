@@ -1,0 +1,4 @@
+Three small notes for the smoke test:
+- The cat sat on the mat.
+- The mat was woven from blue yarn.
+- The yarn came from a hill in Tuscany.

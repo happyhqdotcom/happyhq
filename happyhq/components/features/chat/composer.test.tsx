@@ -233,19 +233,22 @@ describe('Composer', () => {
       const emlFile = new File(['content'], 'deal.eml', {
         type: 'message/rfc822',
       })
-      const txtFile = new File(['content'], 'notes.txt', {
-        type: 'text/plain',
+      // .xyz is the canonical "permanently unsupported" extension for tests
+      // here — pick something obscure on purpose so the test doesn't churn
+      // every time ALLOWED_INPUT_EXTENSIONS grows.
+      const unsupported = new File(['content'], 'mystery.xyz', {
+        type: 'application/octet-stream',
       })
 
       fireEvent.drop(dropZone, {
-        dataTransfer: { files: [pdfFile, emlFile, txtFile] },
+        dataTransfer: { files: [pdfFile, emlFile, unsupported] },
       })
 
       await waitFor(() => {
         expect(screen.getByText('doc.pdf')).not.toBeNull()
         expect(screen.getByText('deal.eml')).not.toBeNull()
       })
-      expect(screen.queryByText('notes.txt')).toBeNull()
+      expect(screen.queryByText('mystery.xyz')).toBeNull()
     })
 
     it('clears staged files after submission', async () => {
