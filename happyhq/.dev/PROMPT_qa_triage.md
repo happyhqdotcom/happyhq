@@ -1,7 +1,7 @@
 0a. Read @qa-rubric.md — this is the spec. Apply it literally.
 0b. Read @CLAUDE.md and @CONTRIBUTING.md (repo root) for repo conventions referenced by the rubric.
 
-1. Get the queue: `gh pr list --state open --limit 100 --json number,title,author,headRefName,labels,createdAt,body --jq '[.[] | select(.labels | map(.name) | any(. == "ralphie:ready-to-merge")) | select(.labels | map(.name) | any(. == "ralphie:qa-pass" or . == "ralphie:qa-fail") | not)] | sort_by(.createdAt)'`. Empty → exit cleanly.
+1. Get the queue: `gh pr list --state open --limit 100 --json number,title,author,headRefName,labels,createdAt,body --jq '[.[] | select(.labels | map(.name) | any(. == "ralphie:ready-to-merge" or . == "needs-qa")) | select(.labels | map(.name) | any(. == "ralphie:qa-pass" or . == "ralphie:qa-fail") | not)] | sort_by(.createdAt)'`. Empty → exit cleanly.
 
 2. For each PR in the queue, in parallel where it makes sense (use Sonnet subagents for diff reads), gather context:
    - Read the diff: `gh pr diff <#>`. Capture the full diff in working memory; you'll classify against the rubric's critical-path table.
