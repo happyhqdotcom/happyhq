@@ -1,12 +1,12 @@
 #!/bin/bash
 set -o pipefail
 # Usage: ./qa.sh [options]
-#   ./qa.sh                    # triage + execute on PRs labeled ralphie:ready-to-merge or needs-qa
-#   ./qa.sh --triage-only      # Phase 1 only — write the cohort plan, don't execute
-#   ./qa.sh --execute-only     # Phase 2 only — read latest plan, run it
-#   ./qa.sh --pr 240           # skip triage; QA one specific PR (treated as smoke-isolated)
-#   ./qa.sh --pr 240 --override # also bypass any soft-skip rules for that PR
-#   ./qa.sh --dry-run          # Phase 1 preview only, no plan file written
+#   ./qa.sh                     # triage + execute on PRs labeled ralphie:ready-to-merge or needs-qa
+#   ./qa.sh --triage-only       # Phase 1 only — post / edit triage comments, don't execute
+#   ./qa.sh --execute-only      # Phase 2 only — fan out execute over current queue (reads existing triage comments)
+#   ./qa.sh --pr 240            # triage + execute one specific PR
+#   ./qa.sh --pr 240 --override # also force explicit verification regardless of author testing
+#   ./qa.sh --dry-run           # Phase 1 preview only, no triage comments posted / edited
 
 DIM='\033[2m'
 BOLD='\033[1m'
@@ -109,9 +109,6 @@ git fetch origin --quiet || { echo -e "  ${RED}git fetch failed${RESET}" >&2; ex
 git reset --hard origin/main >/dev/null || { echo -e "  ${RED}git reset failed${RESET}" >&2; exit 1; }
 (cd "$REPO_ROOT" && (pnpm install --frozen-lockfile || pnpm install)) || { echo -e "  ${RED}pnpm install failed${RESET}" >&2; exit 1; }
 
-# Ensure the triage-plan directory exists.
-mkdir -p ~/.cache/qa
-
 cleanup() {
     echo -e "\n${DIM}Cleaning up child processes...${RESET}"
     pkill -P $$ 2>/dev/null
@@ -124,13 +121,13 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 if [ -n "$DRY_RUN" ]; then
-    export DRY_RUN_NOTE="**DRY RUN MODE**: This is a triage-phase preview. Read the queue, classify each PR, group into test units, but do NOT write the plan file to ~/.cache/qa/. Print the would-be plan to stdout instead. Do not invoke any 'gh pr edit', 'gh pr comment', 'git commit', 'git push', or filesystem write."
+    export DRY_RUN_NOTE="**DRY RUN MODE**: This is a triage-phase preview. Read the queue, walk the litmus test for each PR, but do NOT post or edit any QA: triage comments. Print the would-be comment bodies to stdout instead. Do not invoke any 'gh pr edit', 'gh pr comment', 'gh api PATCH', 'git commit', or 'git push'."
 else
     export DRY_RUN_NOTE=""
 fi
 
 if [ -n "$OVERRIDE" ]; then
-    export OVERRIDE_NOTE="**OVERRIDE MODE**: The maintainer invoked --override on this single-PR session. Don't trust author evidence regardless of how thick it looks — write an explicit verification at execute time and run it. Smoke runs unconditionally as backstop. Hard constraints (no auto-merge, no push to PR branch, only operate in qa worktree) remain non-negotiable. Note the override in the qa-pass / qa-fail comment: 'Maintainer invoked --override; explicit verification was performed regardless of author evidence.'"
+    export OVERRIDE_NOTE="**OVERRIDE MODE**: The maintainer invoked --override on this single-PR session. Don't trust author testing regardless of how thick it looks — write an explicit verification at execute time and run it. Smoke runs unconditionally as backstop. Hard constraints (no auto-merge, no push to PR branch, only operate in qa worktree) remain non-negotiable. Note the override in the qa-pass / qa-fail comment: 'Maintainer invoked --override; explicit verification was performed regardless of author testing.'"
 else
     export OVERRIDE_NOTE=""
 fi
@@ -159,30 +156,31 @@ run_session() {
     return ${PIPESTATUS[1]}
 }
 
-# ── Single-PR mode: synthesise a one-unit plan, then run execute against it ──
+# ── Single-PR mode: triage one PR, then execute it ──
 if [ -n "$SINGLE_PR" ]; then
-    PLAN_FILE=~/.cache/qa/triage-$(date +%Y%m%dT%H%M%S).md
-    cat > "$PLAN_FILE" <<EOF
-# QA triage — single-PR mode
+    export SINGLE_PR
+    run_session "PROMPT_qa_triage.md" "Triage · PR #${SINGLE_PR}"
+    TRIAGE_EXIT=$?
+    if [ $TRIAGE_EXIT -ne 0 ]; then
+        echo -e "  ${RED}Triage exited with status $TRIAGE_EXIT — stopping${RESET}"
+        exit $TRIAGE_EXIT
+    fi
 
-Queue: 1 PR (forced via --pr ${SINGLE_PR}).
+    if [ -n "$DRY_RUN" ]; then
+        echo -e "\n  ${GREEN}✓${RESET} Phase 1 preview complete (DRY RUN). Skipping execute."
+        exit 0
+    fi
 
-## Unit 1 — PR #${SINGLE_PR}: <single-PR mode>
+    # Snap to clean state before execute (in case triage left state).
+    git -C "$REPO_ROOT" checkout "$BASE_BRANCH" >/dev/null 2>&1 || true
+    git -C "$REPO_ROOT" reset --hard origin/main >/dev/null 2>&1 || true
+    (cd "$REPO_ROOT" && (pnpm install --frozen-lockfile 2>/dev/null || pnpm install)) >/dev/null 2>&1 || true
+    (cd "$REPO_ROOT/happyhq" && npx tsx scripts/dev-server.ts stop 2>/dev/null) || true
 
-**What changed:** (single-PR mode — execute reads the diff fresh)
-
-**What could break:** (single-PR mode — execute reads the diff fresh)
-
-**How to verify:** Read the diff at execute time and write a verification on the fly. Drive what the change actually touches. ${OVERRIDE:+Override mode active — don't trust author evidence regardless.}
-
-**Backstop:** smoke
-EOF
-    echo -e "  ${DIM}Wrote single-PR plan to ${PLAN_FILE}${RESET}"
-    export PLAN_FILE
-    export UNIT_INDEX=1
-    export UNIT_TOTAL=1
-    run_session "PROMPT_qa_execute.md" "Unit 1 of 1 · PR #${SINGLE_PR}"
+    export PR_NUMBER="$SINGLE_PR"
+    run_session "PROMPT_qa_execute.md" "Execute · PR #${SINGLE_PR}"
     EXECUTE_EXIT=$?
+
     (cd "$REPO_ROOT/happyhq" && npx tsx scripts/dev-server.ts stop 2>/dev/null) || true
     exit $EXECUTE_EXIT
 fi
@@ -197,48 +195,50 @@ if [ $EXECUTE_ONLY -eq 0 ]; then
     fi
 
     if [ $TRIAGE_ONLY -eq 1 ]; then
-        echo -e "\n  ${GREEN}✓${RESET} Triage complete (--triage-only). Plan: ~/.cache/qa/triage-*.md"
+        echo -e "\n  ${GREEN}✓${RESET} Triage complete (--triage-only). Plans posted as QA: triage comments on each PR."
         exit 0
     fi
 
     if [ -n "$DRY_RUN" ]; then
-        echo -e "\n  ${GREEN}✓${RESET} Phase 1 preview complete. Skipping Phase 2 in --dry-run (no plan file written, execute would have nothing to read)."
+        echo -e "\n  ${GREEN}✓${RESET} Phase 1 preview complete (DRY RUN). Skipping Phase 2."
         exit 0
     fi
 fi
 
-# ── Phase 2: Execute (per-unit fanout) ──
-PLAN_FILE=$(ls -t ~/.cache/qa/triage-*.md 2>/dev/null | head -1)
-if [ -z "$PLAN_FILE" ]; then
-    echo -e "  ${RED}Error: no triage plan found at ~/.cache/qa/triage-*.md${RESET}" >&2
-    exit 1
-fi
-export PLAN_FILE
+# ── Phase 2: query queue, fan out execute one-per-PR ──
+echo -e "\n  ${DIM}Querying queue for execute fanout…${RESET}"
+QUEUE_PRS=$(gh pr list --state open --limit 100 \
+    --json number,labels \
+    --jq '[.[]
+      | select(.labels | map(.name) | any(. == "ralphie:ready-to-merge" or . == "needs-qa"))
+      | select(.labels | map(.name) | any(. == "ralphie:qa-pass" or . == "ralphie:qa-fail") | not)
+      ] | sort_by(.number) | .[] | .number')
 
-UNIT_TOTAL=$(grep -c '^## Unit ' "$PLAN_FILE" 2>/dev/null || echo 0)
-if [ "$UNIT_TOTAL" -eq 0 ]; then
-    echo -e "\n  ${GREEN}✓${RESET} Triage found 0 PRs in queue. Nothing to execute."
+if [ -z "$QUEUE_PRS" ]; then
+    echo -e "  ${GREEN}✓${RESET} No PRs in queue. Nothing to execute."
     exit 0
 fi
-export UNIT_TOTAL
 
-echo -e "\n  ${DIM}Plan: ${PLAN_FILE}${RESET}"
-echo -e "  ${DIM}Fanning out ${UNIT_TOTAL} unit$([ "$UNIT_TOTAL" -ne 1 ] && echo s)…${RESET}"
+QUEUE_COUNT=$(echo "$QUEUE_PRS" | wc -l | tr -d ' ')
+echo -e "  ${DIM}Fanning out ${QUEUE_COUNT} PR$([ "$QUEUE_COUNT" -ne 1 ] && echo s)…${RESET}"
 
+i=0
 ERROR_COUNT=0
-for i in $(seq 1 "$UNIT_TOTAL"); do
-    # Snap to clean state before each unit (the previous unit may have left a PR branch checked out).
+for PR in $QUEUE_PRS; do
+    i=$((i+1))
+
+    # Snap to clean state before each PR (the previous PR may have left a branch checked out).
     git -C "$REPO_ROOT" checkout "$BASE_BRANCH" >/dev/null 2>&1 || true
     git -C "$REPO_ROOT" reset --hard origin/main >/dev/null 2>&1 || true
     (cd "$REPO_ROOT" && (pnpm install --frozen-lockfile 2>/dev/null || pnpm install)) >/dev/null 2>&1 || true
     (cd "$REPO_ROOT/happyhq" && npx tsx scripts/dev-server.ts stop 2>/dev/null) || true
 
-    export UNIT_INDEX=$i
-    run_session "PROMPT_qa_execute.md" "Unit $i of $UNIT_TOTAL"
+    export PR_NUMBER="$PR"
+    run_session "PROMPT_qa_execute.md" "PR #${PR} (${i} of ${QUEUE_COUNT})"
     UNIT_EXIT=$?
     if [ $UNIT_EXIT -ne 0 ]; then
-        echo -e "  ${YELLOW}⚠ Unit $i exited with status $UNIT_EXIT — continuing to next unit${RESET}"
-        ((ERROR_COUNT++))
+        echo -e "  ${YELLOW}⚠ PR #${PR} session exited with status $UNIT_EXIT — continuing${RESET}"
+        ERROR_COUNT=$((ERROR_COUNT+1))
     fi
 done
 
@@ -248,5 +248,5 @@ git -C "$REPO_ROOT" reset --hard origin/main >/dev/null 2>&1 || true
 (cd "$REPO_ROOT/happyhq" && npx tsx scripts/dev-server.ts stop 2>/dev/null) || true
 pkill -f "next dev" 2>/dev/null || true
 
-echo -e "\n  ${GREEN}✓${RESET} QA pass complete. Units: ${UNIT_TOTAL}$([ $ERROR_COUNT -gt 0 ] && echo " (${ERROR_COUNT} errors)")"
-echo -e "  ${DIM}Per-unit outcomes posted as labels on the PRs themselves.${RESET}"
+echo -e "\n  ${GREEN}✓${RESET} QA pass complete. PRs processed: ${QUEUE_COUNT}$([ $ERROR_COUNT -gt 0 ] && echo " (${ERROR_COUNT} errors)")"
+echo -e "  ${DIM}Per-PR outcomes posted as labels and comments on each PR.${RESET}"
