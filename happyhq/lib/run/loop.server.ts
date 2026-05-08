@@ -12,6 +12,7 @@ import {
   isAuthError,
 } from '@/lib/agents/auth.server'
 import {
+  discoveryAgentOptions,
   planningAgentOptions,
   workingAgentOptions,
 } from '@/lib/agents/config.server'
@@ -108,7 +109,7 @@ function getState(): RunLoopState {
 export async function startRun(
   streamName: string,
   taskName: string,
-  mode: 'planning' | 'working',
+  mode: 'discovery' | 'planning' | 'working',
   userId?: string,
   resume?: boolean,
 ): Promise<void> {
@@ -173,9 +174,15 @@ export async function startRun(
             if (isResume) {
               // Resume from stop: preserve working dir, outputs, and plan.md
               // (partial plan preserved for planning resume).
+              const resumeStatus: RunInfo['status'] =
+                mode === 'discovery'
+                  ? 'discovering'
+                  : mode === 'planning'
+                    ? 'planning'
+                    : 'working'
               await writeRunInfo(taskName, {
                 ...existingRun,
-                status: mode,
+                status: resumeStatus,
                 stoppedDuring: undefined,
                 stopReason: undefined,
                 lastIterationAt: startedAt,
@@ -187,8 +194,11 @@ export async function startRun(
               await Promise.all([
                 clearDirectory(path.join(taskDir, 'working')),
                 clearDirectory(path.join(taskDir, 'outputs')),
-                // Clear old plan and progress when re-planning so the agent starts fresh
-                ...(mode === 'planning'
+                // Clear old plan and progress when re-planning (or starting
+                // the full discovery → planning pipeline) so the agent starts
+                // fresh. Discovery is followed by planning in the same loop;
+                // planning expects a clean plan.md.
+                ...(mode === 'planning' || mode === 'discovery'
                   ? [fs.rm(path.join(taskDir, 'plan.md'), { force: true })]
                   : []),
               ])
@@ -203,15 +213,21 @@ export async function startRun(
               // Commit the cleared state so the git log shows a restart boundary.
               // No-op on first run (nothing to clear = clean tree = no commit).
               const restartMsg =
-                mode === 'planning'
-                  ? `[${streamName}/${taskName}] Task restarted from scratch`
-                  : `[${streamName}/${taskName}] Task restarted from plan`
+                mode === 'working'
+                  ? `[${streamName}/${taskName}] Task restarted from plan`
+                  : `[${streamName}/${taskName}] Task restarted from scratch`
               commitGitState(restartMsg)
 
               // Write .run.json AFTER the restart commit so it doesn't dirty
               // the tree and cause a false "Task restarted" on first run.
+              const initialStatus: RunInfo['status'] =
+                mode === 'discovery'
+                  ? 'discovering'
+                  : mode === 'planning'
+                    ? 'planning'
+                    : 'working'
               await writeRunInfo(taskName, {
-                status: mode === 'planning' ? 'planning' : 'working',
+                status: initialStatus,
                 startedAt,
                 lastIterationAt: startedAt,
                 costUsd: existingRun?.costUsd ?? 0,
@@ -356,7 +372,7 @@ export function _waitForLoop(): Promise<void> {
 async function runLoop(
   streamName: string,
   taskName: string,
-  mode: 'planning' | 'working',
+  mode: 'discovery' | 'planning' | 'working',
   startedAt: string,
   userId?: string,
 ): Promise<void> {
@@ -397,7 +413,68 @@ async function runLoop(
   let finalStatus: RunInfo['status'] = 'stopped'
 
   try {
-    if (mode === 'planning') {
+    if (mode === 'discovery') {
+      finalStatus = await runDiscoveryIteration(
+        streamName,
+        taskName,
+        ac.signal,
+        startedAt,
+        env,
+        remainingBudgetUsd,
+      )
+
+      // Billing: record discovery LLM cost (mirrors the planning block below)
+      let discoveryCost = 0
+      if (taskRunId) {
+        try {
+          const { updateUsage } = await import('@/ee/lib/billing/usage.server')
+          const discRun = await readRunInfo(taskName)
+          discoveryCost =
+            discRun?.phases?.find((p) => p.phase === 'discovery')?.costUsd ?? 0
+          const discoveryCostMinutes = discoveryCost / LLM_COST_PER_MINUTE_USD
+          await updateUsage(taskRunId, discoveryCostMinutes)
+        } catch (err) {
+          console.error('[Q:billing] Discovery usage update failed:', err)
+        }
+      }
+
+      if (finalStatus === 'completed') {
+        // Capture any `## Discovery` text Q wrote to task.md. No-op on a clean
+        // tree (Q wrote nothing) — see `commitGitState` in `git/sync.server.ts`.
+        commitGitState(`[${streamName}/${taskName}] Discovery complete`)
+
+        // Hand off to planning. Subtract discovery cost from the remaining
+        // billing budget so planning gets the right cap.
+        const planningBudget =
+          remainingBudgetUsd != null
+            ? Math.max(0, remainingBudgetUsd - discoveryCost)
+            : undefined
+
+        finalStatus = await runPlanningIteration(
+          streamName,
+          taskName,
+          ac.signal,
+          startedAt,
+          env,
+          planningBudget,
+        )
+
+        // Billing: record planning LLM cost
+        if (taskRunId) {
+          try {
+            const { updateUsage } =
+              await import('@/ee/lib/billing/usage.server')
+            const planRun = await readRunInfo(taskName)
+            const planCost =
+              planRun?.phases?.find((p) => p.phase === 'planning')?.costUsd ?? 0
+            const planCostMinutes = planCost / LLM_COST_PER_MINUTE_USD
+            await updateUsage(taskRunId, planCostMinutes)
+          } catch (err) {
+            console.error('[Q:billing] Planning usage update failed:', err)
+          }
+        }
+      }
+    } else if (mode === 'planning') {
       finalStatus = await runPlanningIteration(
         streamName,
         taskName,
@@ -473,6 +550,199 @@ async function runLoop(
     s.abortController = null
     s.activeRunStream = null
     s.activeRunTask = null
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Discovery — single iteration (heads-up phase before planning)
+// ---------------------------------------------------------------------------
+
+async function runDiscoveryIteration(
+  streamName: string,
+  taskName: string,
+  parentSignal: AbortSignal,
+  startedAt: string,
+  env?: Record<string, string | undefined>,
+  remainingBudgetUsd?: number,
+): Promise<RunInfo['status']> {
+  const discoverySessionId = crypto.randomUUID()
+  // Publish the active session id so POST /api/run/answer can resolve the
+  // pending AskUserQuestion promise without the client carrying a sessionId.
+  setActiveDiscoverySessionId(discoverySessionId)
+
+  const { controller: iterController, cleanup } =
+    createIterationController(parentSignal)
+
+  const stderrBuf = new StderrBuffer()
+  const iterStartMs = Date.now()
+  let iterationCost = 0
+  let peakInputTokens = 0
+  let tokenMetrics: Partial<PhaseTokenMetrics> = {}
+  let receivedAnyMessage = false
+
+  try {
+    const notifyClient = (event: ChatStreamEvent) => {
+      broadcast(encodeEvent(event))
+    }
+    const options = await discoveryAgentOptions(
+      streamName,
+      taskName,
+      discoverySessionId,
+      iterController,
+      { env, notifyClient },
+    )
+    const billingCapped =
+      remainingBudgetUsd != null &&
+      options.maxBudgetUsd != null &&
+      remainingBudgetUsd < options.maxBudgetUsd
+    if (billingCapped) {
+      options.maxBudgetUsd = remainingBudgetUsd
+    }
+
+    options.stderr = stderrBuf.write
+    const sdkQuery = query({ prompt: 'Begin.', options })
+
+    let resultSubtype: string | undefined
+    for await (const msg of sdkQuery) {
+      if (parentSignal.aborted) throw new Error('Aborted')
+      receivedAnyMessage = true
+      peakInputTokens = trackPeakInputTokens(msg, peakInputTokens)
+      const event = filterMessage(msg)
+      if (event) {
+        broadcast(encodeEvent(event))
+        if (event.type === 'result') {
+          iterationCost = event.costUsd
+          resultSubtype = event.subtype
+          tokenMetrics = extractTokenMetrics(
+            msg as SDKResultMessage,
+            peakInputTokens,
+          )
+        }
+      }
+    }
+
+    // Silent fast-fail: subprocess exited before emitting any SDK message.
+    if (!receivedAnyMessage && stderrBuf.getLines().length > 0) {
+      throw new Error('Agent exited before producing any output')
+    }
+
+    const discoveryPhase: PhaseRecord = {
+      phase: 'discovery',
+      sessionId: discoverySessionId,
+      costUsd: iterationCost,
+      durationMs: Date.now() - iterStartMs,
+      ...tokenMetrics,
+    }
+    const priorPhases = (await readRunInfo(taskName))?.phases ?? []
+
+    if (billingCapped && resultSubtype === 'error_max_budget_usd') {
+      await writeRunInfo(taskName, {
+        status: 'stopped',
+        stoppedDuring: 'discovery',
+        stopReason: 'budget',
+        startedAt,
+        lastIterationAt: new Date().toISOString(),
+        costUsd: iterationCost,
+        phases: [...priorPhases, discoveryPhase],
+      })
+      log('run.stopped', {
+        task: taskName,
+        stream: streamName,
+        mode: 'discovery',
+        session: discoverySessionId,
+        reason: 'budget',
+        cost: iterationCost,
+      })
+      return 'stopped'
+    }
+
+    // Success: append the discovery PhaseRecord and flip status to 'planning'
+    // in a single atomic write per spec ordering. The dispatcher commits the
+    // task.md `## Discovery` diff and starts planning afterward.
+    await writeRunInfo(taskName, {
+      status: 'planning',
+      startedAt,
+      lastIterationAt: new Date().toISOString(),
+      costUsd: iterationCost,
+      phases: [...priorPhases, discoveryPhase],
+    })
+    log('run.completed', {
+      task: taskName,
+      stream: streamName,
+      mode: 'discovery',
+      session: discoverySessionId,
+      cost: iterationCost,
+      duration_ms: Date.now() - iterStartMs,
+    })
+    return 'completed'
+  } catch (error) {
+    cleanup()
+
+    if (stderrBuf.getLines().length > 0) {
+      console.error('[Q:stderr:discovery]', stderrBuf.getLines().join('\n'))
+    }
+
+    const discoveryPhase: PhaseRecord = {
+      phase: 'discovery',
+      sessionId: discoverySessionId,
+      costUsd: iterationCost,
+      durationMs: Date.now() - iterStartMs,
+      ...tokenMetrics,
+    }
+    const priorPhases = (await readRunInfo(taskName))?.phases ?? []
+
+    if (parentSignal.aborted) {
+      // User clicked Stop during discovery
+      await writeRunInfo(taskName, {
+        status: 'stopped',
+        stoppedDuring: 'discovery',
+        stopReason: 'user',
+        startedAt,
+        lastIterationAt: new Date().toISOString(),
+        costUsd: iterationCost,
+        phases: [...priorPhases, discoveryPhase],
+      })
+      log('run.stopped', {
+        task: taskName,
+        stream: streamName,
+        mode: 'discovery',
+        session: discoverySessionId,
+        reason: 'user',
+        cost: iterationCost,
+      })
+      return 'stopped'
+    }
+
+    if (isAuthError(error)) {
+      await clearCredentials()
+    }
+
+    const errMsg = error instanceof Error ? error.message : String(error)
+    const stderrTail = stderrBuf.getTail()
+    await writeRunInfo(taskName, {
+      status: 'stopped',
+      stoppedDuring: 'discovery',
+      stopReason: 'error',
+      startedAt,
+      lastIterationAt: new Date().toISOString(),
+      error: stderrTail ? `${errMsg}\n\nstderr:\n${stderrTail}` : errMsg,
+      costUsd: iterationCost,
+      phases: [...priorPhases, discoveryPhase],
+    })
+    broadcastErrorEvent(error, stderrTail)
+    log('run.error', {
+      task: taskName,
+      stream: streamName,
+      mode: 'discovery',
+      session: discoverySessionId,
+      error: errMsg,
+      stderr: stderrTail || undefined,
+      cost: iterationCost,
+    })
+    return 'stopped'
+  } finally {
+    cleanup()
+    setActiveDiscoverySessionId(null)
   }
 }
 

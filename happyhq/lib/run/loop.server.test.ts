@@ -25,10 +25,12 @@ function taskDir(task: string) {
 const {
   mockQuery,
   MockAbortError,
+  mockDiscoveryAgentOptions,
   mockPlanningAgentOptions,
   mockWorkingAgentOptions,
   mockIsTaskCompleted,
   mockGetLatestTaskCommit,
+  mockCommitGitState,
   mockWriteTextFile,
   mockClearDirectory,
   mockIsBillingEnabled,
@@ -48,6 +50,18 @@ const {
       }
     },
     // Agent option mocks capture the AbortController so query mock can access the signal
+    mockDiscoveryAgentOptions: vi.fn(
+      (
+        _s: string,
+        _t: string,
+        _sid: string,
+        ac: AbortController,
+        _opts?: any,
+      ) => ({
+        abortController: ac,
+        maxBudgetUsd: 2,
+      }),
+    ),
     mockPlanningAgentOptions: vi.fn(
       (_s: string, _t: string, ac: AbortController, _opts?: any) => ({
         abortController: ac,
@@ -65,6 +79,7 @@ const {
     // no-progress check keep passing — the loop sees commit advance every
     // iteration and never trips the staleness counter.
     mockGetLatestTaskCommit: vi.fn(() => `sha-${Math.random()}`),
+    mockCommitGitState: vi.fn(),
     mockWriteTextFile: vi.fn(),
     mockClearDirectory: vi.fn(),
     mockIsBillingEnabled: vi.fn().mockReturnValue(false),
@@ -89,13 +104,14 @@ vi.mock('@/lib/agents/auth.server', () => ({
 }))
 
 vi.mock('@/lib/agents/config.server', () => ({
+  discoveryAgentOptions: mockDiscoveryAgentOptions,
   planningAgentOptions: mockPlanningAgentOptions,
   workingAgentOptions: mockWorkingAgentOptions,
 }))
 
 vi.mock('@/lib/git/sync.server', () => ({
   syncGitState: vi.fn(),
-  commitGitState: vi.fn(),
+  commitGitState: mockCommitGitState,
   isTaskCompleted: mockIsTaskCompleted,
   getLatestTaskCommit: mockGetLatestTaskCommit,
   restorePlanFromGit: vi.fn(),
@@ -104,6 +120,29 @@ vi.mock('@/lib/git/sync.server', () => ({
 vi.mock('@/lib/fs/write.server', () => ({
   writeTextFile: mockWriteTextFile,
   clearDirectory: mockClearDirectory,
+}))
+
+// In-memory fs so writes by writeTextFile become readable by readRunInfo —
+// runPlanningIteration depends on this to carry the discovery PhaseRecord
+// forward when running after a successful discovery iteration.
+const mockFs = new Map<string, string>()
+vi.mock('node:fs/promises', () => ({
+  default: {
+    readFile: vi.fn(async (filePath: string) => {
+      if (mockFs.has(filePath)) return mockFs.get(filePath)!
+      const err = new Error(`ENOENT: ${filePath}`) as NodeJS.ErrnoException
+      err.code = 'ENOENT'
+      throw err
+    }),
+    rm: vi.fn().mockResolvedValue(undefined),
+  },
+  readFile: vi.fn(async (filePath: string) => {
+    if (mockFs.has(filePath)) return mockFs.get(filePath)!
+    const err = new Error(`ENOENT: ${filePath}`) as NodeJS.ErrnoException
+    err.code = 'ENOENT'
+    throw err
+  }),
+  rm: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('@/ee/lib/billing/config', () => ({
@@ -177,8 +216,14 @@ function getRunInfoWrites() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockFs.clear()
   mockClearDirectory.mockResolvedValue(undefined)
-  mockWriteTextFile.mockResolvedValue(undefined)
+  // Mirror writeTextFile output into mockFs so subsequent readRunInfo calls
+  // (via fs.readFile) can read what was written earlier in the same run.
+  mockWriteTextFile.mockImplementation((p: string, c: string) => {
+    mockFs.set(p, c)
+    return Promise.resolve()
+  })
   mockIsTaskCompleted.mockReturnValue(false)
 })
 
@@ -247,6 +292,196 @@ describe('startRun', () => {
     )
     expect(mockClearDirectory).toHaveBeenCalledWith(
       path.join(taskDir('t1'), 'outputs'),
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Discovery mode
+// ---------------------------------------------------------------------------
+
+describe('discovery mode', () => {
+  it('writes initial .run.json with discovering status for discovery mode', async () => {
+    mockQuery.mockReturnValue(fakeQuery([]))
+
+    await startRun('s1', 't1', 'discovery')
+    await _waitForLoop()
+
+    const writes = getRunInfoWrites()
+    expect(writes[0]).toMatchObject({
+      status: 'discovering',
+      phases: [],
+    })
+    expect(writes[0].error).toBeUndefined()
+  })
+
+  it('auto-transitions to planning when discovery completes without errors', async () => {
+    mockQuery.mockReturnValue(fakeQuery([]))
+
+    await startRun('s1', 't1', 'discovery')
+    await _waitForLoop()
+
+    const writes = getRunInfoWrites()
+    // Find the first write where status flips to 'planning'.
+    const flipIdx = writes.findIndex((w: any) => w.status === 'planning')
+    expect(flipIdx).toBeGreaterThan(0)
+
+    // The flip-to-planning write must include the discovery PhaseRecord.
+    const flipWrite = writes[flipIdx]
+    expect(
+      flipWrite.phases.filter(
+        (p: { phase: string }) => p.phase === 'discovery',
+      ),
+    ).toHaveLength(1)
+
+    // Loop must end at plan_ready (planning ran and finished).
+    const terminal = writes[writes.length - 1]
+    expect(terminal.status).toBe('plan_ready')
+    expect(
+      terminal.phases.filter((p: { phase: string }) => p.phase === 'discovery'),
+    ).toHaveLength(1)
+    expect(
+      terminal.phases.filter((p: { phase: string }) => p.phase === 'planning'),
+    ).toHaveLength(1)
+  })
+
+  it('commits "Discovery complete" before starting planning', async () => {
+    mockQuery.mockReturnValue(fakeQuery([]))
+
+    await startRun('s1', 't1', 'discovery')
+    await _waitForLoop()
+
+    const messages = mockCommitGitState.mock.calls.map((c) => c[0] as string)
+    expect(messages).toContain('[s1/t1] Discovery complete')
+
+    // The commit must happen before any planning iteration starts. The mock
+    // for planningAgentOptions records the call order.
+    const commitCallOrder = mockCommitGitState.mock.invocationCallOrder
+    const planCallOrder = mockPlanningAgentOptions.mock.invocationCallOrder
+    const discoveryCommitOrder = mockCommitGitState.mock.calls
+      .map((c, i) =>
+        c[0] === '[s1/t1] Discovery complete' ? commitCallOrder[i] : null,
+      )
+      .find((v) => v !== null) as number
+    expect(discoveryCommitOrder).toBeLessThan(planCallOrder[0])
+  })
+
+  it('skips planning when discovery fails', async () => {
+    mockQuery.mockReturnValue(
+      (async function* () {
+        throw new Error('SDK exploded during discovery')
+      })(),
+    )
+
+    await startRun('s1', 't1', 'discovery')
+    await _waitForLoop()
+
+    // Planning must not have been invoked
+    expect(mockPlanningAgentOptions).not.toHaveBeenCalled()
+
+    const writes = getRunInfoWrites()
+    const terminal = writes[writes.length - 1]
+    expect(terminal).toMatchObject({
+      status: 'stopped',
+      stoppedDuring: 'discovery',
+      stopReason: 'error',
+    })
+    expect(terminal.error).toContain('SDK exploded during discovery')
+  })
+
+  it('writes stopped/discovery without error when user stops during discovery', async () => {
+    mockQuery.mockImplementation(blockingQueryImpl)
+
+    await startRun('s1', 't1', 'discovery')
+    // Allow the loop to enter the discovery query
+    await new Promise((r) => setTimeout(r, 20))
+    stopRun()
+    await _waitForLoop()
+
+    const writes = getRunInfoWrites()
+    const terminal = writes[writes.length - 1]
+    expect(terminal).toMatchObject({
+      status: 'stopped',
+      stoppedDuring: 'discovery',
+    })
+    expect(terminal.error).toBeUndefined()
+
+    // Planning must NOT run after a user-stopped discovery
+    expect(mockPlanningAgentOptions).not.toHaveBeenCalled()
+  })
+
+  it('writes budget stop with stoppedDuring: discovery when SDK reports max budget', async () => {
+    mockQuery.mockImplementation(() =>
+      fakeQuery([
+        {
+          type: 'result',
+          subtype: 'error_max_budget_usd',
+          total_cost_usd: 1.5,
+          duration_ms: 1000,
+          duration_api_ms: 800,
+          is_error: true,
+          num_turns: 1,
+          stop_reason: null,
+          usage: { input_tokens: 0, output_tokens: 0 },
+          modelUsage: {},
+          permission_denials: [],
+          errors: ['Budget exceeded'],
+          uuid: 'test-uuid',
+          session_id: 'test-session',
+        },
+      ]),
+    )
+
+    // Make remaining budget cap the per-session budget so billingCapped triggers.
+    mockCanStartTask.mockResolvedValue({ allowed: true, remainingMinutes: 0.5 })
+    mockIsBillingEnabled.mockReturnValue(true)
+    mockStartTaskRun.mockResolvedValue('task-run-disco')
+
+    await startRun('s1', 't1', 'discovery', 'user-1')
+    await _waitForLoop()
+
+    const writes = getRunInfoWrites()
+    const terminal = writes[writes.length - 1]
+    expect(terminal).toMatchObject({
+      status: 'stopped',
+      stoppedDuring: 'discovery',
+      stopReason: 'budget',
+    })
+    expect(mockPlanningAgentOptions).not.toHaveBeenCalled()
+  })
+
+  it('appends discovery PhaseRecord with sessionId and durationMs', async () => {
+    mockQuery.mockReturnValue(fakeQuery([]))
+
+    await startRun('s1', 't1', 'discovery')
+    await _waitForLoop()
+
+    const writes = getRunInfoWrites()
+    const terminal = writes[writes.length - 1]
+    const discoveryPhase = terminal.phases.find(
+      (p: { phase: string }) => p.phase === 'discovery',
+    )
+    expect(discoveryPhase).toBeDefined()
+    expect(typeof discoveryPhase.sessionId).toBe('string')
+    expect(discoveryPhase.sessionId.length).toBeGreaterThan(0)
+    expect(typeof discoveryPhase.durationMs).toBe('number')
+  })
+
+  it('billing record spans discovery + planning (single startTaskRun/finalizeTaskRun)', async () => {
+    mockIsBillingEnabled.mockReturnValue(true)
+    mockStartTaskRun.mockResolvedValue('task-run-spans')
+    mockQuery.mockReturnValue(fakeQuery([]))
+
+    await startRun('s1', 't1', 'discovery', 'user-1')
+    await _waitForLoop()
+
+    expect(mockStartTaskRun).toHaveBeenCalledTimes(1)
+    expect(mockFinalizeTaskRun).toHaveBeenCalledTimes(1)
+    expect(mockFinalizeTaskRun).toHaveBeenCalledWith(
+      'task-run-spans',
+      'completed',
+      expect.any(Number),
+      expect.any(Number),
     )
   })
 })
