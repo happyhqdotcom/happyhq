@@ -9,7 +9,7 @@ import { StreamPicker } from '@/components/features/tasks/atoms/stream-picker'
 import { useCurrentUser } from '@/lib/accounts/hooks'
 import { createTask, ingestTaskInput } from '@/lib/actions'
 import { ALLOWED_INPUT_ACCEPT } from '@/lib/file-types'
-import { toSlug } from '@/lib/format'
+import { generateTaskSlug } from '@/lib/format'
 import { taskItemsKey } from '@/lib/swr-keys'
 import { useStreams } from '@/stores/streamsStore'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -51,7 +51,7 @@ export function TaskQuickAdd({
   async function handleSubmit() {
     if (!canSubmit || isCreating) return
     const trimmed = title.trim()
-    const slug = toSlug(trimmed)
+    const slug = generateTaskSlug(trimmed)
     if (!slug) return
 
     setIsCreating(true)
