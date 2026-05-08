@@ -697,7 +697,7 @@ The unit tests in [Testing](#testing) prove the plumbing is wired. The smoke har
 - [x] Scenario 1 (silent proceed) — discovery on the rich task transitions to planning without surfacing question UI
 - [x] Scenario 2 (asks questions and integrates answers) — discovery on the thin task surfaces question UI, programmatic answers submit, `## Discovery` section reflects answers, planning runs against enriched task.md
 - [x] Scenario 3 (restart from plan preserves `## Discovery`) — Restart from plan keeps `## Discovery` in task.md, regenerates plan.md only
-- [x] Discovery smoke scenarios live in `scripts/smoke-discovery.ts` (split from the golden path; `pnpm smoke:discovery`) and run in CI via `.github/workflows/smoke-discovery.yml` on PRs touching `prompts/discovery.md`, `lib/agents/config.server.ts`, `lib/run/loop.server.ts`, `scripts/smoke-discovery.ts`, or `scripts/smoke-fixtures/discovery/**`
+- [x] Discovery smoke scenarios live in `scripts/smoke-discovery.ts` (split from the golden path; `pnpm smoke:discovery`). Run locally before pushing changes that touch the discovery surface.
 
 ## Testing
 
