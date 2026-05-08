@@ -1,12 +1,25 @@
 # Discovery
 
-How Q assesses a task before planning.
+The gut check Q does before planning a task.
 
 ## Purpose
 
-When tasks were created from learning conversations, Q naturally gathered context and asked questions before calling CreateTask. Tasks created outside of chat (quick-add, task panel, command menu) skip that conversation and jump straight to planning. The result: planning runs that produce a plan saying "I'm missing X, Y, and Z" — wasting a run and frustrating the user.
+Discovery is the same gut check a human would do before starting any task: _do I have what I need to do this work well?_ Q sits down with the task, reviews what's there (the description, the inputs, the stream's playbook and specs and samples), and decides whether anything is missing that would force planning to guess or come back asking later.
 
-Discovery formalizes the pre-planning assessment. Q reads the task, evaluates whether it has enough to plan well, asks structured questions if not, and enriches the task description with what it learns. It's the first phase of the run lifecycle — between Start and Planning.
+If everything's in hand, discovery proceeds quietly and planning starts. If something's genuinely missing that would change the plan, Q asks the user a tight set of questions and writes the answers into the task description. Either way, planning starts from a task that's been reviewed, not assumed.
+
+This phase exists because today, every task entry point that isn't a learning conversation jumps straight to planning. The result is the planning run that comes back saying "I'm missing X, Y, and Z" — wasted compute, wasted time, frustrated user. Tasks created inside a learning conversation didn't have that problem because Q naturally gathered context and asked questions before calling CreateTask. Discovery formalizes that gut check as an explicit phase, available to _every_ entry point — quick-add, task panel, command menu, and future Slack/email.
+
+## Discovery vs. learning
+
+Both modes interview the user. They are not the same.
+
+- **Learning mutates the stream.** A learning conversation accrues knowledge into `playbook.md`, `specs/`, and `samples/` — how Q approaches a _class_ of work. Persistent across all future tasks.
+- **Discovery enriches one task.** A discovery session writes a `## Discovery` section to _this_ task's `task.md` — does this specific task have what's needed to plan well? The stream is unchanged.
+
+A task created right after a learning conversation still benefits from discovery: the stream got smarter, but this specific task hasn't been triaged. The questions can rhyme ("what's the deadline?"), but the artifact each produces is different.
+
+Architecturally, discovery is a **heads-up** mode that joins learning. See [Agent Configuration → Mode Orientation](agent-config.md#mode-orientation-heads-up-vs-heads-down) for the heads-up vs. heads-down axis and the infrastructure each orientation inherits. Discovery's only true deltas from learning's heads-up plumbing are the SSE stream it broadcasts on (run vs. chat) and the prompt — everything else is reuse.
 
 ## Related Specs
 
@@ -15,9 +28,9 @@ Discovery formalizes the pre-planning assessment. Q reads the task, evaluates wh
 - Run lifecycle, `.run.json`, and `PhaseRecord` / `RunInfo` types → [Working](working.md)
 - Agent modes and orchestration → [Agent Configuration](agent-config.md)
 
-## Prerequisites
+## Type refactor (ships in this same change)
 
-- **RunInfo refactor:** Discovery depends on the `phases: PhaseRecord[]` structure on `RunInfo` (see [Working](working.md)). This replaces the current ad-hoc `planningCostUsd`, `planningSessionId`, `workingSessionIds`, and positional `iterations` array. The refactor is a separate task that should land before discovery.
+Discovery's `PhaseRecord` write is the forcing function for the `phases: PhaseRecord[]` structure on `RunInfo` described in [Working](working.md). The two ship together as one PR. Splitting them would mean the refactor lands without a forcing function (and rots) or discovery adds yet another flat field set (`discoveryCostUsd`, `discoverySessionId`, ...) to the structure the refactor is trying to replace. See [Working](working.md) for the new shape and the read-time compat shim that handles existing `.run.json` files.
 
 ## Trigger
 
@@ -27,7 +40,9 @@ Current flow: Start → Planning → (approval) → Working → (review) → Don
 
 New flow: Start → Discovery → Planning → (approval) → Working → (review) → Done
 
-Discovery is not a separate user action. The user clicks one button. Internally, the system runs discovery first, then planning. If Q has no questions, the transition is seamless — the user sees "Discovering..." briefly, then "Planning..." begins. If Q has questions, the run pauses and the ball returns to the user.
+Discovery is not a separate user action. The user clicks one button. Internally, the system runs discovery first, then planning. If Q has no questions, the transition is seamless — the user sees "Reviewing the task..." briefly, then "Planning..." begins. If Q has questions, the run pauses and the ball returns to the user.
+
+**Naming.** "Discovery" is the architectural name (used in mode names, status values, file paths, and code). The user-facing label is "Reviewing the task..." (active) and "Reviewed Ns" (completed). Keeping the internal term and the user-facing term distinct lets us tighten the user-facing language without churning the codebase.
 
 ## What Q Does
 
@@ -87,10 +102,29 @@ When Q has no questions and nothing useful to add (e.g., the task already has ri
 
 The discovery prompt should be tuned for speed and judgment, not depth. Q is not researching — it's triaging.
 
+- **Read what's there first; ask only about gaps.** Q reads the materials at hand (task description, inputs, playbook, specs, samples) before deciding whether to ask anything. Questions are about what those materials don't cover — never about things the playbook or specs already answer. Web research (`WebFetch`, `WebSearch`) is for filling specific gaps when needed (e.g., looking up a person or company mentioned in the task), not a default exploration mode.
 - **Bias toward proceeding.** If Q can plan with what it has, even imperfectly, it should proceed. Don't ask questions just because you could. The worst failure mode isn't "Q planned with incomplete info" (the user catches this at plan review) — it's "Q asks annoying questions on every task."
 - **Few, focused questions.** 1–3 questions max per round. High-leverage questions that would materially change the plan. Not a laundry list.
 - **Structured answers.** Use AskUserQuestion with multiple-choice options. Easier for the user, more useful for planning, and translates cleanly to future channels (Slack buttons, email reply templates).
 - **Fast.** Discovery should complete in seconds, not minutes.
+
+### Calibration: when to ask vs. proceed
+
+The bias-to-proceed heuristic is the entire UX. Ship the prompt with worked examples baked in. Three patterns that calibrate the line:
+
+**Ask when the playbook lists a required input that's missing AND it would change the plan.**
+
+- Stream playbook lists pricing as a required section. Task: "Draft Q4 proposal." Inputs: a pitch deck, no rate information. The deck doesn't carry pricing. Pricing materially shapes the plan. → **Ask** ("What's the budget range for this engagement?") with structured options spanning realistic ranges.
+
+**Proceed when missing fields have reasonable defaults from the playbook or specs.**
+
+- Stream playbook says "default engagement length is 6 months unless specified." Task: "Draft Q4 proposal" missing duration. Defaults are reliable; the user catches deviations at plan review. → **Proceed.** Optionally append a `## Discovery` note: "Assuming standard 6-month engagement per playbook default."
+
+**Proceed when a thin task description maps cleanly onto a samples-rich stream.**
+
+- Task: "Update onboarding checklist" with no inputs and only a one-line title. Stream has 5 samples of past onboarding checklists and a spec listing the standard sections. The plan can clearly mirror prior work. → **Proceed** without writing to `task.md`. Discovery's job is to triage, not to add ceremony.
+
+The pattern: **ASK** when (a) the playbook or spec lists something as required AND (b) Q can't derive it from inputs/specs/samples AND (c) it would change the plan. **PROCEED** otherwise. Over time, specs may say "if X is missing, assume Y" — that further reduces unnecessary questions and is a separate stream-level investment.
 
 ## Interactive Q&A Plumbing
 
@@ -118,6 +152,16 @@ The client receives the question event via `GET /api/run/stream` (same SSE conne
 If the client disconnects and reconnects while discovery is waiting for answers, it needs to recover the pending questions. The `pendingQuestions` field on `RunInfo` stores the current AskUserQuestion input when discovery is blocking. The task content API (`GET /api/fs/task`) returns this as part of `.run.json`, so on reconnect the client sees `status: 'discovering'` + `pendingQuestions` and re-renders the question UI. This also serves the multi-channel case — a Slack adapter reads `pendingQuestions` from `.run.json` to know what to relay.
 
 The `canUseTool` callback writes `pendingQuestions` to `.run.json` before blocking and clears it after the user answers (same write that sets/clears `pending: clarification`).
+
+### Event vs. disk precedence (rule)
+
+The disk is authoritative; the SSE `question` event is a fast path. Concretely:
+
+- The client's render rule is **"if `pendingQuestions` is set on `.run.json`, show the question UI"** — regardless of whether the SSE event fired.
+- The SSE `question` event is fire-and-forget (the run stream uses `writer.write(...).catch(() => {})` — see [Working](working.md) on stream writes). A client mid-reconnect can miss it; the disk write closes that race.
+- Multi-channel adapters (future Slack, email) read `pendingQuestions` from `.run.json` directly. They never depend on the SSE event existing.
+
+This means: if discovery has questions but the SSE event was dropped, the client still renders correctly on next read of the task content API. The event is an optimization for in-app liveness, not a correctness mechanism.
 
 ### How Answers Get Back
 
@@ -207,14 +251,17 @@ Same structure as the learning agent's `canUseTool`, with additions: (1) broadca
 
 New file: `prompts/discovery.md`. The prompt tells Q:
 
-- Your job is to assess whether this task has enough context for planning
-- Read the task description, inputs, playbook, and specs
-- If you have enough, write your synthesis to task.md under `## Discovery` and exit
-- If you need clarification, use AskUserQuestion with structured options
-- Bias toward proceeding — only ask when the gap would materially change the plan
-- 1–3 questions max per round, structured multiple-choice
+- Your job is the gut check before planning: does this task have what's needed to plan well?
+- **Read first, ask second.** Read the task description, inputs, playbook, specs, and samples _before_ deciding whether to ask anything. Questions are about what those materials don't cover.
+- If everything's there, write a brief `## Discovery` synthesis to `task.md` (or nothing if there's nothing useful to add) and exit.
+- If something's genuinely missing that would change the plan, use `AskUserQuestion` with structured multiple-choice options.
+- Bias toward proceeding. Don't ask just because you can.
+- 1–3 focused questions max per round.
+- Web research (`WebFetch`, `WebSearch`) is for filling specific gaps when needed — not a default exploration mode.
 
 The reading list is built the same way as planning: `buildReadingList()` from `prompts.server.ts` injects specs, samples, inputs, and playbook paths.
+
+Worked calibration examples ship in the prompt itself (see [Calibration: when to ask vs. proceed](#calibration-when-to-ask-vs-proceed) above). Without them, the prompt iterates by vibe.
 
 ## Run State
 
@@ -358,35 +405,51 @@ if (mode === 'discovery') {
 
 The existing `mode === 'planning'` cleanup handles deleting `plan.md` and clearing directories. The existing `mode === 'working'` cleanup handles `restorePlanFromGit`. Discovery adds the `restoreTaskMdFromGit` call.
 
+**Single commit for cleanup.** All restart-from-discovery operations — `restoreTaskMdFromGit`, deleting `plan.md`, clearing `working/` and `outputs/` — must land in the _same_ `commitGitState('Task restarted from scratch')` commit. If they land as multiple commits, the next discovery's `git log --grep='Discovery complete' -1 -- task.md` lookup can hit a stale or unrelated commit (the restart sequence interleaves with prior history). Mirror the ordering in the existing `mode === 'working'` block, which already follows this pattern for `restorePlanFromGit`.
+
 **First run:** `restoreTaskMdFromGit` is a graceful no-op when there's no "Discovery complete" commit (same as `restorePlanFromGit` on first planning run). No special-casing needed.
 
 ## Task Panel UI
 
-Discovery follows the same pattern as planning: activity header during the phase, duration label after. Questions render in the island (bottom of canvas), not in the task card.
+Discovery follows the same shape as planning and working: a phase header in the task card, sub-rows beneath it for items that exist during the phase, and a duration label after.
 
-### During Discovery — Q Working
+### The phase header is stable
 
-```
- Discovering...                               [Stop]
-```
-
-ActivityHeader with the latest step label, same as Planning uses today. The run stream delivers activity step events exactly as it does during planning.
-
-### During Discovery — Questions Waiting
-
-**Island (canvas bottom):** Full AskUserQuestion UI appears in the island, replacing the composer — same structured question blocks the user already knows from learning mode. This is the primary interaction surface. The user selects answers and submits. Same visual treatment, same components, different rendering context (island during a run vs. island during a chat).
-
-**Task card:** A `QuestionRow` shows a hint — e.g., "2 questions from Q" or the first question's header. Clicking it focuses the island. This mirrors how `PlanFileRow` shows the plan and clicking opens it. The full question experience lives in the island, not the task card.
-
-When the user submits answers (`POST /api/run/answer`), the island clears and the activity header resumes ("Discovering...") as Q processes the answers. If Q asks follow-ups, the island shows new questions.
-
-### After Discovery
+The header label does **not** swap when questions surface. The header is the phase indicator; what's _happening within_ the phase is shown as sub-rows beneath it.
 
 ```
- Discovered                                      18s
+ Reviewing the task...                         [Stop]
 ```
 
-SectionHeader with duration (from `phases.find(p => p.phase === 'discovery')?.durationMs`). Clicking the label opens the discovery session transcript in a chat window (via the phase record's `sessionId`), same as clicking "Planned" opens the planning session.
+- **While Q is reviewing (no questions):** "Reviewing the task..." with the activity stream beneath it (same activity-step events that Planning uses today, just on the discovery session).
+- **While Q has questions pending:** The header text stays "Reviewing the task..." A question sub-row appears beneath it (see below). The activity stream pauses; the sub-row is what tells the user the ball is in their court.
+- **After completion:** The header transitions to the completed-state row "Reviewed Ns" — same shape and weight as "Planned 3m" and "Worked 4m" elsewhere in the panel.
+
+### Sub-rows beneath the header
+
+While discovery is running, sub-rows appear beneath "Reviewing the task..." for items that exist during the phase — same pattern as file rows, attachment rows, or the plan row beneath other phase headers.
+
+The one sub-row discovery uses in v0:
+
+- **Question row** — appears whenever Q has open questions waiting on the user. The row indicates that questions exist and points the user at the island, where the actual answer UI lives. No question count, no first-question-header — keep the row simple. Whether answered question rows persist (with a check) or vanish is intentionally TBD; decide at build time by feel.
+
+### Where the user actually answers
+
+Questions render in the **island** as full `AskUserQuestion` blocks — the same component the learning chat already uses, just rendered in the island during a run instead of in the chat composer. The user selects answers and submits. Same visual treatment, same components, different rendering context.
+
+When the user submits answers (`POST /api/run/answer`), the question block clears from the island, the question sub-row in the task card updates (per the persist/vanish decision above), and the activity stream resumes as Q processes the answers. If Q asks follow-ups, a new question block appears.
+
+### Completed-state row: clicking opens the session
+
+```
+ Reviewed                                       2m 10s
+```
+
+Clicking the row opens the discovery session in the chat-session viewer — the same component used for clicking "Planned" or for opening any learning chat. The transcript shows what Q read, what it considered, and the inline question/answer rounds (`AskUserQuestion` calls render in the transcript exactly as they would in any chat session — there is no second display path).
+
+The duration shown is **compute time**, recorded as `durationMs` on the discovery `PhaseRecord`. It does _not_ include time spent waiting for the user to answer questions. A discovery run that took 90 seconds of compute but waited 20 minutes for an answer reads as "Reviewed 1m 30s," not "Reviewed 21m 30s." The row is honest about what Q actually did.
+
+> **Implementation note (transcript display).** Discovery sessions are SDK sessions associated with a run, accessed via `phase.sessionId`. They do not live in `.chats/{sessionId}/` like learning chats. The transcript-display component reads from the SDK journal regardless of which session-creation path produced it — to the user, the experience is identical. Don't fork into a second display component.
 
 ### Restart Options
 
@@ -398,19 +461,21 @@ When a task is stopped or finished, the user can restart from any completed phas
 
 These map to `POST /api/run/start` with `mode: 'discovery'`, `'planning'`, or `'working'`.
 
-### Clarification Indicator
+### Clarification Indicator (task list)
 
-The task list item shows a clarification indicator when Q is waiting for answers:
+Separate from the in-card sub-row above, the task list item — anywhere a task title appears in a list (sidebar, home, search results) — shows a clarification badge when Q is waiting for answers:
 
 ```
   Draft Q4 Proposal              · Needs clarification
 ```
 
-This uses the existing `pending: clarification` indicator pattern — same visual treatment as other pending states.
+This uses the existing `pending: 'clarification'` indicator pattern — same visual treatment as other pending states. Together with the in-card question sub-row, this gives the user two ways to find a discovery session that needs them: the badge wherever they encounter the task in a list, and the sub-row when they're already viewing the task.
 
 ## Skip Mechanisms
 
-### Per-Stream Auto-Skip
+### Per-Stream Auto-Skip (deferred to v1 — design held for later)
+
+This subsection documents the design held for v1; it is **not in v0 scope** (see [v0 vs. v1 scope](#v0-vs-v1-scope)). v0 runs discovery on every Start.
 
 Playbook frontmatter gains an optional `skipDiscovery` field:
 
@@ -421,9 +486,9 @@ skipDiscovery: true
 ---
 ```
 
-When `skipDiscovery: true`, the Start button sends `mode: 'planning'` instead of `mode: 'discovery'` — discovery is bypassed entirely. No "Discovered" row appears in the panel. The server also enforces this: if `mode: 'discovery'` arrives but the playbook says `skipDiscovery: true`, the server redirects to `mode: 'planning'`.
+When `skipDiscovery: true`, the Start button sends `mode: 'planning'` instead of `mode: 'discovery'` — discovery is bypassed entirely. No "Reviewed" row appears in the panel. The server also enforces this: if `mode: 'discovery'` arrives but the playbook says `skipDiscovery: true`, the server redirects to `mode: 'planning'`.
 
-This lives in the playbook because it's the right granularity — "I trust Q to plan SOWs without asking, but for research tasks it should always check." It's human-editable, requires no new schema, and is already read by the system during prompt construction.
+This lives in the playbook because it's the right granularity — "I trust Q to plan SOWs without asking, but for research tasks it should always check." It's human-editable and is already read by the system during prompt construction. Adding it requires extending `PlaybookFrontmatter` (currently a closed schema) at v1 implementation time.
 
 ### Stopping During Discovery
 
@@ -460,7 +525,7 @@ Today, Start requires a stream assignment. A natural extension: tasks created wi
 
 **Git-based restore, not string-stripping.** On restart from discovery, `task.md` is restored from git (parent of the "Discovery complete" commit) rather than parsing and stripping the `## Discovery` section. This follows the `restorePlanFromGit` pattern already used for `plan.md` during working restarts. Reliable, no markdown parsing, and handles any content Q might have written.
 
-**No `discovered` status.** It would exist for ~0ms between discovery completing and planning starting. Nothing would render it. The task panel's "Discovered 18s" comes from the discovery `PhaseRecord` in the `phases` array, not the status field.
+**No `discovered` status.** It would exist for ~0ms between discovery completing and planning starting. Nothing would render it. The task panel's "Reviewed 2m 10s" comes from the discovery `PhaseRecord` in the `phases` array, not the status field.
 
 **Sonnet, not Opus.** Discovery is read-and-assess, not synthesize-and-create. Sonnet is fast, cheap, and sufficient. The cost delta matters because discovery runs on every task start. Configurable if needed.
 
@@ -468,7 +533,24 @@ Today, Start requires a stream assignment. A natural extension: tasks created wi
 
 **Stop replaces skip.** No dedicated "skip discovery" button during the session. The Stop button already exists and does the right thing — abort the session, then the user chooses where to restart (including "Restart from plan" which skips discovery). This avoids a second button alongside Stop that does nearly the same thing.
 
-**Server-driven transitions.** The run loop handles discovery → planning sequentially, same as how it handles planning → `plan_ready`. No client orchestration needed. The user can close the tab after answering Q's last question and come back to find planning done. If Q had no questions, the transition is instant — the user sees "Discovering..." briefly then "Planning..." with no gap.
+**Server-driven transitions.** The run loop handles discovery → planning sequentially, same as how it handles planning → `plan_ready`. No client orchestration needed. The user can close the tab after answering Q's last question and come back to find planning done. If Q had no questions, the transition is instant — the user sees "Reviewing the task..." briefly then "Planning..." with no gap.
+
+**Header stays stable across question state.** When questions surface, the header text doesn't change to something like "Q has questions for you" — the header is the _phase_ indicator, not the _state_ indicator. State (questions pending, files attached, plan ready) lives in sub-rows beneath the header. Swapping the header text would be jarring and would conflict with the sub-row pattern other phases already use. One header per phase, sub-rows for what's happening inside it.
+
+## v0 vs. v1 scope
+
+Everything documented in this spec is in v0 _unless_ listed below. The deferred items are not abandoned — they're held for v1 once we see how v0 lands in the wild.
+
+**Deferred from v0 (revisit after v0 ships):**
+
+- **`skipDiscovery` playbook frontmatter flag.** v0 runs discovery on every Start. Bias-to-proceed in the prompt should be enough — if a stream's playbook is rich and a task is well-formed, discovery transitions to planning in seconds without writing anything. Add the flag once we observe ask-rates that warrant a stream-level opt-out. Requires extending `PlaybookFrontmatter` (currently a closed schema) when added.
+- **Stream selection during discovery.** Tasks created with just a title would let Q suggest which stream to assign. Out of v0 scope; the architecture supports it.
+- **Channel adapters (Slack, email).** This spec keeps the architecture channel-ready (`pendingQuestions` on `.run.json`, `pending: 'clarification'` as a notification trigger, `AskUserQuestion` as the abstraction), but no adapter ships in v0. See [Multi-Channel Awareness](#multi-channel-awareness) for the readiness story.
+- **Concurrency-safe answer routing.** `POST /api/run/answer` resolves against module-level singleton state (same pattern as `getActiveRunInfo()`). When concurrency lands and the singleton becomes a `Map<>` (see [Working](working.md)), the answer endpoint will need a task identifier in the body. Decoupled from this PR.
+
+**Bundled into v0 (despite the spec originally splitting them):**
+
+- **`phases: PhaseRecord[]` migration on `RunInfo`.** Originally listed as a prerequisite; ships together with discovery. See [Type refactor](#type-refactor-ships-in-this-same-change) above and the new shape in [Working](working.md).
 
 ## Acceptance Criteria
 
@@ -477,14 +559,15 @@ Today, Start requires a stream assignment. A natural extension: tasks created wi
 - [ ] When Q has enough context, discovery auto-transitions to planning without user action
 - [ ] When Q has questions, `canUseTool` broadcasts a `question` event through the run stream
 - [ ] `canUseTool` sets `pending: clarification` before blocking and clears it after
-- [ ] Questions render in the island (full AskUserQuestion UI) with a `QuestionRow` hint in the task card
+- [ ] Header in the task card stays "Reviewing the task..." while discovery is active — does NOT swap text when questions surface
+- [ ] When questions are pending, a question sub-row appears beneath the "Reviewing the task..." header in the task card
+- [ ] Questions render in the island as full AskUserQuestion blocks (same component as learning chat), with the task-card sub-row pointing to the island
 - [ ] `POST /api/run/answer` accepts answers and resolves the pending AskUserQuestion promise
 - [ ] Q can ask follow-up questions within the same session (multiple rounds)
 - [ ] Q synthesizes what it learned and appends a `## Discovery` section to task.md
 - [ ] Loop commits `[stream/task] Discovery complete` after successful discovery, before planning
-- [ ] `skipDiscovery` in playbook frontmatter bypasses discovery entirely
-- [ ] Task panel shows "Discovered" section header with duration from discovery `PhaseRecord`
-- [ ] Clicking "Discovered" opens the discovery session transcript via phase record's `sessionId`
+- [ ] Task panel shows "Reviewed Ns" completed-state row with duration from discovery `PhaseRecord` (compute time, not wall-clock)
+- [ ] Clicking "Reviewed Ns" opens the discovery session in the chat-session viewer via phase record's `sessionId` (same display component as Planned and learning chats)
 - [ ] Planning reads the enriched task.md (no changes to planning's reading list needed)
 - [ ] Discovery appends a `PhaseRecord` with `phase: 'discovery'` to the `phases` array in `.run.json`
 - [ ] `pendingQuestions` written to `.run.json` while blocking, cleared after answer
@@ -494,7 +577,6 @@ Today, Start requires a stream assignment. A natural extension: tasks created wi
 - [ ] Discovery errors write `status: 'stopped'` with `stoppedDuring: 'discovery'`
 - [ ] Budget stop during discovery writes `stopReason: 'budget'` with Continue option
 - [ ] `clearStaleRun` handles `'discovering'` status
-- [ ] `PlaybookFrontmatter` includes optional `skipDiscovery?: boolean`
 - [ ] `canStart` gate relaxed: title + stream is sufficient when discovery is enabled (no description/inputs required)
 
 ## Edge Cases
@@ -546,17 +628,17 @@ Agent config (`lib/agents/config.server.test.ts`):
 API routes:
 
 - [ ] POST `/api/run/start` with `mode: 'discovery'` returns `{ status: 'discovering' }`
-- [ ] POST `/api/run/start` with `mode: 'discovery'` redirects to planning when `skipDiscovery: true`
 - [ ] POST `/api/run/answer` resolves the pending AskUserQuestion promise
 
 Client (`components/features/tasks/`):
 
-- [ ] Task card renders `QuestionRow` when a `question` event is received from the run stream
-- [ ] Island renders full AskUserQuestion UI during discovery Q&A
-- [ ] Submitting answers calls `POST /api/run/answer` and clears the question UI
-- [ ] On reconnect, client reads `pendingQuestions` from task content and re-renders question UI
-- [ ] "Discovered" section header renders with duration from discovery `PhaseRecord`
-- [ ] Clicking "Discovered" opens session transcript via discovery phase record's `sessionId`
+- [ ] Header stays "Reviewing the task..." while discovery is active, including when questions are pending (no header swap)
+- [ ] Question sub-row appears beneath the "Reviewing the task..." header when `pendingQuestions` is set on `.run.json` (regardless of whether the SSE `question` event fired — disk is authoritative)
+- [ ] Island renders full AskUserQuestion UI during discovery Q&A using the same component as learning chat
+- [ ] Submitting answers calls `POST /api/run/answer` and clears the question UI from the island
+- [ ] On reconnect, client reads `pendingQuestions` from task content and re-renders the question UI
+- [ ] "Reviewed Ns" completed-state row renders with duration from discovery `PhaseRecord` (compute time)
+- [ ] Clicking "Reviewed Ns" opens the discovery session in the chat-session viewer via discovery phase record's `sessionId`
 
 Not tested:
 

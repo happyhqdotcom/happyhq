@@ -12,6 +12,8 @@ This spec owns the mode system: what each mode does, how transitions work, how t
 
 ## Two Modes
 
+Both modes here are **heads-up** — Q interacts with the user through the chat UI. The broader heads-up vs. heads-down classification (which also covers discovery, planning, and working) lives in [Agent Configuration → Mode Orientation](agent-config.md#mode-orientation-heads-up-vs-heads-down). The general/learning split below is the _chat-side_ axis layered on top of that broader classification.
+
 ### General Mode (default)
 
 Q is a helpful collaborator. Conversational, lightweight, no forced structure. This is the default for every new chat — top-level and desktop.

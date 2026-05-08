@@ -8,6 +8,8 @@ Define Q's behavior when the user teaches it something new — whether during in
 
 This spec covers behavior, not technical configuration. For Q's model (Opus with adaptive thinking), tools, and permissions in learning mode, see Agent Configuration. For sample lifecycle and metadata, see Samples.
 
+**Orientation:** Learning is a **heads-up** mode — Q interacts with the user, asks structured questions, and may wait on a wall-clock answer. It shares heads-up infrastructure (`AskUserQuestion` via `canUseTool` blocking, the pending-questions store, an answer endpoint, an interactive UI surface) with [Discovery](discovery.md). See [Agent Configuration → Mode Orientation](agent-config.md#mode-orientation-heads-up-vs-heads-down) for the axis. Where they differ: learning mutates the _stream_ (playbook, specs, samples); discovery enriches _one task_ (`task.md`).
+
 **Prompt philosophy**: Q's learning prompt is minimal (~30 lines) — context about the filesystem and artifacts, not conversation instructions. The original spike (see `specs/refs/learning-reference/`) showed that Opus with extended thinking naturally reads samples, asks targeted questions, and synthesizes specs — with no personality prompting or phase management. The prompt tells Claude what exists and where things go, not how to have a conversation.
 
 ## Classification Principle

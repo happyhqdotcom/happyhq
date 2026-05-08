@@ -6,6 +6,8 @@ How Q loops through a task.
 
 Define the loop that Q works through to complete a task. Each iteration is a fresh Worker that reads file state, does one piece of work, and exits. The app keeps the loop going — starting iterations and checking for completion. This spec covers the loop mechanics: starting, checking, stopping, and re-running. It does not cover what Q does within each iteration (that's the working prompt — see [Agent Configuration](agent-config.md)) or what the user sees while Q works (see [Desktop](desktop.md)).
 
+**Orientation:** Working is a **heads-down** mode — each iteration runs autonomously to a `[done]` signal (or the loop's safety stops), with no user interaction inside an iteration. `createAutomatedCanUseTool` denies interactive tools; there are no question events on the run stream. Pre-iteration user input lives in [Discovery](discovery.md) (heads-up triage) and plan approval (a brief heads-up moment between [Planning](planning.md) and the working loop). See [Agent Configuration → Mode Orientation](agent-config.md#mode-orientation-heads-up-vs-heads-down) for the axis.
+
 ## Entry Point
 
 The user approves the working plan in the Desktop (see [Planning](planning.md)). Approval triggers the app to start the working loop.
@@ -170,6 +172,8 @@ Response: { stream: string, task: string } | null
 Run state lives on the filesystem at the task root — `{task}/.run.json`. Written by the loop, read by the client via SWR (through the task content API). No in-memory state object, no `lib/run-state.ts`. This is the same `.run.json` written during planning — see [Planning](planning.md) for the planning-phase states and failure contract. The `RunInfo` interface below covers all phases.
 
 ```typescript
+import type { AskUserQuestionInput } from '@anthropic-ai/claude-agent-sdk'
+
 /** Metrics for a single phase invocation (discovery, planning, or one working iteration). */
 interface PhaseRecord {
   phase: 'discovery' | 'planning' | 'working'
@@ -185,6 +189,14 @@ interface PhaseRecord {
   contextWindowUsedPct?: number
 }
 
+// Invariants:
+//   status === 'discovering' ⟺ no record with phase === 'discovery' has been appended yet.
+//   status === 'planning'    ⟺ a discovery PhaseRecord (if any) has been appended,
+//                              but no planning record has yet.
+//   status === 'plan_ready'  ⟺ planning PhaseRecord has been appended.
+//   status === 'working'     ⟺ at least one working PhaseRecord has been appended;
+//                              `phases.filter(p => p.phase === 'working')` is the iteration history.
+// `phases` is append-only — past records never mutate.
 interface RunInfo {
   status:
     | 'queued'
@@ -199,16 +211,16 @@ interface RunInfo {
   stopReason?: 'budget' | 'user' | 'error' | 'iteration_limit' | 'no_progress'
   startedAt: string // ISO 8601 timestamp
   lastIterationAt: string // ISO 8601 timestamp, updated after each phase/iteration
-  error: string | null
+  error?: string // Set when status is 'stopped' with a real error
   costUsd?: number // Cumulative total across all phases
   phases: PhaseRecord[] // Append-only log — one entry per discovery, planning, each working iteration
-  pendingQuestions?: object // Current AskUserQuestion input, if discovery is waiting for answers
+  pendingQuestions?: AskUserQuestionInput['questions'] // Set when a heads-up phase is blocked on AskUserQuestion
 }
 ```
 
-Each phase appends a `PhaseRecord` when it completes. The panel reads `phases.find(p => p.phase === 'discovery')?.durationMs` for "Discovered 18s", `phases.find(p => p.phase === 'planning')?.durationMs` for "Planned 3m", and `phases.filter(p => p.phase === 'working')` for working iterations. No positional guessing. Session transcripts are opened via `phases[n].sessionId`.
+Each phase appends a `PhaseRecord` when it completes. The panel reads `phases.find(p => p.phase === 'discovery')?.durationMs` for "Reviewed 2m 10s" (the user-facing label for the discovery phase — see [Discovery](discovery.md)), `phases.find(p => p.phase === 'planning')?.durationMs` for "Planned 3m", and `phases.filter(p => p.phase === 'working')` for working iterations. No positional guessing. Session transcripts are opened via `phases[n].sessionId`.
 
-> **Migration note:** This replaces the previous `planningCostUsd`, `planningSessionId`, `workingSessionIds`, and `iterations` fields. Existing `.run.json` files with the old shape will need a compatibility shim or one-time migration. This refactor is a prerequisite for discovery — see [Discovery](discovery.md).
+> **Migration:** This replaces the previous `planningCostUsd`, `planningSessionId`, `workingSessionIds`, and positional `iterations` fields. Existing `.run.json` files on users' filesystems have the old shape. The migration is **a read-time compat shim**, not a one-time rewrite or flag day. The `.run.json` reader detects the old fields (`planningCostUsd`, `planningSessionId`, `workingSessionIds`, `iterations`) and synthesizes a `phases: PhaseRecord[]` array on the way out — stale entries get the new shape transparently. Writers always emit the new shape. After a few releases, remove the shim. This ships in the same change as discovery (see [Discovery](discovery.md) — discovery's `PhaseRecord` write is the forcing function for the new shape).
 
 The loop writes `.run.json`:
 
