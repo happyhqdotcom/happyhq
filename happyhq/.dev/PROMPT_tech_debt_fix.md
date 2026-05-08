@@ -79,7 +79,11 @@
    - **Visual evidence** — one sentence per surface exercised in step 6a, plus the screenshot(s) or log excerpt(s). For UI changes, upload screenshots via `npx tsx scripts/upload-evidence.ts ${PR_NUMBER} <screenshot-dir>` and embed the returned URLs as inline `![alt](url)` markdown. For server-only changes, paste the relevant log lines or API response in a fenced block.
    - AI-assistance disclosure per [CONTRIBUTING.md](CONTRIBUTING.md) (e.g., "Authored by the tech-debt loop. Reviewed by maintainer before merge.")
 
-10. **Label.** `gh issue edit ${ISSUE_NUMBER} --add-label "ralphie:fixed-in-pr"`. The PR's `Closes #` is the rest of the breadcrumb.
+10. **Label.** Two labels — one on the PR, one on the issue:
+    - `gh pr edit ${PR_NUMBER} --add-label "ralphie:ready-to-merge"` — puts the PR in the QA triage queue ([qa-rubric.md](qa-rubric.md), [PROMPT_qa_triage.md](PROMPT_qa_triage.md)). Without this the PR opens but QA never sees it.
+    - `gh issue edit ${ISSUE_NUMBER} --add-label "ralphie:fixed-in-pr"` — prevents the tech-debt loop from re-picking the issue (wrapper guard).
+
+    The PR's `Closes #` is the rest of the breadcrumb.
 
 11. **Return to base branch.** `git checkout ${BASE_BRANCH}`. Each session leaves the working tree on `${BASE_BRANCH}` so the next session (or the maintainer) starts from a clean baseline. Apply this on the skip paths too — if you abort and revert in step 6 of the guardrails, end on `${BASE_BRANCH}`.
 
