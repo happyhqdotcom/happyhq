@@ -4,22 +4,21 @@ import { canStartIdleTask } from './start-gate'
 const READY = {
   streamSlug: 'stream',
   title: 'A title',
-  hasDescription: true,
-  hasInputs: false,
   isUploading: false,
   runActionsLoading: false,
   runActionsUpgradeNeeded: false,
 }
 
 describe('canStartIdleTask', () => {
-  it('enables the button when stream + title + description are present', () => {
+  it('enables the button when stream + title are present', () => {
     expect(canStartIdleTask(READY)).toBe(true)
   })
 
-  it('enables the button when description is empty but inputs exist', () => {
-    expect(
-      canStartIdleTask({ ...READY, hasDescription: false, hasInputs: true }),
-    ).toBe(true)
+  it('does not require a description or inputs — discovery fills gaps', () => {
+    // Regression guard for #258 + discovery: gate is title + stream only;
+    // missing description/inputs is discovery's job to surface, not the
+    // button's job to block.
+    expect(canStartIdleTask(READY)).toBe(true)
   })
 
   it('disables the button without a stream', () => {
@@ -30,12 +29,6 @@ describe('canStartIdleTask', () => {
     expect(canStartIdleTask({ ...READY, title: '' })).toBe(false)
     expect(canStartIdleTask({ ...READY, title: '   ' })).toBe(false)
     expect(canStartIdleTask({ ...READY, title: null })).toBe(false)
-  })
-
-  it('disables the button when neither description nor inputs are present', () => {
-    expect(
-      canStartIdleTask({ ...READY, hasDescription: false, hasInputs: false }),
-    ).toBe(false)
   })
 
   it('disables the button while uploads are in flight', () => {

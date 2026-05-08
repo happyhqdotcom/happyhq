@@ -55,6 +55,7 @@ function makeRequest(body: Record<string, unknown>, token?: string) {
 
 const validPlanningBody = { stream: 's1', task: 't1', mode: 'planning' }
 const validWorkingBody = { stream: 's1', task: 't1', mode: 'working' }
+const validDiscoveryBody = { stream: 's1', task: 't1', mode: 'discovery' }
 
 describe('POST /api/run/start', () => {
   beforeEach(() => {
@@ -137,6 +138,24 @@ describe('POST /api/run/start', () => {
 
     expect(response.status).toBe(200)
     expect(body).toEqual({ status: 'working' })
+  })
+
+  it('returns discovering status for discovery mode', async () => {
+    mockReadTaskContent.mockResolvedValue({ plan: null, run: null })
+    mockStartRun.mockResolvedValue(undefined)
+
+    const response = await POST(makeRequest(validDiscoveryBody))
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body).toEqual({ status: 'discovering' })
+    expect(mockStartRun).toHaveBeenCalledWith(
+      's1',
+      't1',
+      'discovery',
+      undefined,
+      undefined,
+    )
   })
 
   it('returns 409 when a run is already active', async () => {

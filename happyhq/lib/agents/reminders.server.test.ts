@@ -53,10 +53,10 @@ function makeTask(
     run: status
       ? ({
           status,
-          iteration: 1,
           startedAt: '2026-01-01T00:00:00Z',
           lastIterationAt: '2026-01-01T00:00:00Z',
-          error: error ?? null,
+          ...(error ? { error } : {}),
+          phases: [],
         } as RunInfo)
       : null,
     description: null,
@@ -202,10 +202,9 @@ describe('viewingTaskReminder', () => {
       description: 'A classic recipe.',
       run: {
         status: 'completed',
-        iteration: 1,
         startedAt: '2026-04-01T00:00:00Z',
         lastIterationAt: '2026-04-01T00:00:00Z',
-        error: null,
+        phases: [],
       },
       inputs: [],
       working: [],
@@ -238,10 +237,9 @@ describe('viewingTaskReminder', () => {
       description: null,
       run: {
         status: 'working',
-        iteration: 3,
         startedAt: '2026-04-01T00:00:00Z',
         lastIterationAt: '2026-04-01T00:00:00Z',
-        error: null,
+        phases: [],
       },
       inputs: [makeFileItem('flavor-profiles'), makeFileItem('crust-options')],
       working: [],
@@ -268,10 +266,9 @@ describe('viewingTaskReminder', () => {
       description: 'Write an intro email for a new client.',
       run: {
         status: 'plan_ready',
-        iteration: 0,
         startedAt: '2026-04-01T00:00:00Z',
         lastIterationAt: '2026-04-01T00:00:00Z',
-        error: null,
+        phases: [],
       },
       inputs: [],
       working: [],
@@ -331,10 +328,10 @@ describe('viewingTaskReminder', () => {
       description: null,
       run: {
         status: 'stopped',
-        iteration: 1,
         startedAt: '2026-04-01T00:00:00Z',
         lastIterationAt: '2026-04-01T00:00:00Z',
         error: 'Iteration limit reached',
+        phases: [],
       },
       inputs: [],
       working: [],

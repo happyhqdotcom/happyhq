@@ -27,8 +27,36 @@ describe('resolveConfig', () => {
       limits: { maxIterations: 50 },
     })
     expect(resolved.limits.maxIterations).toBe(50)
+    expect(resolved.limits.discoveryBudgetUsd).toBe(2)
     expect(resolved.limits.planningBudgetUsd).toBe(5)
     expect(resolved.limits.workingBudgetUsd).toBe(10)
+  })
+
+  it('resolves discovery model and budget to Opus + adaptive defaults', () => {
+    const resolved = resolveConfig({})
+    expect(resolved.models.discovery.model).toBe('opus')
+    expect(resolved.models.discovery.thinking).toBe('adaptive')
+    expect(typeof resolved.limits.discoveryBudgetUsd).toBe('number')
+    expect(resolved.limits.discoveryBudgetUsd).toBe(2)
+  })
+
+  it('overrides discovery budget independently', () => {
+    const resolved = resolveConfig({
+      limits: { discoveryBudgetUsd: 4 },
+    })
+    expect(resolved.limits.discoveryBudgetUsd).toBe(4)
+    expect(resolved.limits.planningBudgetUsd).toBe(5)
+    expect(resolved.limits.workingBudgetUsd).toBe(10)
+  })
+
+  it('overrides discovery model independently', () => {
+    const resolved = resolveConfig({
+      models: { discovery: { model: 'sonnet' } },
+    })
+    expect(resolved.models.discovery.model).toBe('sonnet')
+    expect(resolved.models.discovery.thinking).toBe('adaptive')
+    expect(resolved.models.planning.model).toBe('opus')
+    expect(resolved.models.working.model).toBe('opus')
   })
 
   it('overrides general preferences', () => {
@@ -93,11 +121,17 @@ const modelConfig = fc.record(
 const partialAppConfig: fc.Arbitrary<AppConfig> = fc.record(
   {
     models: fc.record(
-      { learning: modelConfig, planning: modelConfig, working: modelConfig },
+      {
+        learning: modelConfig,
+        discovery: modelConfig,
+        planning: modelConfig,
+        working: modelConfig,
+      },
       { requiredKeys: [] },
     ),
     limits: fc.record(
       {
+        discoveryBudgetUsd: fc.nat(100),
         planningBudgetUsd: fc.nat(100),
         workingBudgetUsd: fc.nat(100),
         maxIterations: fc.nat(50),
@@ -138,10 +172,16 @@ describe('property-based: resolveConfig', () => {
       fc.property(partialAppConfig, (partial) => {
         const resolved = resolveConfig(partial)
 
-        for (const mode of ['learning', 'planning', 'working'] as const) {
+        for (const mode of [
+          'learning',
+          'discovery',
+          'planning',
+          'working',
+        ] as const) {
           expect(resolved.models[mode].model).toBeDefined()
           expect(resolved.models[mode].thinking).toBeDefined()
         }
+        expect(typeof resolved.limits.discoveryBudgetUsd).toBe('number')
         expect(typeof resolved.limits.planningBudgetUsd).toBe('number')
         expect(typeof resolved.limits.workingBudgetUsd).toBe('number')
         expect(typeof resolved.limits.maxIterations).toBe('number')

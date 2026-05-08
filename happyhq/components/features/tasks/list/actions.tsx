@@ -30,7 +30,9 @@ export function TaskListItemActions({
 
   const streamSlug = task.frontmatter.stream ?? null
   const isRunning =
-    task.run?.status === 'planning' || task.run?.status === 'working'
+    task.run?.status === 'discovering' ||
+    task.run?.status === 'planning' ||
+    task.run?.status === 'working'
   const showAssign = !isRunning && streams.length > 0
 
   function handleOpen() {

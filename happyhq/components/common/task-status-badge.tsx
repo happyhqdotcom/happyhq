@@ -24,7 +24,17 @@ export function TaskStatusBadge({ run }: { run: RunInfo | null }) {
       </Tooltip>
     )
   }
-  if (status === 'planning' || status === 'working') {
+  if (
+    status === 'discovering' ||
+    status === 'planning' ||
+    status === 'working'
+  ) {
+    const label =
+      status === 'discovering'
+        ? 'Reviewing'
+        : status === 'planning'
+          ? 'Planning'
+          : 'Working'
     return (
       <Tooltip>
         <TooltipTrigger asChild>
@@ -33,7 +43,7 @@ export function TaskStatusBadge({ run }: { run: RunInfo | null }) {
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" align="start">
-          {status === 'planning' ? 'Planning' : 'Working'}
+          {label}
         </TooltipContent>
       </Tooltip>
     )

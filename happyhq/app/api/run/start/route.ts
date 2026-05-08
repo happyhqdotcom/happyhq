@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   let body: {
     stream?: string
     task: string
-    mode: 'planning' | 'working'
+    mode: 'discovery' | 'planning' | 'working'
     resume?: boolean
   }
   try {
@@ -26,7 +26,10 @@ export async function POST(request: Request) {
   }
 
   const { stream, task, mode } = body
-  if (!task || (mode !== 'planning' && mode !== 'working')) {
+  if (
+    !task ||
+    (mode !== 'discovery' && mode !== 'planning' && mode !== 'working')
+  ) {
     return Response.json(
       { error: 'Missing or invalid fields' },
       { status: 400 },
@@ -101,15 +104,10 @@ export async function POST(request: Request) {
               status: 'stopped',
               stoppedDuring: 'working',
               stopReason: 'budget',
-              iteration: 0,
               startedAt: now,
               lastIterationAt: now,
-              error: null,
               costUsd: content.run?.costUsd ?? 0,
-              planningCostUsd: content.run?.planningCostUsd ?? null,
-              iterations: content.run?.iterations ?? [],
-              planningSessionId: content.run?.planningSessionId,
-              workingSessionIds: [],
+              phases: content.run?.phases ?? [],
             }
             await writeTextFile(
               path.join(taskPath(task), '.run.json'),
@@ -157,8 +155,14 @@ export async function POST(request: Request) {
     commitGitState(planAcceptedMessage)
   }
 
+  const responseStatus =
+    mode === 'discovery'
+      ? 'discovering'
+      : mode === 'planning'
+        ? 'planning'
+        : 'working'
   return Response.json({
-    status: mode === 'planning' ? 'planning' : 'working',
+    status: responseStatus,
     ...(billingWarning && { warning: billingWarning, remainingMinutes }),
   })
 }

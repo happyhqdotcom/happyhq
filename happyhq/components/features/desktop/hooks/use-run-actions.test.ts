@@ -269,4 +269,103 @@ describe('useRunActions billing integration', () => {
     expect(result.current.billingWarning).toBeNull()
     expect(result.current.remainingMinutes).toBeNull()
   })
+
+  describe('discovery mode', () => {
+    it("start() sends mode: 'discovery'", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'discovering' }),
+      })
+
+      const { result } = renderHook(() =>
+        useRunActions(defaultArgs[0], defaultArgs[1], false),
+      )
+
+      await act(async () => {
+        await result.current.start()
+      })
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/run/start',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            stream: 'stream-1',
+            task: 'task-1',
+            mode: 'discovery',
+          }),
+        }),
+      )
+    })
+
+    it("continue_('discovery') sends mode: 'discovery' with resume:true", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'discovering' }),
+      })
+
+      const { result } = renderHook(() =>
+        useRunActions(defaultArgs[0], defaultArgs[1], false),
+      )
+
+      await act(async () => {
+        await result.current.continue_('discovery')
+      })
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/run/start',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            stream: 'stream-1',
+            task: 'task-1',
+            mode: 'discovery',
+            resume: true,
+          }),
+        }),
+      )
+    })
+  })
+
+  describe('answerQuestion', () => {
+    it('POSTs to /api/run/answer with the answers payload', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'answered' }),
+      })
+
+      const { result } = renderHook(() =>
+        useRunActions(defaultArgs[0], defaultArgs[1], false),
+      )
+
+      await act(async () => {
+        await result.current.answerQuestion({ 'What flavor?': 'vanilla' })
+      })
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/run/answer',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ answers: { 'What flavor?': 'vanilla' } }),
+        }),
+      )
+    })
+
+    it('throws and toasts on non-ok response', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'No pending question' }),
+      })
+
+      const { result } = renderHook(() =>
+        useRunActions(defaultArgs[0], defaultArgs[1], false),
+      )
+
+      await expect(
+        act(async () => {
+          await result.current.answerQuestion({ q: 'a' })
+        }),
+      ).rejects.toThrow('No pending question')
+    })
+  })
 })

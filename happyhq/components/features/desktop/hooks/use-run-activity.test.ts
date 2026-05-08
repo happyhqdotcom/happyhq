@@ -142,3 +142,30 @@ describe('useRunActivity subagent events', () => {
     })
   })
 })
+
+describe('useRunActivity question event', () => {
+  it('bumps lastContentChangeAt so SWR fast-revalidates the task content', async () => {
+    mockFetch.mockResolvedValueOnce(
+      ndjsonResponse([
+        {
+          type: 'question',
+          sessionId: 'sess-1',
+          questions: [
+            {
+              question: 'Format?',
+              header: 'Format',
+              options: [{ label: 'Short' }, { label: 'Long' }],
+              multiSelect: false,
+            },
+          ],
+        },
+      ]),
+    )
+
+    const { result } = renderHook(() => useRunActivity(true))
+
+    await waitFor(() => {
+      expect(result.current.lastContentChangeAt).not.toBeNull()
+    })
+  })
+})

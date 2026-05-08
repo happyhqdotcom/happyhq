@@ -20,10 +20,12 @@ export interface ModelConfig {
 export interface AppConfig {
   models?: {
     learning?: ModelConfig
+    discovery?: ModelConfig
     planning?: ModelConfig
     working?: ModelConfig
   }
   limits?: {
+    discoveryBudgetUsd?: number
     planningBudgetUsd?: number
     workingBudgetUsd?: number
     maxIterations?: number
@@ -45,10 +47,12 @@ export interface AppConfig {
 export interface ResolvedConfig {
   models: {
     learning: Required<ModelConfig>
+    discovery: Required<ModelConfig>
     planning: Required<ModelConfig>
     working: Required<ModelConfig>
   }
   limits: {
+    discoveryBudgetUsd: number
     planningBudgetUsd: number
     workingBudgetUsd: number
     maxIterations: number

@@ -7,10 +7,14 @@ import type { AppConfig, ResolvedConfig } from './types'
 export const CONFIG_DEFAULTS: ResolvedConfig = {
   models: {
     learning: { model: 'opus', thinking: 'adaptive' },
+    discovery: { model: 'opus', thinking: 'adaptive' },
     planning: { model: 'opus', thinking: 'adaptive' },
     working: { model: 'opus', thinking: 'adaptive' },
   },
   limits: {
+    // Conservative starting value — discovery is a single-shot pre-planning gut
+    // check, not iterative work. Revisit after smoke runs surface real usage.
+    discoveryBudgetUsd: 2,
     planningBudgetUsd: 5,
     workingBudgetUsd: 10,
     maxIterations: 20,
@@ -40,6 +44,14 @@ export function resolveConfig(partial: AppConfig): ResolvedConfig {
           partial.models?.learning?.thinking ??
           CONFIG_DEFAULTS.models.learning.thinking,
       },
+      discovery: {
+        model:
+          partial.models?.discovery?.model ??
+          CONFIG_DEFAULTS.models.discovery.model,
+        thinking:
+          partial.models?.discovery?.thinking ??
+          CONFIG_DEFAULTS.models.discovery.thinking,
+      },
       planning: {
         model:
           partial.models?.planning?.model ??
@@ -58,6 +70,9 @@ export function resolveConfig(partial: AppConfig): ResolvedConfig {
       },
     },
     limits: {
+      discoveryBudgetUsd:
+        partial.limits?.discoveryBudgetUsd ??
+        CONFIG_DEFAULTS.limits.discoveryBudgetUsd,
       planningBudgetUsd:
         partial.limits?.planningBudgetUsd ??
         CONFIG_DEFAULTS.limits.planningBudgetUsd,

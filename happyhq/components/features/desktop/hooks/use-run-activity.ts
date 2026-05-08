@@ -524,6 +524,12 @@ export function useRunActivity(
             }
           } else if (event.type === 'task_content_changed') {
             setLastContentChangeAt(Date.now())
+          } else if (event.type === 'question') {
+            // Discovery (or any heads-up phase) wrote pendingQuestions to
+            // .run.json — fast-path an SWR refetch so the island question
+            // UI renders without waiting for the next poll. Disk is the
+            // source of truth; this is just the fast path.
+            setLastContentChangeAt(Date.now())
           } else if (event.type === 'error') {
             // Run loop broadcasts this on terminal failure. Live subscribers
             // get the toast immediately. The same terminal state lands in

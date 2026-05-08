@@ -2,6 +2,7 @@
 
 import {
   MOCK_BUDGET_STOPPED_CONTENT,
+  MOCK_DISCOVERING_STEPS,
   MOCK_PHASES,
   MOCK_PLANNING_STEPS,
   MOCK_WORKING_STEPS,
@@ -51,13 +52,19 @@ export function MockTaskPanel() {
       mutate(key, content as TaskContent, { revalidate: false })
 
       // Inject activity state into taskStore
-      const isActive = phase === 'planning' || phase === 'working'
+      const isActive =
+        phase === 'discovering' ||
+        phase === 'discovering_q' ||
+        phase === 'planning' ||
+        phase === 'working'
       const steps =
-        phase === 'planning'
-          ? MOCK_PLANNING_STEPS
-          : phase === 'working'
-            ? MOCK_WORKING_STEPS
-            : []
+        phase === 'discovering' || phase === 'discovering_q'
+          ? MOCK_DISCOVERING_STEPS
+          : phase === 'planning'
+            ? MOCK_PLANNING_STEPS
+            : phase === 'working'
+              ? MOCK_WORKING_STEPS
+              : []
       useTaskStore.getState().setRunState({
         isRunActive: isActive,
         activitySteps: steps,
@@ -82,6 +89,7 @@ export function MockTaskPanel() {
         stop: s.runStop ?? noop,
         approve: s.runApprove ?? noop,
         continue_: s.runContinue ?? noop,
+        answerQuestion: s.runAnswerQuestion ?? noop,
         upgradeNeeded: mode === 'upgrade_needed',
         billingWarning: mode === 'low_balance' ? 'low_balance' : null,
       })
@@ -104,6 +112,7 @@ export function MockTaskPanel() {
       stop: noop,
       approve: noop,
       continue_: noop,
+      answerQuestion: noop,
       upgradeNeeded: false,
       billingWarning: null,
     })

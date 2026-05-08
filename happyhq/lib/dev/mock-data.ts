@@ -11,55 +11,108 @@ import type { RunInfo, TaskContent, TaskFrontmatter } from '@/lib/fs/types'
 
 const NOW = new Date().toISOString()
 
-const PLANNING_RUN: RunInfo = {
-  status: 'planning',
-  iteration: 0,
+const DISCOVERING_RUN: RunInfo = {
+  status: 'discovering',
   startedAt: NOW,
   lastIterationAt: NOW,
-  error: null,
+  phases: [],
+}
+
+const DISCOVERING_QUESTIONS_RUN: RunInfo = {
+  status: 'discovering',
+  startedAt: NOW,
+  lastIterationAt: NOW,
+  phases: [],
+  pendingQuestions: [
+    {
+      question: 'Which tone should the intro use?',
+      header: 'Tone',
+      options: [
+        { label: 'Warm', description: 'Friendly, personal, anecdotal' },
+        { label: 'Crisp', description: 'Brief, business-first' },
+      ],
+      multiSelect: false,
+    },
+  ],
+}
+
+const PLANNING_RUN: RunInfo = {
+  status: 'planning',
+  startedAt: NOW,
+  lastIterationAt: NOW,
+  phases: [
+    {
+      phase: 'discovery',
+      sessionId: 'mock-discovery-session',
+      costUsd: 0.01,
+      durationMs: 4000,
+    },
+  ],
 }
 
 const PLAN_READY_RUN: RunInfo = {
   status: 'plan_ready',
-  iteration: 1,
   startedAt: NOW,
   lastIterationAt: NOW,
-  error: null,
-  planningCostUsd: 0.03,
-  iterations: [{ costUsd: 0.03, durationMs: 12000 }],
-  planningSessionId: 'mock-planning-session',
+  costUsd: 0.04,
+  phases: [
+    {
+      phase: 'discovery',
+      sessionId: 'mock-discovery-session',
+      costUsd: 0.01,
+      durationMs: 4000,
+    },
+    {
+      phase: 'planning',
+      sessionId: 'mock-planning-session',
+      costUsd: 0.03,
+      durationMs: 12000,
+    },
+  ],
 }
 
 const RUNNING_RUN: RunInfo = {
   status: 'working',
-  iteration: 2,
   startedAt: NOW,
   lastIterationAt: NOW,
-  error: null,
-  planningCostUsd: 0.03,
   costUsd: 0.08,
-  iterations: [
-    { costUsd: 0.03, durationMs: 12000 },
-    { costUsd: 0.05, durationMs: 18000 },
+  phases: [
+    {
+      phase: 'planning',
+      sessionId: 'mock-planning-session',
+      costUsd: 0.03,
+      durationMs: 12000,
+    },
+    {
+      phase: 'working',
+      iteration: 1,
+      sessionId: 'mock-working-session-1',
+      costUsd: 0.05,
+      durationMs: 18000,
+    },
   ],
-  planningSessionId: 'mock-planning-session',
-  workingSessionIds: ['mock-working-session-1'],
 }
 
 const COMPLETED_RUN: RunInfo = {
   status: 'completed',
-  iteration: 2,
   startedAt: NOW,
   lastIterationAt: NOW,
-  error: null,
-  planningCostUsd: 0.03,
   costUsd: 0.12,
-  iterations: [
-    { costUsd: 0.03, durationMs: 12000 },
-    { costUsd: 0.09, durationMs: 25000 },
+  phases: [
+    {
+      phase: 'planning',
+      sessionId: 'mock-planning-session',
+      costUsd: 0.03,
+      durationMs: 12000,
+    },
+    {
+      phase: 'working',
+      iteration: 1,
+      sessionId: 'mock-working-session-1',
+      costUsd: 0.09,
+      durationMs: 25000,
+    },
   ],
-  planningSessionId: 'mock-planning-session',
-  workingSessionIds: ['mock-working-session-1'],
 }
 
 const STOPPED_RUN: RunInfo = {
@@ -67,21 +120,23 @@ const STOPPED_RUN: RunInfo = {
   status: 'stopped',
   stoppedDuring: 'working',
   stopReason: 'user',
-  error: null,
 }
 
 const STOPPED_PLANNING_RUN: RunInfo = {
   status: 'stopped',
   stoppedDuring: 'planning',
   stopReason: 'user',
-  iteration: 0,
   startedAt: NOW,
   lastIterationAt: NOW,
-  error: null,
-  planningCostUsd: 0.02,
   costUsd: 0.02,
-  iterations: [{ costUsd: 0.02, durationMs: 8000 }],
-  planningSessionId: 'mock-planning-session',
+  phases: [
+    {
+      phase: 'planning',
+      sessionId: 'mock-planning-session',
+      costUsd: 0.02,
+      durationMs: 8000,
+    },
+  ],
 }
 
 const BUDGET_STOPPED_WORKING_RUN: RunInfo = {
@@ -95,15 +150,17 @@ const BUDGET_STOPPED_PLANNING_RUN: RunInfo = {
   status: 'stopped',
   stoppedDuring: 'planning',
   stopReason: 'budget',
-  iteration: 0,
   startedAt: NOW,
   lastIterationAt: NOW,
-  error: null,
-  planningCostUsd: 0.02,
   costUsd: 0.02,
-  iterations: [{ costUsd: 0.02, durationMs: 8000 }],
-  planningSessionId: 'mock-planning-session',
-  workingSessionIds: [],
+  phases: [
+    {
+      phase: 'planning',
+      sessionId: 'mock-planning-session',
+      costUsd: 0.02,
+      durationMs: 8000,
+    },
+  ],
 }
 
 // ── Mock plan content ───────────────────────────────────────────────────
@@ -120,6 +177,8 @@ const MOCK_PLAN = `## Plan
 
 export type MockPhase =
   | 'idle'
+  | 'discovering'
+  | 'discovering_q'
   | 'planning'
   | 'plan_ready'
   | 'working'
@@ -205,6 +264,24 @@ export const MOCK_PHASES: Record<MockPhase, TaskContent> = {
     plan: null,
     description: MOCK_DESCRIPTION,
     run: null,
+    inputs: MOCK_INPUTS,
+    working: [],
+    outputs: [],
+  },
+  discovering: {
+    frontmatter: MOCK_FRONTMATTER,
+    plan: null,
+    description: MOCK_DESCRIPTION,
+    run: DISCOVERING_RUN,
+    inputs: MOCK_INPUTS,
+    working: [],
+    outputs: [],
+  },
+  discovering_q: {
+    frontmatter: MOCK_FRONTMATTER,
+    plan: null,
+    description: MOCK_DESCRIPTION,
+    run: DISCOVERING_QUESTIONS_RUN,
     inputs: MOCK_INPUTS,
     working: [],
     outputs: [],
@@ -349,10 +426,24 @@ export const MOCK_WORKING_STEPS: ActivityStep[] = [
 
 export const PHASE_ORDER: MockPhase[] = [
   'idle',
+  'discovering',
+  'discovering_q',
   'planning',
   'plan_ready',
   'working',
   'completed',
   'stopped',
   'budget_stopped',
+]
+
+export const MOCK_DISCOVERING_STEPS: ActivityStep[] = [
+  {
+    toolUseId: 'mock-think-discover',
+    toolName: '__thinking__',
+    label: 'Reading playbook',
+    detail: 'How we write intros',
+    linesAdded: null,
+    elapsedSeconds: 1,
+    isActive: true,
+  },
 ]

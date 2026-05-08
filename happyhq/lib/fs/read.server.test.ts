@@ -51,6 +51,7 @@ import {
   listChats,
   listDirectory,
   listFileItems,
+  parseRunInfo,
   readChatJson,
   readStreamContent,
   readStreams,
@@ -594,5 +595,170 @@ describe('readChatJson', () => {
     mockReadFile.mockResolvedValue('{not valid json')
     const result = await readChatJson('sess-123')
     expect(result).toBe(null)
+  })
+})
+
+// --- parseRunInfo ---
+
+describe('parseRunInfo', () => {
+  it('passes new-shape RunInfo through unchanged', () => {
+    const newShape = {
+      status: 'working' as const,
+      startedAt: '2026-05-06T10:00:00.000Z',
+      lastIterationAt: '2026-05-06T10:05:00.000Z',
+      phases: [
+        {
+          phase: 'planning' as const,
+          sessionId: 'sess-plan',
+          costUsd: 0.12,
+          durationMs: 30_000,
+        },
+        {
+          phase: 'working' as const,
+          iteration: 1,
+          sessionId: 'sess-work-1',
+          costUsd: 0.08,
+          durationMs: 15_000,
+          inputTokens: 1000,
+          outputTokens: 200,
+        },
+      ],
+    }
+    expect(parseRunInfo(newShape)).toEqual(newShape)
+  })
+
+  it('synthesizes phases from old planning-only shape', () => {
+    const old = {
+      status: 'plan_ready',
+      startedAt: '2026-05-06T10:00:00.000Z',
+      lastIterationAt: '2026-05-06T10:00:30.000Z',
+      iteration: 0,
+      iterations: [],
+      planningCostUsd: 0.15,
+      planningSessionId: 'sess-plan',
+      workingSessionIds: [],
+      error: null,
+    }
+    const result = parseRunInfo(old)
+    expect(result.phases).toEqual([
+      {
+        phase: 'planning',
+        sessionId: 'sess-plan',
+        costUsd: 0.15,
+        durationMs: 0,
+      },
+    ])
+    expect(result.error).toBeUndefined()
+    expect(result).not.toHaveProperty('planningCostUsd')
+    expect(result).not.toHaveProperty('iteration')
+  })
+
+  it('synthesizes phases from old planning + N working shape, pairing by index', () => {
+    const old = {
+      status: 'completed',
+      startedAt: '2026-05-06T10:00:00.000Z',
+      lastIterationAt: '2026-05-06T10:30:00.000Z',
+      iteration: 2,
+      planningCostUsd: 0.1,
+      planningSessionId: 'sess-plan',
+      workingSessionIds: ['sess-w1', 'sess-w2'],
+      iterations: [
+        { costUsd: 0.05, durationMs: 8_000, inputTokens: 500 },
+        { costUsd: 0.07, durationMs: 12_000, inputTokens: 700 },
+      ],
+      error: null,
+    }
+    const result = parseRunInfo(old)
+    expect(result.phases).toHaveLength(3)
+    expect(result.phases[0]).toEqual({
+      phase: 'planning',
+      sessionId: 'sess-plan',
+      costUsd: 0.1,
+      durationMs: 0,
+    })
+    expect(result.phases[1]).toEqual({
+      phase: 'working',
+      iteration: 1,
+      sessionId: 'sess-w1',
+      costUsd: 0.05,
+      durationMs: 8_000,
+      inputTokens: 500,
+    })
+    expect(result.phases[2]).toEqual({
+      phase: 'working',
+      iteration: 2,
+      sessionId: 'sess-w2',
+      costUsd: 0.07,
+      durationMs: 12_000,
+      inputTokens: 700,
+    })
+  })
+
+  it('produces empty phases for never-run / freshly-created run.json', () => {
+    // Edge case: malformed/empty payload — parseRunInfo should not throw.
+    const result = parseRunInfo({})
+    expect(result.phases).toEqual([])
+    expect(result.error).toBeUndefined()
+  })
+
+  it("normalizes legacy 'usage_limited' status to stopped+budget", () => {
+    const old = {
+      status: 'usage_limited',
+      startedAt: '2026-05-06T10:00:00.000Z',
+      lastIterationAt: '2026-05-06T10:10:00.000Z',
+      iteration: 1,
+      planningCostUsd: 0.1,
+      planningSessionId: 'sess-plan',
+      workingSessionIds: ['sess-w1'],
+      iterations: [{ costUsd: 0.05, durationMs: 8_000 }],
+      error: null,
+    }
+    const result = parseRunInfo(old)
+    expect(result.status).toBe('stopped')
+    expect(result.stoppedDuring).toBe('working')
+    expect(result.stopReason).toBe('budget')
+    expect(result.error).toBeUndefined()
+  })
+
+  it("normalizes legacy 'paused' status to stopped+budget", () => {
+    const result = parseRunInfo({
+      status: 'paused',
+      startedAt: '2026-05-06T10:00:00.000Z',
+      lastIterationAt: '2026-05-06T10:10:00.000Z',
+    })
+    expect(result.status).toBe('stopped')
+    expect(result.stoppedDuring).toBe('working')
+    expect(result.stopReason).toBe('budget')
+  })
+
+  it("collapses legacy 'running' status to 'working'", () => {
+    const result = parseRunInfo({
+      status: 'running',
+      startedAt: '2026-05-06T10:00:00.000Z',
+      lastIterationAt: '2026-05-06T10:01:00.000Z',
+    })
+    expect(result.status).toBe('working')
+  })
+
+  it('collapses error: null to undefined', () => {
+    const result = parseRunInfo({
+      status: 'completed',
+      startedAt: '2026-05-06T10:00:00.000Z',
+      lastIterationAt: '2026-05-06T10:01:00.000Z',
+      error: null,
+    })
+    expect(result.error).toBeUndefined()
+    expect(Object.hasOwn(result, 'error')).toBe(false)
+  })
+
+  it('preserves a real error string', () => {
+    const result = parseRunInfo({
+      status: 'stopped',
+      startedAt: '2026-05-06T10:00:00.000Z',
+      lastIterationAt: '2026-05-06T10:01:00.000Z',
+      error: 'subprocess died',
+      iteration: 0,
+    })
+    expect(result.error).toBe('subprocess died')
   })
 })

@@ -2,6 +2,7 @@
 
 import {
   MOCK_BUDGET_STOPPED_CONTENT,
+  MOCK_DISCOVERING_STEPS,
   MOCK_PHASES,
   MOCK_PLANNING_STEPS,
   MOCK_WORKING_STEPS,
@@ -66,13 +67,19 @@ function MockRunContent() {
       )
 
       // Inject activity state into Zustand store
-      const isActive = phase === 'planning' || phase === 'working'
+      const isActive =
+        phase === 'discovering' ||
+        phase === 'discovering_q' ||
+        phase === 'planning' ||
+        phase === 'working'
       const steps =
-        phase === 'planning'
-          ? MOCK_PLANNING_STEPS
-          : phase === 'working'
-            ? MOCK_WORKING_STEPS
-            : []
+        phase === 'discovering' || phase === 'discovering_q'
+          ? MOCK_DISCOVERING_STEPS
+          : phase === 'planning'
+            ? MOCK_PLANNING_STEPS
+            : phase === 'working'
+              ? MOCK_WORKING_STEPS
+              : []
       useDesktopStore.getState().setRunState({
         isRunActive: isActive,
         activitySteps: steps,
@@ -98,6 +105,7 @@ function MockRunContent() {
         continue_: s.runContinue ?? noop,
         start: s.runStart ?? noop,
         stop: s.runStop ?? noop,
+        answerQuestion: s.runAnswerQuestion ?? noop,
         upgradeNeeded: mode === 'upgrade_needed',
         billingWarning: mode === 'low_balance' ? 'low_balance' : null,
         remainingMinutes: mode === 'low_balance' ? 3 : null,

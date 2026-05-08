@@ -152,6 +152,19 @@ export async function toggleTaskDone(slug: string): Promise<void> {
  */
 export async function deleteTaskByLocation(slug: string): Promise<void> {
   assertSafeTaskSlug(slug)
+  // If this task has an active run (e.g. discovery paused on AskUserQuestion),
+  // abort it first. Otherwise the in-memory activeRunTask keeps pointing at a
+  // now-deleted task and blocks subsequent runs with "Run already active".
+  const { getActiveRunInfo, stopRun } = await import('@/lib/run/loop.server')
+  const active = getActiveRunInfo()
+  if (active?.task === slug) {
+    stopRun()
+    // Brief wait so the loop's catch+finally clears in-memory state before
+    // we yank the directory. The loop may try to write final state to
+    // .run.json — that's a best-effort write; it's fine if it fails because
+    // we're about to delete the directory anyway.
+    await new Promise((r) => setTimeout(r, 1_000))
+  }
   const dir = safePath(taskPath(slug))
   await rm(dir, { recursive: true, force: true })
   commitGitState(`[tasks/${slug}] Delete task`)

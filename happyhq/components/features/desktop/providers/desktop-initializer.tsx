@@ -217,7 +217,8 @@ export function DesktopInitializer() {
   const isRunActive =
     !!taskSlug &&
     (data?.taskContent?.run?.status === 'working' ||
-      data?.taskContent?.run?.status === 'planning')
+      data?.taskContent?.run?.status === 'planning' ||
+      data?.taskContent?.run?.status === 'discovering')
 
   // ── Real-time activity stream ─────────────────────────────────────
   // In mock mode, suppress the SSE connection — the dev panel injects
@@ -257,6 +258,7 @@ export function DesktopInitializer() {
       continue_: runActions.continue_,
       start: runActions.start,
       stop: runActions.stop,
+      answerQuestion: runActions.answerQuestion,
       upgradeNeeded: runActions.upgradeNeeded,
       billingWarning: runActions.billingWarning,
       remainingMinutes: runActions.remainingMinutes,
@@ -269,6 +271,7 @@ export function DesktopInitializer() {
     runActions.continue_,
     runActions.start,
     runActions.stop,
+    runActions.answerQuestion,
     runActions.upgradeNeeded,
     runActions.billingWarning,
     runActions.remainingMinutes,

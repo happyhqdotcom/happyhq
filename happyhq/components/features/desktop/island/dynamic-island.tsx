@@ -3,7 +3,11 @@ import { QuestionOptions } from '@/components/features/chat/interaction/question
 import { useActivitySteps, useRunActions } from '@/stores/desktopStore'
 import { useParams } from 'next/navigation'
 import { useChatActions } from '../hooks/use-chat-actions'
-import { useActiveTask, useTaskStatus } from '../hooks/use-desktop-data'
+import {
+  useActiveTask,
+  useTaskContent,
+  useTaskStatus,
+} from '../hooks/use-desktop-data'
 import {
   usePendingConfirmation,
   usePendingQuestion,
@@ -21,6 +25,7 @@ export function DynamicIsland() {
   const activeTaskSlug = useParams<{ task?: string }>().task
   const activeTaskTitle = useActiveTask()?.frontmatter.title ?? null
   const taskStatus = useTaskStatus()
+  const taskContent = useTaskContent()
   const activitySteps = useActivitySteps()
   const runActions = useRunActions()
 
@@ -30,6 +35,23 @@ export function DynamicIsland() {
     const status = taskStatus
     const onStop = () => runActions.stop?.()
     const isStopping = runActions.isStopping
+
+    // Discovery question takes top priority during the discovery phase.
+    // Disk (.run.json.pendingQuestions) is the source of truth — the SSE
+    // 'question' event triggers an early SWR revalidation but the render
+    // depends only on disk state.
+    const discoveryQuestions =
+      status === 'discovering' ? taskContent?.run?.pendingQuestions : undefined
+    if (discoveryQuestions && discoveryQuestions.length > 0) {
+      return (
+        <QuestionOptions
+          questions={discoveryQuestions}
+          onAnswer={(answers) => {
+            runActions.answerQuestion?.(answers)
+          }}
+        />
+      )
+    }
 
     // Pending confirmation or question takes priority
     if (pendingConfirmation) {

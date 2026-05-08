@@ -47,6 +47,7 @@ export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
   // Derive status from TaskItem first (instant), SWR content second (may be delayed).
   const runStatus = content?.run?.status ?? taskItem.run?.status ?? null
   const isIdle = !runStatus
+  const isDiscovering = runStatus === 'discovering'
   const isPlanning = runStatus === 'planning'
   const isWorking = runStatus === 'working'
   const isStopped = runStatus === 'stopped'
@@ -61,9 +62,6 @@ export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
   const visibleInputs = (content?.inputs ?? []).filter(
     (i) => i.name !== 'context',
   )
-  const hasDescription = !!(
-    content?.description ?? taskItem.description
-  )?.trim()
 
   // ── Drag-and-drop file upload ─────────────────────────────────────
   // Single useOptimisticUploads instance shared with AttachmentsSection so the
@@ -80,8 +78,6 @@ export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
   const canStart = canStartIdleTask({
     streamSlug,
     title: taskTitle,
-    hasDescription,
-    hasInputs: visibleInputs.length > 0,
     isUploading: uploads.isUploading,
     runActionsLoading,
     runActionsUpgradeNeeded,
@@ -110,7 +106,9 @@ export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
     sections.push(
       <div
         key="plan"
-        className={isPlanning || isWorking ? 'animate-fade-in-fast' : ''}
+        className={
+          isDiscovering || isPlanning || isWorking ? 'animate-fade-in-fast' : ''
+        }
       >
         <PlanSection isPlanning={isPlanning} />
       </div>,
@@ -122,7 +120,9 @@ export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
     sections.push(
       <div
         key="outputs"
-        className={isPlanning || isWorking ? 'animate-fade-in-fast' : ''}
+        className={
+          isDiscovering || isPlanning || isWorking ? 'animate-fade-in-fast' : ''
+        }
       >
         <OutputsSection isWorking={isWorking} />
       </div>,

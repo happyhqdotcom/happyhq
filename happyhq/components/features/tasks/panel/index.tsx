@@ -51,6 +51,11 @@ import {
 } from '@/lib/actions'
 import { ALLOWED_INPUT_ACCEPT } from '@/lib/file-types'
 import { displayTitle } from '@/lib/format'
+import {
+  getDiscoveryPhase,
+  getPlanningPhase,
+  getWorkingPhases,
+} from '@/lib/fs/run-info'
 import type { FileItem } from '@/lib/fs/types'
 import { invalidateStream } from '@/lib/swr-helpers'
 import { taskItemsKey } from '@/lib/swr-keys'
@@ -99,14 +104,20 @@ export function TaskPanel({
 
   const isFinished = taskStatus === 'completed' || taskStatus === 'stopped'
   const isStopped = taskStatus === 'stopped'
+  const stoppedDuringDiscovery =
+    isStopped && taskContent?.run?.stoppedDuring === 'discovery'
   const stoppedDuringPlanning =
     isStopped && taskContent?.run?.stoppedDuring === 'planning'
   const stoppedDuringWorking =
     isStopped && taskContent?.run?.stoppedDuring === 'working'
   const isBudgetStop = taskContent?.run?.stopReason === 'budget'
   const hasRun = taskStatus !== null
-  const isRunning = taskStatus === 'planning' || taskStatus === 'working'
+  const isRunning =
+    taskStatus === 'discovering' ||
+    taskStatus === 'planning' ||
+    taskStatus === 'working'
   const billingExhausted = billing != null && billing.remainingMinutes <= 0
+  const pendingQuestions = taskContent?.run?.pendingQuestions
 
   // ── Local state (source of truth while editing) ─────────────────────
   const [title, setTitle] = useState('')
@@ -238,14 +249,15 @@ export function TaskPanel({
   const outputs = taskContent?.outputs ?? []
   const workingFiles = taskContent?.working ?? []
   const hasWorkFiles = outputs.length > 0 || workingFiles.length > 0
-  const iterations = taskContent?.run?.iterations ?? []
-  const hadPlanning = (taskContent?.run?.planningCostUsd ?? 0) > 0
-  const planDurationMs = hadPlanning ? (iterations[0]?.durationMs ?? 0) : 0
-  const workIterations = hadPlanning ? iterations.slice(1) : iterations
-  const workDurationMs = workIterations.reduce(
-    (sum, i) => sum + i.durationMs,
-    0,
-  )
+  let discoveryPhase = getDiscoveryPhase(taskContent?.run)
+  let planningPhase = getPlanningPhase(taskContent?.run)
+  const workingPhases = getWorkingPhases(taskContent?.run)
+  const discoveryDurationMs = discoveryPhase?.durationMs ?? 0
+  const planDurationMs = planningPhase?.durationMs ?? 0
+  const workDurationMs = workingPhases.reduce((sum, p) => sum + p.durationMs, 0)
+  const workingSessionIds = workingPhases
+    .map((p) => p.sessionId)
+    .filter((id): id is string => !!id)
 
   return (
     <Shell
@@ -412,6 +424,92 @@ export function TaskPanel({
               className={hasRun ? 'px-3 py-4' : 'flex-1 px-3 pt-4 pb-5'}
             />
 
+            {/* Discovery section — active, stopped during discovery, or completed.
+                Per spec: header text stays "Reviewing the task..." even when
+                questions are pending — the question UI lives in the island. */}
+            {(taskStatus === 'discovering' ||
+              stoppedDuringDiscovery ||
+              discoveryPhase) && (
+              <div className="animate-fade-in-fast">
+                <hr className="border-zinc-200" />
+                <div className="flex flex-col gap-0.5 px-3 py-4">
+                  {taskStatus === 'discovering' ? (
+                    <>
+                      <ActivityHeader
+                        label="Reviewing the task..."
+                        detail={
+                          pendingQuestions && pendingQuestions.length > 0
+                            ? undefined
+                            : activitySteps.findLast((s) => s.label)?.detail
+                        }
+                        onStop={() => runActions.stop?.()}
+                        isStopping={runActions.isStopping}
+                      />
+                      {pendingQuestions && pendingQuestions.length > 0 && (
+                        <div className="group flex h-8 w-full items-center gap-2 rounded-md px-2 text-left transition-colors hover:bg-zinc-950/5">
+                          <span
+                            className="inline-flex shrink-0 items-center justify-center rounded"
+                            style={{
+                              width: 18,
+                              height: 18,
+                              backgroundColor: '#FFEFB8',
+                              color: '#A05900',
+                              fontFamily: 'ui-monospace, monospace',
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              lineHeight: 1,
+                            }}
+                          >
+                            {pendingQuestions.length}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-sm text-zinc-700">
+                            {pendingQuestions.length === 1
+                              ? 'Pending Question'
+                              : 'Pending Questions'}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  ) : stoppedDuringDiscovery ? (
+                    <SectionHeader
+                      label={`Review ${isBudgetStop ? 'paused' : 'stopped'} after ${formatDuration(discoveryDurationMs)}`}
+                      rightSlot={
+                        <button
+                          type="button"
+                          onClick={() => runActions.continue_?.('discovery')}
+                          disabled={
+                            runActions.isLoading ||
+                            billingExhausted ||
+                            runActions.upgradeNeeded
+                          }
+                          className={`flex h-5 shrink-0 items-center justify-center rounded-full ${isBudgetStop ? 'bg-violet-700 hover:bg-violet-600' : 'bg-zinc-700 hover:bg-zinc-600'} px-2.5 font-mono text-[9px] font-semibold tracking-wider text-white uppercase transition-colors disabled:opacity-30`}
+                        >
+                          Continue
+                        </button>
+                      }
+                    />
+                  ) : (
+                    <SectionHeader
+                      label="Reviewed"
+                      durationMs={discoveryDurationMs}
+                      compact
+                      onLabelClick={
+                        discoveryPhase?.sessionId && streamSlug && taskSlug
+                          ? () =>
+                              openChatSessionWindow(
+                                streamSlug,
+                                [discoveryPhase.sessionId as string],
+                                'Discovery Session',
+                                `chat-${taskSlug}-discovery`,
+                              )
+                          : undefined
+                      }
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Plan section — active, stopped, awaiting approval, or finished */}
             {(taskStatus === 'planning' ||
               taskStatus === 'plan_ready' ||
@@ -488,13 +586,11 @@ export function TaskPanel({
                       }
                       disabled={runActions.isLoading || isRunning}
                       onLabelClick={
-                        taskContent?.run?.planningSessionId &&
-                        streamSlug &&
-                        taskSlug
+                        planningPhase?.sessionId && streamSlug && taskSlug
                           ? () =>
                               openChatSessionWindow(
                                 streamSlug,
-                                [taskContent.run!.planningSessionId!],
+                                [planningPhase.sessionId],
                                 'Planning Session',
                                 `chat-${taskSlug}-planning`,
                               )
@@ -611,13 +707,11 @@ export function TaskPanel({
                       }
                       disabled={runActions.isLoading || isRunning}
                       onLabelClick={
-                        taskContent?.run?.workingSessionIds?.length &&
-                        streamSlug &&
-                        taskSlug
+                        workingSessionIds.length > 0 && streamSlug && taskSlug
                           ? () =>
                               openChatSessionWindow(
                                 streamSlug,
-                                taskContent.run!.workingSessionIds!,
+                                workingSessionIds,
                                 'Working Session',
                                 `chat-${taskSlug}-working`,
                               )
@@ -717,8 +811,6 @@ export function TaskPanel({
                     !canStartIdleTask({
                       streamSlug,
                       title,
-                      hasDescription: !!description.trim(),
-                      hasInputs: visibleInputs.length > 0,
                       isUploading,
                       runActionsLoading: runActions.isLoading,
                       runActionsUpgradeNeeded: runActions.upgradeNeeded,

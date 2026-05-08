@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest --watch",
     "smoke:e2e": "npx tsx scripts/smoke-e2e.ts",
+    "smoke:discovery": "npx tsx scripts/smoke-discovery.ts",
     "db:push-schema": "pnpm dlx instant-cli push schema",
     "db:push-perms": "pnpm dlx instant-cli push perms",
     "db:push": "pnpm dlx instant-cli push schema && pnpm dlx instant-cli push perms"

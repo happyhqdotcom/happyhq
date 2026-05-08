@@ -11,6 +11,7 @@ import {
 } from '@/components/features/tasks/atoms/section-header'
 import { WorkingRow } from '@/components/features/tasks/atoms/working-row'
 import { deleteFile } from '@/lib/actions'
+import { getPlanningPhase } from '@/lib/fs/run-info'
 import { useTaskStore } from '@/stores/taskStore'
 import { useWindowStore } from '@/stores/windowStore'
 import { useRouter } from 'next/navigation'
@@ -54,10 +55,8 @@ export function PlanSection({ isPlanning }: { isPlanning?: boolean }) {
     isStopped && content?.run?.stoppedDuring === 'planning'
   const isBudgetStop = content?.run?.stopReason === 'budget'
 
-  // Planning duration from first iteration
-  const iterations = content?.run?.iterations ?? []
-  const hadPlanning = (content?.run?.planningCostUsd ?? 0) > 0
-  const planDurationMs = hadPlanning ? (iterations[0]?.durationMs ?? 0) : 0
+  const planningPhase = getPlanningPhase(content?.run)
+  const planDurationMs = planningPhase?.durationMs ?? 0
 
   const lastStep = activitySteps.findLast((s) => s.label)
 
@@ -132,11 +131,11 @@ export function PlanSection({ isPlanning }: { isPlanning?: boolean }) {
             }
             disabled={runActionsLoading || isRunActive}
             onLabelClick={
-              content?.run?.planningSessionId && streamSlug && taskSlug
+              planningPhase?.sessionId && streamSlug && taskSlug
                 ? () =>
                     openChatSessionWindow(
                       streamSlug,
-                      [content.run!.planningSessionId!],
+                      [planningPhase.sessionId],
                       'Planning Session',
                       `chat-${taskSlug}-planning`,
                     )
