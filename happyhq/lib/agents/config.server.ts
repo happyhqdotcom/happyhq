@@ -5,20 +5,25 @@ import type {
 
 import { waitForConfirmation } from '@/lib/chat/pending-confirmations'
 import { waitForAnswer } from '@/lib/chat/pending-questions'
-import type { ChatStreamEvent } from '@/lib/chat/types'
+import type { AskUserQuestionInput, ChatStreamEvent } from '@/lib/chat/types'
 import { readConfig } from '@/lib/config/config.server'
 import { resolveConfig } from '@/lib/config/defaults'
 import type { ThinkingMode } from '@/lib/config/types'
 import { MODEL_IDS } from '@/lib/constants'
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
 import { qPath, streamPath, taskPath } from '@/lib/fs/paths'
+import { updateTaskMdPending } from '@/lib/fs/task-md.server'
+import type { RunInfo } from '@/lib/fs/types'
 import { persistWebInput } from '@/lib/fs/web-input.server'
+import { log } from '@/lib/log.server'
+import { updateRunInfoPendingQuestions } from '@/lib/run/loop.server'
 
 import {
   createAutomatedCanUseTool,
   isSafeBashCommand,
 } from './bash-safety.server'
 import {
+  discoveryPrompt,
   draftingPrompt,
   generalPrompt,
   learningPrompt,
@@ -417,6 +422,215 @@ export async function chatAgentOptions(params: {
         : {},
     ...(params.abortController && { abortController: params.abortController }),
     ...(params.resume ? { resume: sessionId } : { sessionId }),
+  }
+}
+
+/**
+ * Options factory for the Discovery Agent (heads-up pre-planning phase).
+ *
+ * Discovery reads task inputs, stream playbook, specs, and samples and decides
+ * whether the task has enough context to plan well. If it doesn't, it asks the
+ * user 1–3 structured questions via AskUserQuestion (blocked through canUseTool
+ * so the user actually answers via the run SSE stream + POST /api/run/answer).
+ * On its way out, it appends a `## Discovery` section to task.md when there's
+ * something useful to record.
+ *
+ * Discovery is heads-up like learning, but plumbed onto the run loop's SSE
+ * stream rather than the chat stream. Like planning/working, it takes an
+ * abortController so the parent run can cancel mid-question.
+ *
+ * Explicitly NOT configured (don't copy from learning by reflex):
+ *   - mcpServers: discovery uses no custom MCP tools (no ProcessSample / CreateTask)
+ *   - agents: no Drafting subagent — discovery is read-and-assess, not draft-and-write
+ */
+export async function discoveryAgentOptions(
+  streamName: string,
+  taskName: string,
+  sessionId: string,
+  abortController: AbortController,
+  opts?: {
+    env?: Record<string, string | undefined>
+    notifyClient?: (event: ChatStreamEvent) => void
+    resume?: boolean
+  },
+): Promise<Options> {
+  const config = resolveConfig(await readConfig())
+  // Discovery's only legitimate Write target. The PreToolUse hook below denies
+  // any Write outside this path and denies Edit entirely. Discovery may only
+  // append a `## Discovery` section to task.md, never anything else.
+  const taskMdPath = `tasks/${taskName}/task.md`
+
+  return {
+    model: MODEL_IDS[config.models.discovery.model],
+    thinking: thinkingOption(config.models.discovery.thinking),
+    systemPrompt: await discoveryPrompt(streamName, taskName),
+    cwd: HAPPYHQ_ROOT,
+    permissionMode: 'acceptEdits',
+    allowedTools: [
+      // AskUserQuestion is NOT listed — it must trigger canUseTool to publish
+      // pendingQuestions to disk + task.md, broadcast on the run stream, and
+      // block until POST /api/run/answer fulfills the question.
+      'Read',
+      'Glob',
+      'Grep',
+      'Write', // Update task.md with `## Discovery`
+      'WebFetch',
+      'WebSearch',
+      'Bash(git:*)',
+      'Bash(ls:*)',
+    ],
+    disallowedTools: ['EnterPlanMode', 'ExitPlanMode'],
+    canUseTool: async (toolName, input, { signal }) => {
+      if (toolName === 'AskUserQuestion') {
+        const questions = (
+          input as { questions?: AskUserQuestionInput['questions'] }
+        ).questions
+        if (!Array.isArray(questions) || questions.length === 0) {
+          return {
+            behavior: 'deny' as const,
+            message: 'AskUserQuestion called without questions',
+          }
+        }
+
+        // Setup ordering: disk first (authoritative for reconnect), task.md
+        // pending second (drives the "Needs clarification" badge), broadcast
+        // third (fast-path SWR revalidation), block fourth.
+        try {
+          await updateRunInfoPendingQuestions(
+            taskName,
+            questions as RunInfo['pendingQuestions'],
+          )
+          await updateTaskMdPending(taskPath(taskName), 'clarification')
+        } catch (err) {
+          // Setup-write failure: log run.error and deny rather than block on
+          // input we can't reliably surface to the user. No silent denials.
+          log('run.error', {
+            stream: streamName,
+            task: taskName,
+            error: 'Discovery state write failed',
+            message: err instanceof Error ? err.message : String(err),
+          })
+          return {
+            behavior: 'deny' as const,
+            message: 'Discovery state write failed',
+          }
+        }
+
+        opts?.notifyClient?.({
+          type: 'question',
+          sessionId,
+          questions,
+        })
+
+        try {
+          const answers = await Promise.race([
+            waitForAnswer(sessionId),
+            new Promise<never>((_, reject) => {
+              // Guard against the signal already being aborted by the time we
+              // register — setup awaits above can drain microtasks before we
+              // get here, in which case `addEventListener('abort', ...)`
+              // would never fire and Promise.race would hang forever.
+              if (signal.aborted) {
+                reject(new Error('Aborted'))
+                return
+              }
+              signal.addEventListener(
+                'abort',
+                () => reject(new Error('Aborted')),
+                { once: true },
+              )
+            }),
+          ])
+          return {
+            behavior: 'allow' as const,
+            updatedInput: { ...input, answers },
+          }
+        } catch {
+          return {
+            behavior: 'deny' as const,
+            message: 'Discovery aborted before user answered',
+          }
+        } finally {
+          // Clear pendingQuestions + pending whether answered or aborted.
+          // Fire-and-forget: the loop's next status write reconciles disk
+          // state via the syncTaskMdFromRun cascade.
+          await updateRunInfoPendingQuestions(taskName, undefined).catch(
+            () => {},
+          )
+          await updateTaskMdPending(taskPath(taskName), undefined).catch(
+            () => {},
+          )
+        }
+      }
+
+      return {
+        behavior: 'deny' as const,
+        message: `Tool ${toolName} not available in discovery mode`,
+      }
+    },
+    abortController,
+    maxBudgetUsd: config.limits.discoveryBudgetUsd,
+    includePartialMessages: true,
+    persistSession: true,
+    settingSources: [],
+    env: agentEnv(opts?.env),
+    hooks: {
+      PreToolUse: [
+        {
+          hooks: [
+            async (input) => {
+              if (input.hook_event_name !== 'PreToolUse') {
+                return { continue: true }
+              }
+              if (input.tool_name !== 'Write' && input.tool_name !== 'Edit') {
+                return { continue: true }
+              }
+              if (input.tool_name === 'Edit') {
+                return {
+                  hookSpecificOutput: {
+                    hookEventName: 'PreToolUse' as const,
+                    permissionDecision: 'deny' as const,
+                    permissionDecisionReason: `Discovery may not Edit files. Write tasks/${taskName}/task.md instead.`,
+                  },
+                }
+              }
+              const filePath = (input.tool_input as Record<string, unknown>)
+                ?.file_path as string | undefined
+              const isTaskMd =
+                typeof filePath === 'string' &&
+                (filePath === taskMdPath || filePath.endsWith(`/${taskMdPath}`))
+              if (isTaskMd) {
+                return { continue: true }
+              }
+              return {
+                hookSpecificOutput: {
+                  hookEventName: 'PreToolUse' as const,
+                  permissionDecision: 'deny' as const,
+                  permissionDecisionReason: `Discovery may only Write tasks/${taskName}/task.md. Stop and write the discovery section.`,
+                },
+              }
+            },
+          ],
+        },
+      ],
+      PostToolUse: [
+        {
+          hooks: [
+            async (input) => {
+              if (input.hook_event_name !== 'PostToolUse') {
+                return { continue: true }
+              }
+              if (input.tool_name === 'Write' || input.tool_name === 'Edit') {
+                opts?.notifyClient?.({ type: 'task_content_changed' })
+              }
+              return { continue: true }
+            },
+          ],
+        },
+      ],
+    },
+    // New session: set sessionId. Resume: set resume to the session ID.
+    ...(opts?.resume ? { resume: sessionId } : { sessionId }),
   }
 }
 

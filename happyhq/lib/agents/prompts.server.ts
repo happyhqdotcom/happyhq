@@ -13,6 +13,7 @@ import type { FileEntry, StreamContent, TaskContent } from '@/lib/fs/types'
 let _generalPrompt: string | null = null
 let _learningPrompt: string | null = null
 let _learningLayerPrompt: string | null = null
+let _discoveryPrompt: string | null = null
 let _planningPrompt: string | null = null
 let _workingPrompt: string | null = null
 let _draftingPrompt: string | null = null
@@ -195,6 +196,40 @@ function buildReadingList(
   }
 
   return bullets.join('\n')
+}
+
+export async function discoveryPrompt(
+  streamName: string,
+  taskName: string,
+): Promise<string> {
+  if (!_discoveryPrompt) _discoveryPrompt = loadPrompt('discovery.md')
+  const [streamContent, taskContent] = await Promise.all([
+    readStreamContent(streamName),
+    readTaskContent(taskName),
+  ])
+
+  if (!taskContent) {
+    return _discoveryPrompt
+      .replaceAll('{{WORKSPACE_ROOT}}', HAPPYHQ_ROOT)
+      .replaceAll('{{TASK_NAME}}', taskName)
+      .replaceAll('{{STREAM_SLUG}}', streamName)
+      .replaceAll('{{READING_LIST}}', '(Task not found on disk.)')
+      .replaceAll('{{PLAYBOOK}}', streamContent.playbook ?? '')
+  }
+
+  const readingList = buildReadingList(
+    streamName,
+    streamContent,
+    taskContent,
+    taskName,
+  )
+  const playbook = streamContent.playbook ?? ''
+  return _discoveryPrompt
+    .replaceAll('{{WORKSPACE_ROOT}}', HAPPYHQ_ROOT)
+    .replaceAll('{{TASK_NAME}}', taskName)
+    .replaceAll('{{STREAM_SLUG}}', streamName)
+    .replaceAll('{{READING_LIST}}', readingList)
+    .replaceAll('{{PLAYBOOK}}', playbook)
 }
 
 export async function planningPrompt(
