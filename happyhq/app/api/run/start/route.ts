@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   let body: {
     stream?: string
     task: string
-    mode: 'planning' | 'working'
+    mode: 'discovery' | 'planning' | 'working'
     resume?: boolean
   }
   try {
@@ -26,7 +26,10 @@ export async function POST(request: Request) {
   }
 
   const { stream, task, mode } = body
-  if (!task || (mode !== 'planning' && mode !== 'working')) {
+  if (
+    !task ||
+    (mode !== 'discovery' && mode !== 'planning' && mode !== 'working')
+  ) {
     return Response.json(
       { error: 'Missing or invalid fields' },
       { status: 400 },
@@ -152,8 +155,14 @@ export async function POST(request: Request) {
     commitGitState(planAcceptedMessage)
   }
 
+  const responseStatus =
+    mode === 'discovery'
+      ? 'discovering'
+      : mode === 'planning'
+        ? 'planning'
+        : 'working'
   return Response.json({
-    status: mode === 'planning' ? 'planning' : 'working',
+    status: responseStatus,
     ...(billingWarning && { warning: billingWarning, remainingMinutes }),
   })
 }
