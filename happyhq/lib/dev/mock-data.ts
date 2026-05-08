@@ -11,19 +11,57 @@ import type { RunInfo, TaskContent, TaskFrontmatter } from '@/lib/fs/types'
 
 const NOW = new Date().toISOString()
 
+const DISCOVERING_RUN: RunInfo = {
+  status: 'discovering',
+  startedAt: NOW,
+  lastIterationAt: NOW,
+  phases: [],
+}
+
+const DISCOVERING_QUESTIONS_RUN: RunInfo = {
+  status: 'discovering',
+  startedAt: NOW,
+  lastIterationAt: NOW,
+  phases: [],
+  pendingQuestions: [
+    {
+      question: 'Which tone should the intro use?',
+      header: 'Tone',
+      options: [
+        { label: 'Warm', description: 'Friendly, personal, anecdotal' },
+        { label: 'Crisp', description: 'Brief, business-first' },
+      ],
+      multiSelect: false,
+    },
+  ],
+}
+
 const PLANNING_RUN: RunInfo = {
   status: 'planning',
   startedAt: NOW,
   lastIterationAt: NOW,
-  phases: [],
+  phases: [
+    {
+      phase: 'discovery',
+      sessionId: 'mock-discovery-session',
+      costUsd: 0.01,
+      durationMs: 4000,
+    },
+  ],
 }
 
 const PLAN_READY_RUN: RunInfo = {
   status: 'plan_ready',
   startedAt: NOW,
   lastIterationAt: NOW,
-  costUsd: 0.03,
+  costUsd: 0.04,
   phases: [
+    {
+      phase: 'discovery',
+      sessionId: 'mock-discovery-session',
+      costUsd: 0.01,
+      durationMs: 4000,
+    },
     {
       phase: 'planning',
       sessionId: 'mock-planning-session',
@@ -139,6 +177,8 @@ const MOCK_PLAN = `## Plan
 
 export type MockPhase =
   | 'idle'
+  | 'discovering'
+  | 'discovering_q'
   | 'planning'
   | 'plan_ready'
   | 'working'
@@ -224,6 +264,24 @@ export const MOCK_PHASES: Record<MockPhase, TaskContent> = {
     plan: null,
     description: MOCK_DESCRIPTION,
     run: null,
+    inputs: MOCK_INPUTS,
+    working: [],
+    outputs: [],
+  },
+  discovering: {
+    frontmatter: MOCK_FRONTMATTER,
+    plan: null,
+    description: MOCK_DESCRIPTION,
+    run: DISCOVERING_RUN,
+    inputs: MOCK_INPUTS,
+    working: [],
+    outputs: [],
+  },
+  discovering_q: {
+    frontmatter: MOCK_FRONTMATTER,
+    plan: null,
+    description: MOCK_DESCRIPTION,
+    run: DISCOVERING_QUESTIONS_RUN,
     inputs: MOCK_INPUTS,
     working: [],
     outputs: [],
@@ -368,10 +426,24 @@ export const MOCK_WORKING_STEPS: ActivityStep[] = [
 
 export const PHASE_ORDER: MockPhase[] = [
   'idle',
+  'discovering',
+  'discovering_q',
   'planning',
   'plan_ready',
   'working',
   'completed',
   'stopped',
   'budget_stopped',
+]
+
+export const MOCK_DISCOVERING_STEPS: ActivityStep[] = [
+  {
+    toolUseId: 'mock-think-discover',
+    toolName: '__thinking__',
+    label: 'Reading playbook',
+    detail: 'How we write intros',
+    linesAdded: null,
+    elapsedSeconds: 1,
+    isActive: true,
+  },
 ]

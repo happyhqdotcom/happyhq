@@ -28,7 +28,10 @@ export interface TaskState {
   runStart: (() => Promise<void>) | null
   runStop: (() => Promise<void>) | null
   runApprove: (() => Promise<void>) | null
-  runContinue: ((mode?: 'planning' | 'working') => Promise<void>) | null
+  runContinue:
+    | ((mode?: 'discovery' | 'planning' | 'working') => Promise<void>)
+    | null
+  runAnswerQuestion: ((answers: Record<string, string>) => Promise<void>) | null
   runActionsLoading: boolean
   runActionsStopping: boolean
   runActionsUpgradeNeeded: boolean
@@ -46,7 +49,8 @@ export interface TaskState {
     start: () => Promise<void>
     stop: () => Promise<void>
     approve: () => Promise<void>
-    continue_: () => Promise<void>
+    continue_: (mode?: 'discovery' | 'planning' | 'working') => Promise<void>
+    answerQuestion: (answers: Record<string, string>) => Promise<void>
     upgradeNeeded: boolean
     billingWarning: string | null
   }) => void
@@ -81,6 +85,7 @@ export const useTaskStore = create<TaskState>()((set) => ({
   runStop: null,
   runApprove: null,
   runContinue: null,
+  runAnswerQuestion: null,
   runActionsLoading: false,
   runActionsStopping: false,
   runActionsUpgradeNeeded: false,
@@ -97,6 +102,7 @@ export const useTaskStore = create<TaskState>()((set) => ({
     stop,
     approve,
     continue_,
+    answerQuestion,
     upgradeNeeded,
     billingWarning,
   }) =>
@@ -107,6 +113,7 @@ export const useTaskStore = create<TaskState>()((set) => ({
       runStop: stop,
       runApprove: approve,
       runContinue: continue_,
+      runAnswerQuestion: answerQuestion,
       runActionsUpgradeNeeded: upgradeNeeded,
       runActionsBillingWarning: billingWarning,
     }),
@@ -128,6 +135,7 @@ export const useTaskStore = create<TaskState>()((set) => ({
         runStop: sameTask ? prev.runStop : null,
         runApprove: sameTask ? prev.runApprove : null,
         runContinue: sameTask ? prev.runContinue : null,
+        runAnswerQuestion: sameTask ? prev.runAnswerQuestion : null,
         runActionsLoading: sameTask ? prev.runActionsLoading : false,
         runActionsStopping: sameTask ? prev.runActionsStopping : false,
         runActionsUpgradeNeeded: sameTask

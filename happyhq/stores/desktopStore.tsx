@@ -44,9 +44,12 @@ export interface DesktopState {
 
   // Run action functions (set by provider from useRunActions)
   runApprove: (() => Promise<void>) | null
-  runContinue: ((mode?: 'planning' | 'working') => Promise<void>) | null
+  runContinue:
+    | ((mode?: 'discovery' | 'planning' | 'working') => Promise<void>)
+    | null
   runStart: (() => Promise<void>) | null
   runStop: (() => Promise<void>) | null
+  runAnswerQuestion: ((answers: Record<string, string>) => Promise<void>) | null
 
   // Dev: mock run mode — suppresses SSE connection to /api/run/stream
   mockMode: boolean
@@ -79,9 +82,10 @@ export interface DesktopState {
     isStopping: boolean
     error: string | null
     approve: () => Promise<void>
-    continue_: (mode?: 'planning' | 'working') => Promise<void>
+    continue_: (mode?: 'discovery' | 'planning' | 'working') => Promise<void>
     start: () => Promise<void>
     stop: () => Promise<void>
+    answerQuestion: (answers: Record<string, string>) => Promise<void>
     upgradeNeeded: boolean
     billingWarning: string | null
     remainingMinutes: number | null
@@ -114,6 +118,7 @@ function buildInitialState(): Partial<DesktopState> {
     runContinue: null,
     runStart: null,
     runStop: null,
+    runAnswerQuestion: null,
     mockMode: false,
   }
 }
@@ -152,6 +157,7 @@ export const useDesktopStore = create<DesktopState>()((set) => ({
   runContinue: null,
   runStart: null,
   runStop: null,
+  runAnswerQuestion: null,
 
   // Dev: mock run mode
   mockMode: false,
@@ -195,6 +201,7 @@ export const useDesktopStore = create<DesktopState>()((set) => ({
     continue_,
     start,
     stop,
+    answerQuestion,
     upgradeNeeded,
     billingWarning,
     remainingMinutes,
@@ -207,6 +214,7 @@ export const useDesktopStore = create<DesktopState>()((set) => ({
       runContinue: continue_,
       runStart: start,
       runStop: stop,
+      runAnswerQuestion: answerQuestion,
       runActionsUpgradeNeeded: upgradeNeeded,
       runActionsBillingWarning: billingWarning,
       runActionsRemainingMinutes: remainingMinutes,
@@ -326,6 +334,7 @@ export const useRunActions = () =>
       continue_: s.runContinue,
       start: s.runStart,
       stop: s.runStop,
+      answerQuestion: s.runAnswerQuestion,
       isLoading: s.runActionsLoading,
       isStopping: s.runActionsStopping,
       error: s.runActionsError,

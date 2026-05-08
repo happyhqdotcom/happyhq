@@ -59,7 +59,9 @@ export function useTaskData(task: TaskIdentity | null) {
 
   // ── Derived: is a run currently active? ─────────────────────────────
   const isRunActive =
-    content?.run?.status === 'planning' || content?.run?.status === 'working'
+    content?.run?.status === 'discovering' ||
+    content?.run?.status === 'planning' ||
+    content?.run?.status === 'working'
 
   // ── Real-time activity stream ───────────────────────────────────────
   // In mock mode, suppress SSE — the dev panel injects activity directly.
@@ -150,6 +152,7 @@ export function useTaskData(task: TaskIdentity | null) {
       stop: runActions.stop,
       approve: runActions.approve,
       continue_: runActions.continue_,
+      answerQuestion: runActions.answerQuestion,
       upgradeNeeded: runActions.upgradeNeeded,
       billingWarning: runActions.billingWarning,
     })
@@ -162,6 +165,7 @@ export function useTaskData(task: TaskIdentity | null) {
     runActions.stop,
     runActions.approve,
     runActions.continue_,
+    runActions.answerQuestion,
     runActions.upgradeNeeded,
     runActions.billingWarning,
   ])

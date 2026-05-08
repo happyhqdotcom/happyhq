@@ -2,6 +2,8 @@ import type { RunStatus } from '../types'
 
 export function taskSentence(name: string, status: RunStatus): string {
   switch (status) {
+    case 'discovering':
+      return `Reviewing the ${name} task...`
     case 'planning':
       return `Planning the ${name} task...`
     case 'plan_ready':

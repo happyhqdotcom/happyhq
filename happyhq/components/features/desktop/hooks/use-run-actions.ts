@@ -11,9 +11,10 @@ import { mutate } from 'swr'
 
 interface RunActions {
   approve: () => Promise<void>
-  continue_: (mode?: 'planning' | 'working') => Promise<void>
+  continue_: (mode?: 'discovery' | 'planning' | 'working') => Promise<void>
   start: () => Promise<void>
   stop: () => Promise<void>
+  answerQuestion: (answers: Record<string, string>) => Promise<void>
   isLoading: boolean
   isStopping: boolean
   error: string | null
@@ -75,11 +76,12 @@ export function useRunActions(
         phases: [],
       }
 
-      // When restarting from planning, clear stale plan/working/outputs
+      // When restarting from discovery or planning, clear stale plan/working/outputs
       // so the old content disappears immediately (server deletes on disk
       // inside setImmediate, but the SWR cache would show stale data until
-      // the next refresh).
-      const clearContent = status === 'planning'
+      // the next refresh). Discovery is the first phase of a fresh run, so
+      // any stale plan/outputs should disappear as the new run boots.
+      const clearContent = status === 'discovering' || status === 'planning'
 
       // Desktop cache — combined endpoint
       mutate(
@@ -187,14 +189,14 @@ export function useRunActions(
   // resume:true so the server preserves working dir instead of cleaning up.
   // Accepts optional mode for resuming planning vs working.
   const continue_ = useCallback(
-    async (continueMode: 'planning' | 'working' = 'working') => {
+    async (continueMode: 'discovery' | 'planning' | 'working' = 'working') => {
       if (isRuntimeExhausted) {
         setUpgradeNeeded(true)
         return
       }
       setIsLoading(true)
       setError(null)
-      optimisticRun(continueMode)
+      optimisticRun(continueMode === 'discovery' ? 'discovering' : continueMode)
       const fetchPromise = fetch('/api/run/start', {
         method: 'POST',
         headers: {
@@ -245,7 +247,7 @@ export function useRunActions(
     setIsLoading(true)
     setError(null)
     setUpgradeNeeded(false)
-    optimisticRun('planning')
+    optimisticRun('discovering')
     // Close any open plan/output/working windows — server deletes these files
     useWindowStore.getState().closeWindowForFile(`tasks/${taskSlug}/plan.md`)
     const fetchPromise = fetch('/api/run/start', {
@@ -257,7 +259,7 @@ export function useRunActions(
       body: JSON.stringify({
         stream: streamSlug,
         task: taskSlug,
-        mode: 'planning',
+        mode: 'discovery',
       }),
     })
     pendingStartRef.current = fetchPromise
@@ -316,11 +318,40 @@ export function useRunActions(
     }
   }, [streamSlug, taskSlug])
 
+  // Submit answers to a discovery question. The server resolves the active
+  // session via getActiveDiscoverySessionId() so callers don't need to know it.
+  // Disk (.run.json.pendingQuestions) is cleared by the discovery agent loop
+  // after the answer routes through; the SWR revalidation below ensures the
+  // island question UI clears immediately rather than waiting for the next poll.
+  const answerQuestion = useCallback(
+    async (answers: Record<string, string>) => {
+      try {
+        const res = await fetch('/api/run/answer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answers }),
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.error || 'Failed to submit answer')
+        }
+        invalidateStream(streamSlug)
+      } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : 'Failed to submit answer'
+        toastError(msg)
+        throw err
+      }
+    },
+    [streamSlug],
+  )
+
   return {
     approve,
     continue_,
     start,
     stop,
+    answerQuestion,
     isLoading,
     isStopping,
     error,

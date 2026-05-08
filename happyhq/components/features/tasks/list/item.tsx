@@ -33,10 +33,17 @@ export function TaskListItem({
     setOptimisticDone(isDone)
   }
   const isRunning =
-    task.run?.status === 'planning' || task.run?.status === 'working'
+    task.run?.status === 'discovering' ||
+    task.run?.status === 'planning' ||
+    task.run?.status === 'working'
 
   const streamLabel = frontmatter.stream ? formatSlug(frontmatter.stream) : null
-  const statusLabel = getRunStatusLabel(task.run?.status, task.run?.stopReason)
+  // "Needs clarification" wins over the run-status label so the human-action
+  // ask is visible at a glance — discovery has paused itself awaiting answers.
+  const statusLabel =
+    frontmatter.pending === 'clarification'
+      ? ({ text: 'Needs clarification', badgeColor: 'amber' } as const)
+      : getRunStatusLabel(task.run?.status, task.run?.stopReason)
 
   async function handleToggle() {
     const prev = optimisticDone
@@ -132,6 +139,8 @@ function getRunStatusLabel(
   badgeColor: 'zinc' | 'blue' | 'amber' | 'orange' | 'violet'
 } | null {
   switch (status) {
+    case 'discovering':
+      return { text: 'Reviewing', badgeColor: 'zinc' }
     case 'planning':
       return { text: 'Planning', badgeColor: 'zinc' }
     case 'working':

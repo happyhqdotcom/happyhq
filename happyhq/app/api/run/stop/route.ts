@@ -51,7 +51,11 @@ export async function POST(request: Request) {
   if (task) {
     const content = await readTaskContent(task)
     const status = content?.run?.status
-    if (status === 'working' || status === 'planning') {
+    if (
+      status === 'discovering' ||
+      status === 'working' ||
+      status === 'planning'
+    ) {
       await clearStaleRun(task)
       return Response.json({ status: 'cleared_stale' })
     }

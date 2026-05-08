@@ -116,7 +116,9 @@ export function DesktopShell({ children }: { children: ReactNode }) {
   const islandHasContent =
     openPanel.type === 'task' &&
     taskStatus != null &&
-    (taskStatus === 'planning' || taskStatus === 'working')
+    (taskStatus === 'discovering' ||
+      taskStatus === 'planning' ||
+      taskStatus === 'working')
 
   if (desktopError?.status === 404) return null
 

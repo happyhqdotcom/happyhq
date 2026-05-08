@@ -50,7 +50,11 @@ import {
 } from '@/lib/actions'
 import { ALLOWED_INPUT_ACCEPT } from '@/lib/file-types'
 import { displayTitle } from '@/lib/format'
-import { getPlanningPhase, getWorkingPhases } from '@/lib/fs/run-info'
+import {
+  getDiscoveryPhase,
+  getPlanningPhase,
+  getWorkingPhases,
+} from '@/lib/fs/run-info'
 import type { FileItem } from '@/lib/fs/types'
 import { invalidateStream } from '@/lib/swr-helpers'
 import { taskItemsKey } from '@/lib/swr-keys'
@@ -100,14 +104,20 @@ export function TaskPanel({
 
   const isFinished = taskStatus === 'completed' || taskStatus === 'stopped'
   const isStopped = taskStatus === 'stopped'
+  const stoppedDuringDiscovery =
+    isStopped && taskContent?.run?.stoppedDuring === 'discovery'
   const stoppedDuringPlanning =
     isStopped && taskContent?.run?.stoppedDuring === 'planning'
   const stoppedDuringWorking =
     isStopped && taskContent?.run?.stoppedDuring === 'working'
   const isBudgetStop = taskContent?.run?.stopReason === 'budget'
   const hasRun = taskStatus !== null
-  const isRunning = taskStatus === 'planning' || taskStatus === 'working'
+  const isRunning =
+    taskStatus === 'discovering' ||
+    taskStatus === 'planning' ||
+    taskStatus === 'working'
   const billingExhausted = billing != null && billing.remainingMinutes <= 0
+  const pendingQuestions = taskContent?.run?.pendingQuestions
 
   // ── Local state (source of truth while editing) ─────────────────────
   const [title, setTitle] = useState('')
@@ -237,8 +247,10 @@ export function TaskPanel({
   const outputs = taskContent?.outputs ?? []
   const workingFiles = taskContent?.working ?? []
   const hasWorkFiles = outputs.length > 0 || workingFiles.length > 0
+  const discoveryPhase = getDiscoveryPhase(taskContent?.run)
   const planningPhase = getPlanningPhase(taskContent?.run)
   const workingPhases = getWorkingPhases(taskContent?.run)
+  const discoveryDurationMs = discoveryPhase?.durationMs ?? 0
   const planDurationMs = planningPhase?.durationMs ?? 0
   const workDurationMs = workingPhases.reduce((sum, p) => sum + p.durationMs, 0)
   const workingSessionIds = workingPhases
@@ -409,6 +421,77 @@ export function TaskPanel({
               }
               className={hasRun ? 'px-3 py-4' : 'flex-1 px-3 pt-4 pb-5'}
             />
+
+            {/* Discovery section — active, stopped during discovery, or completed.
+                Per spec: header text stays "Reviewing the task..." even when
+                questions are pending — the question UI lives in the island. */}
+            {(taskStatus === 'discovering' ||
+              stoppedDuringDiscovery ||
+              discoveryPhase) && (
+              <div className="animate-fade-in-fast">
+                <hr className="border-zinc-200" />
+                <div className="flex flex-col gap-0.5 px-3 py-4">
+                  {taskStatus === 'discovering' ? (
+                    <>
+                      <ActivityHeader
+                        label="Reviewing the task..."
+                        detail={
+                          pendingQuestions && pendingQuestions.length > 0
+                            ? undefined
+                            : activitySteps.findLast((s) => s.label)?.detail
+                        }
+                        onStop={() => runActions.stop?.()}
+                        isStopping={runActions.isStopping}
+                      />
+                      {pendingQuestions && pendingQuestions.length > 0 && (
+                        <div className="mt-1 flex items-center gap-2 text-xs text-amber-700">
+                          <span className="size-1.5 rounded-full bg-amber-500" />
+                          <span>
+                            {pendingQuestions.length === 1
+                              ? 'Answer the question above to continue'
+                              : `Answer the ${pendingQuestions.length} questions above to continue`}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  ) : stoppedDuringDiscovery ? (
+                    <SectionHeader
+                      label={`Review ${isBudgetStop ? 'paused' : 'stopped'} after ${formatDuration(discoveryDurationMs)}`}
+                      rightSlot={
+                        <button
+                          type="button"
+                          onClick={() => runActions.continue_?.('discovery')}
+                          disabled={
+                            runActions.isLoading ||
+                            billingExhausted ||
+                            runActions.upgradeNeeded
+                          }
+                          className={`flex h-5 shrink-0 items-center justify-center rounded-full ${isBudgetStop ? 'bg-violet-700 hover:bg-violet-600' : 'bg-zinc-700 hover:bg-zinc-600'} px-2.5 font-mono text-[9px] font-semibold tracking-wider text-white uppercase transition-colors disabled:opacity-30`}
+                        >
+                          Continue
+                        </button>
+                      }
+                    />
+                  ) : (
+                    <SectionHeader
+                      label="Reviewed"
+                      durationMs={discoveryDurationMs}
+                      onLabelClick={
+                        discoveryPhase?.sessionId && streamSlug && taskSlug
+                          ? () =>
+                              openChatSessionWindow(
+                                streamSlug,
+                                [discoveryPhase.sessionId as string],
+                                'Discovery Session',
+                                `chat-${taskSlug}-discovery`,
+                              )
+                          : undefined
+                      }
+                    />
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Plan section — active, stopped, awaiting approval, or finished */}
             {(taskStatus === 'planning' ||

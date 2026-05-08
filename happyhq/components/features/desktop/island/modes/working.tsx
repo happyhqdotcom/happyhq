@@ -14,11 +14,17 @@ export function TaskActivityContent({
   isStopping,
 }: {
   taskName: string
-  status: 'planning' | 'working'
+  status: 'discovering' | 'planning' | 'working'
   steps: ActivityStep[]
   onStop: () => void
   isStopping?: boolean
 }) {
+  const headerLabel =
+    status === 'discovering'
+      ? `Reviewing ${taskName}...`
+      : status === 'planning'
+        ? `Planning ${taskName}...`
+        : `Working on ${taskName}...`
   return (
     <>
       {/* Header row */}
@@ -29,9 +35,7 @@ export function TaskActivityContent({
             <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
           </span>
           <span className="text-sm font-medium text-black/80">
-            {status === 'planning'
-              ? `Planning ${taskName}...`
-              : `Working on ${taskName}...`}
+            {headerLabel}
           </span>
         </div>
         <button
@@ -133,7 +137,9 @@ export function TaskWorkingContent({
 
       {/* Right zone */}
       <div className="flex shrink-0 items-center">
-        {(status === 'planning' || status === 'working') && (
+        {(status === 'discovering' ||
+          status === 'planning' ||
+          status === 'working') && (
           <button
             type="button"
             onClick={onStop}
