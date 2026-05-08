@@ -199,8 +199,8 @@ Discovery is a new agent mode alongside learning, planning, and working. The `di
 
 ### Model and Budget
 
-- **Model:** Sonnet with adaptive thinking. Discovery is read-and-assess, not synthesize-and-create. Configurable via `config.models.discovery` like other modes.
-- **Budget:** New `config.limits.discoveryBudgetUsd` (default low — discovery should be cheap and fast).
+- **Model:** Opus with adaptive thinking — same as learning, planning, and working. Consistency over cost optimization at v0; revisit if discovery's per-Start cost shows up as a real concern in the wild. Resolve via `config.models.discovery` against `MODEL_IDS` (don't hardcode a model string).
+- **Budget:** New `config.limits.discoveryBudgetUsd`. Default conservative — discovery should still be cheap and fast even on Opus, since it's read-and-assess, not synthesize-and-create.
 
 ### Tools
 
@@ -604,7 +604,7 @@ Today, Start requires a stream assignment. A natural extension: tasks created wi
 
 **No `discovered` status.** It would exist for ~0ms between discovery completing and planning starting. Nothing would render it. The task panel's "Reviewed 2m 10s" comes from the discovery `PhaseRecord` in the `phases` array, not the status field.
 
-**Sonnet, not Opus.** Discovery is read-and-assess, not synthesize-and-create. Sonnet is fast, cheap, and sufficient. The cost delta matters because discovery runs on every task start. Configurable if needed.
+**Opus, matching the other modes.** Discovery joins learning, planning, and working at Opus for consistency at v0. Sonnet would be cheaper and likely sufficient for read-and-assess work, but mixing models across modes complicates evaluation and prompt tuning early on. Once discovery is shipped and we have a feel for ask-rates and per-Start cost, we can downshift to Sonnet behind `config.models.discovery` without touching the rest of the system.
 
 **Bias toward proceeding.** The prompt should lean toward moving forward, asking only when the gap would materially change the plan. Specs define what's needed — if something is missing that specs call for, ask. But don't over-interrogate. Over time, specs can say "if X is missing, assume Y" to further reduce unnecessary questions.
 
@@ -634,7 +634,7 @@ Everything documented in this spec is in v0 _unless_ listed below. The deferred 
 **Run loop and agent:**
 
 - [ ] Start button triggers discovery (not planning directly) — v0 always runs discovery on Start
-- [ ] `discoveryAgentOptions()` factory exists in `lib/agents/config.server.ts`: Sonnet, adaptive thinking, no `mcpServers`, no `agents`, `persistSession: true`, `settingSources: []`, `disallowedTools: ['EnterPlanMode', 'ExitPlanMode']`
+- [ ] `discoveryAgentOptions()` factory exists in `lib/agents/config.server.ts`: Opus (resolved via `config.models.discovery` against `MODEL_IDS`), adaptive thinking, no `mcpServers`, no `agents`, `persistSession: true`, `settingSources: []`, `disallowedTools: ['EnterPlanMode', 'ExitPlanMode']`
 - [ ] Discovery agent reads task inputs, stream playbook, specs, and samples (read-first rule from prompt)
 - [ ] `runDiscoveryIteration()` exists in `lib/run/loop.server.ts`, mirroring `runPlanningIteration` shape; returns `'completed' | 'stopped' | 'budget'`
 - [ ] When Q has enough context, discovery auto-transitions to planning without user action
@@ -733,7 +733,7 @@ Restart (`lib/run/loop.server.test.ts`):
 
 Agent config (`lib/agents/config.server.test.ts`):
 
-- [ ] `discoveryAgentOptions` returns Sonnet model with AskUserQuestion blocking via canUseTool
+- [ ] `discoveryAgentOptions` returns Opus model (via `MODEL_IDS`) with AskUserQuestion blocking via canUseTool
 - [ ] `discoveryAgentOptions` does NOT configure `mcpServers` or `agents` (no custom MCP, no custom subagents)
 - [ ] AskUserQuestion triggers the documented setup ordering: `pendingQuestions` write → `pending: 'clarification'` set → `question` event broadcast → block on `Promise.race`
 - [ ] Setup write failure (mock `updateRunInfoPendingQuestions` to throw) returns `{ result: 'deny' }` without blocking

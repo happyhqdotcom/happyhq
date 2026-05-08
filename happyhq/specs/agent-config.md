@@ -173,9 +173,9 @@ Q assesses a task before planning — reads the task, evaluates whether it has e
 - Writes `## Discovery` section to `task.md` with synthesized context
 - Auto-transitions to planning when complete
 
-**Model**: Sonnet with adaptive thinking. Configurable via `config.models.discovery`.
+**Model**: Opus with adaptive thinking — same as learning, planning, and working. Consistency at v0; downshift to Sonnet behind `config.models.discovery` once we have a feel for ask-rates and per-Start cost.
 
-**Budget**: `config.limits.discoveryBudgetUsd` — default low. Discovery should be fast and cheap.
+**Budget**: `config.limits.discoveryBudgetUsd` — default conservative. Discovery should still be fast and cheap on Opus since it's read-and-assess, not synthesize-and-create.
 
 **Tools available**:
 
