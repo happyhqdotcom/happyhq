@@ -1,26 +1,30 @@
 'use client'
 
-import { useOptimisticUploads } from '@/components/features/tasks/hooks/use-optimistic-uploads'
+import type { PendingFile } from '@/components/features/tasks/hooks/use-optimistic-uploads'
 import { deleteTaskInput } from '@/lib/actions'
 import { ALLOWED_INPUT_ACCEPT } from '@/lib/file-types'
+import type { FileItem } from '@/lib/fs/types'
 import { useTaskStore } from '@/stores/taskStore'
+import type { RefObject } from 'react'
 import { useCallback } from 'react'
 import { AttachmentList } from '../atoms/attachment-list'
-import { useTaskContentData, useTaskMutate } from '../hooks/use-task-swr'
+import { useTaskMutate } from '../hooks/use-task-swr'
 
-export function AttachmentsSection() {
-  const content = useTaskContentData()
+interface AttachmentsSectionProps {
+  visibleInputs: FileItem[]
+  pendingFiles: PendingFile[]
+  handleFiles: (files: FileList) => void
+  fileInputRef: RefObject<HTMLInputElement | null>
+}
+
+export function AttachmentsSection({
+  visibleInputs,
+  pendingFiles,
+  handleFiles,
+  fileInputRef,
+}: AttachmentsSectionProps) {
   const taskSlug = useTaskStore((s) => s.taskSlug)
   const refresh = useTaskMutate()
-
-  const visibleInputs =
-    content?.inputs.filter((i) => i.name !== 'context') ?? []
-
-  const { pendingFiles, handleFiles, fileInputRef } = useOptimisticUploads({
-    taskSlug,
-    refresh,
-    resolvedNames: visibleInputs.map((i) => i.name),
-  })
 
   const handleDeleteInput = useCallback(
     async (inputName: string) => {
