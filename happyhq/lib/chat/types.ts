@@ -15,6 +15,7 @@ export type ChatStreamEvent =
   | ChatTaskContentChangedEvent // Run agent wrote a file (Write/Edit) — client should revalidate task SWR
   | ChatModeChangedEvent // Chat mode transition (general ↔ learning)
   | ChatHeartbeatEvent // Keepalive so fly-proxy doesn't reap the stream during silent phases
+  | ChatRunQuestionEvent // Discovery (or other heads-up phase) is blocked on AskUserQuestion
 
 export interface ChatPartialEvent {
   type: 'partial'
@@ -166,6 +167,16 @@ export interface ChatPendingConfirmationEvent {
   toolName: string
   input: Record<string, unknown>
   toolUseId: string // Unique ID for this tool call — keyed in pending-confirmations store
+}
+
+// Fast-path notification that a heads-up phase (currently discovery) is
+// blocked on AskUserQuestion. Disk (.run.json.pendingQuestions) is the
+// source of truth — this event triggers an early SWR revalidation so the
+// island renders the question UI without waiting for the next poll.
+export interface ChatRunQuestionEvent {
+  type: 'question'
+  sessionId: string
+  questions: AskUserQuestionInput['questions']
 }
 
 export interface PendingConfirmation {

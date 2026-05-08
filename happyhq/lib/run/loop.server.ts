@@ -62,6 +62,10 @@ interface RunLoopState {
   starting: boolean
   activeRunStream: string | null
   activeRunTask: string | null
+  // SDK session UUID for the in-flight discovery agent. Set by
+  // runDiscoveryIteration once query() yields its session, cleared in finally.
+  // POST /api/run/answer reads this so the body doesn't need to carry sessionId.
+  activeDiscoverySessionId: string | null
   heartbeatInterval: ReturnType<typeof setInterval> | null
   selfPingInterval: ReturnType<typeof setInterval> | null
 }
@@ -79,6 +83,7 @@ function getState(): RunLoopState {
       starting: false,
       activeRunStream: null,
       activeRunTask: null,
+      activeDiscoverySessionId: null,
       heartbeatInterval: null,
       selfPingInterval: null,
     }
@@ -301,6 +306,9 @@ export async function clearStaleRun(taskName: string): Promise<void> {
     error: 'Run lost (server restarted)',
     pendingQuestions: undefined,
   })
+  // Drop any stale discovery session id so /api/run/answer can't resolve a
+  // pending promise that no live agent is waiting on.
+  getState().activeDiscoverySessionId = null
 }
 
 /**
@@ -316,6 +324,21 @@ export function getActiveRunInfo(): {
     return { stream: s.activeRunStream, task: s.activeRunTask }
   }
   return null
+}
+
+/**
+ * SDK session UUID for the in-flight discovery agent, or null if discovery
+ * isn't currently blocked on AskUserQuestion. Read by POST /api/run/answer
+ * so the body doesn't need to carry the sessionId — there's only ever one
+ * active discovery session per process (v0 single-run constraint).
+ */
+export function getActiveDiscoverySessionId(): string | null {
+  return getState().activeDiscoverySessionId
+}
+
+/** Internal setter — only runDiscoveryIteration should call this. */
+export function setActiveDiscoverySessionId(sessionId: string | null): void {
+  getState().activeDiscoverySessionId = sessionId
 }
 
 /**
@@ -1274,19 +1297,44 @@ async function writeRunInfo(taskName: string, info: RunInfo): Promise<void> {
   await syncTaskMdFromRun(taskName, info).catch(() => {})
 }
 
+/**
+ * Read-merge-write wrapper that only touches `.run.json.pendingQuestions`.
+ * Used by canUseTool in heads-up phases (discovery) to publish/clear the
+ * pending-questions field without rewriting the rest of RunInfo. Pass
+ * `undefined` to clear. No-op if the file is missing — the caller is the
+ * agent for the active run and the run wrote its own .run.json on start.
+ */
+export async function updateRunInfoPendingQuestions(
+  taskName: string,
+  questions: RunInfo['pendingQuestions'],
+): Promise<void> {
+  const info = await readRunInfo(taskName)
+  if (!info) return
+  await writeRunInfo(taskName, { ...info, pendingQuestions: questions })
+}
+
 /** Sync the pending field in task.md based on the current run state. */
 async function syncTaskMdFromRun(
   taskName: string,
   run: RunInfo,
 ): Promise<void> {
+  // Discovery owns the 'clarification' state — keyed off pendingQuestions
+  // rather than status alone so writes that clear questions also clear pending.
+  // Putting this branch first means any writeRunInfo while discovering
+  // self-corrects task.md's pending field (the cascade is the safety net for
+  // canUseTool's explicit updateTaskMdPending calls).
   const pending: PendingType | undefined =
-    run.status === 'plan_ready'
-      ? 'approval'
-      : run.status === 'completed'
-        ? 'review'
-        : run.status === 'stopped' && run.stopReason === 'budget'
-          ? 'checkpoint'
-          : undefined
+    run.status === 'discovering'
+      ? run.pendingQuestions && run.pendingQuestions.length > 0
+        ? 'clarification'
+        : undefined
+      : run.status === 'plan_ready'
+        ? 'approval'
+        : run.status === 'completed'
+          ? 'review'
+          : run.status === 'stopped' && run.stopReason === 'budget'
+            ? 'checkpoint'
+            : undefined
 
   await updateTaskMdPending(taskPath(taskName), pending)
 }
