@@ -429,6 +429,16 @@ async function scenario2Asks(): Promise<void> {
       `pendingQuestions surfaced (round ${round})`,
       `${state.pendingQuestions.length} question(s): ${state.pendingQuestions.map((q) => q.header).join(', ')}`,
     )
+    // Atomization guard: thin-intro has multiple distinct gaps (names, why,
+    // anecdote, roles). Round 1 producing a single umbrella question means
+    // the prompt has regressed to bundling. Subsequent rounds may legitimately
+    // surface only one follow-up, so this only checks round 1.
+    if (round === 1 && state.pendingQuestions.length < 2) {
+      fail(
+        'scenario2',
+        `round 1 surfaced only ${state.pendingQuestions.length} question — thin-intro has multiple gaps and discovery should atomize. Possible umbrella regression?`,
+      )
+    }
     await answerQuestions(state.pendingQuestions)
     lastAnsweredFingerprint = state.pendingQuestions
       .map((q) => q.header)
