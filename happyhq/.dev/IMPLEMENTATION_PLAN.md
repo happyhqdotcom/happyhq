@@ -102,28 +102,7 @@ The type's fields (`costUsd`, `durationMs`, token counts, context-window) are ex
 
 ## 2. Config schema & settings UI
 
-**Task 2.1 — `lib/config/types.ts`.**
-
-Add to `AppConfig.models`: `discovery?: ModelConfig`. Add to `AppConfig.limits`: `discoveryBudgetUsd?: number`. Add to `ResolvedConfig.models`: `discovery: Required<ModelConfig>`. Add to `ResolvedConfig.limits`: `discoveryBudgetUsd: number`.
-
-**Task 2.2 — `lib/config/defaults.ts`.**
-
-Mirror planning's defaults: `discovery: { model: 'opus', thinking: 'adaptive' }`, `discoveryBudgetUsd: 2` (planning is `5`; spec calls for "conservative" — `2` is a starting value; revisit after smoke runs land).
-
-**Task 2.3 — Tests (`lib/config/defaults.test.ts`).**
-
-Add cases mirroring `planningBudgetUsd` overrides at lines 25–32, 60–65, 145, 208–211. Resolution returns Opus + adaptive for discovery; `discoveryBudgetUsd` resolves to a number.
-
-**Task 2.4 — Settings UI surface.**
-
-Add a discovery row to `components/features/settings/model-settings.tsx` (currently exposes planning + working) and `app/(settings)/settings/models/page.tsx`. Same model picker + budget control treatment. The settings change surface stays consistent with how planning/working are tuned.
-
-Two precise touchpoints in `model-settings.tsx`:
-
-- `handleModelChange` role union (`'learning' | 'planning' | 'working'`) → add `'discovery'`.
-- `handleLimitChange` field union (`'planningBudgetUsd' | 'workingBudgetUsd' | 'maxIterations'`) → add `'discoveryBudgetUsd'`.
-
-In `app/(settings)/settings/models/page.tsx:30–56` add a `<SettingsSection title="Discovery">` row mirroring the Planning section with budget pulled from `config.limits.discoveryBudgetUsd`.
+**Status: ✅ Done (2026-05-07).** Sub-tasks 2.1–2.4 landed on `ralphie/discovery`. `AppConfig.models.discovery` + `AppConfig.limits.discoveryBudgetUsd` added (optional); `ResolvedConfig` mirrors with required form. Defaults: `discovery: { model: 'opus', thinking: 'adaptive' }`, `discoveryBudgetUsd: 2` (conservative — revisit after smoke runs). `resolveConfig` extended for both new fields. Settings UI: `handleModelChange` role union widened to include `'discovery'`; `handleLimitChange` field union widened with `'discoveryBudgetUsd'`. Models page adds a `<SettingsSection title="Discovery">` between Learning and Planning (matches the run-phase order Discovery → Planning → Working). Tests: dedicated cases for discovery defaults, budget override, model override; property-based generators include discovery in the arbitrary, asserts include discovery in the loop. Verification: `pnpm check-types && pnpm lint && pnpm test` green (1483 tests, 123 files).
 
 ---
 

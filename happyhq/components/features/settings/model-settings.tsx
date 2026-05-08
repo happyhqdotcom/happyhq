@@ -80,7 +80,7 @@ export function AgentSettings() {
   if (!config) return null
 
   function handleModelChange(
-    role: 'learning' | 'planning' | 'working',
+    role: 'learning' | 'discovery' | 'planning' | 'working',
     field: keyof ModelConfig,
     value: string,
   ) {
@@ -88,7 +88,11 @@ export function AgentSettings() {
   }
 
   function handleLimitChange(
-    field: 'planningBudgetUsd' | 'workingBudgetUsd' | 'maxIterations',
+    field:
+      | 'discoveryBudgetUsd'
+      | 'planningBudgetUsd'
+      | 'workingBudgetUsd'
+      | 'maxIterations',
     value: string,
   ) {
     const num = parseFloat(value)

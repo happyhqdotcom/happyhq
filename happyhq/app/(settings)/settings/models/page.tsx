@@ -27,6 +27,18 @@ export default function ModelsPage() {
         />
       </SettingsSection>
 
+      <SettingsSection title="Discovery">
+        <AgentSection
+          role="Discovery"
+          modelConfig={config.models.discovery}
+          onModelChange={(field, val) =>
+            handleModelChange('discovery', field, val)
+          }
+          budget={config.limits.discoveryBudgetUsd}
+          onBudgetChange={(val) => handleLimitChange('discoveryBudgetUsd', val)}
+        />
+      </SettingsSection>
+
       <SettingsSection title="Planning">
         <AgentSection
           role="Planning"
