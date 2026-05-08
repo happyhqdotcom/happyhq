@@ -1,15 +1,13 @@
 'use client'
 
-import { toastError, toastWarning } from '@/components/common/ui/sonner'
 import { UpgradePrompt } from '@/components/features/billing/upgrade-prompt'
 import { useFileDrop } from '@/components/features/desktop/windows/shared/use-file-drop'
-import { useCurrentUser } from '@/lib/accounts/hooks'
-import { ingestTaskInput } from '@/lib/actions'
 import type { TaskItem } from '@/lib/fs/types'
 import { useTaskStore } from '@/stores/taskStore'
-import { useCallback } from 'react'
+import { useOptimisticUploads } from '../hooks/use-optimistic-uploads'
 import { useTaskData } from '../hooks/use-task-data'
 import { useTaskContentData, useTaskMutate } from '../hooks/use-task-swr'
+import { canStartIdleTask } from '../start-gate'
 import { AttachmentsSection } from './attachments-section'
 import { DescriptionSection } from './description-section'
 import { OutputsSection } from './outputs-section'
@@ -46,8 +44,6 @@ export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
   const taskSlug = useTaskStore((s) => s.taskSlug)
   const streamSlug = useTaskStore((s) => s.streamSlug)
 
-  const { token } = useCurrentUser()
-
   // Derive status from TaskItem first (instant), SWR content second (may be delayed).
   const runStatus = content?.run?.status ?? taskItem.run?.status ?? null
   const isIdle = !runStatus
@@ -68,42 +64,27 @@ export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
   const hasDescription = !!(
     content?.description ?? taskItem.description
   )?.trim()
-  const canStart =
-    streamSlug != null &&
-    !!taskTitle.trim() &&
-    (hasDescription || visibleInputs.length > 0)
 
   // ── Drag-and-drop file upload ─────────────────────────────────────
-  const handleFiles = useCallback(
-    async (files: FileList) => {
-      const fileList = Array.from(files)
-      if (fileList.length === 0) return
-      try {
-        for (const file of fileList) {
-          const formData = new FormData()
-          formData.append('file', file)
-          const result = await ingestTaskInput(
-            taskSlug!,
-            formData,
-            token ?? undefined,
-          )
-          if (result.quality === 'poor' || result.quality === 'empty') {
-            toastWarning(
-              `"${file.name.length > 20 ? file.name.slice(0, 20) + '…' : file.name}" not optimized for AI comprehension`,
-            )
-          }
-        }
-        refresh?.()
-      } catch {
-        toastError(
-          'Something went wrong adding this file. Files must be under 100MB.',
-        )
-      }
-    },
-    [taskSlug, token, refresh],
-  )
-  const { isDragOver, dragHandlers } = useFileDrop(handleFiles, {
+  // Single useOptimisticUploads instance shared with AttachmentsSection so the
+  // start-task gate can observe upload state from drops on the whole card.
+  const uploads = useOptimisticUploads({
+    taskSlug,
+    refresh,
+    resolvedNames: visibleInputs.map((i) => i.name),
+  })
+  const { isDragOver, dragHandlers } = useFileDrop(uploads.handleFiles, {
     enabled: isIdle,
+  })
+
+  const canStart = canStartIdleTask({
+    streamSlug,
+    title: taskTitle,
+    hasDescription,
+    hasInputs: visibleInputs.length > 0,
+    isUploading: uploads.isUploading,
+    runActionsLoading,
+    runActionsUpgradeNeeded,
   })
 
   // ── Sections ──────────────────────────────────────────────────────
@@ -113,7 +94,12 @@ export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
   sections.push(
     <div key="context">
       <DescriptionSection />
-      <AttachmentsSection />
+      <AttachmentsSection
+        visibleInputs={visibleInputs}
+        pendingFiles={uploads.pendingFiles}
+        handleFiles={uploads.handleFiles}
+        fileInputRef={uploads.fileInputRef}
+      />
     </div>,
   )
 
@@ -198,9 +184,7 @@ export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
             <button
               type="button"
               onClick={() => runStart?.()}
-              disabled={
-                !canStart || runActionsLoading || runActionsUpgradeNeeded
-              }
+              disabled={!canStart}
               title={
                 streamSlug == null
                   ? 'Assign a stream to run this task'
