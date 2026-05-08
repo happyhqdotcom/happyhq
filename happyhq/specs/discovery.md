@@ -629,6 +629,34 @@ Everything documented in this spec is in v0 _unless_ listed below. The deferred 
 
 - **`phases: PhaseRecord[]` migration on `RunInfo`.** Originally listed as a prerequisite; ships together with discovery. See [Type refactor](#type-refactor-ships-in-this-same-change) above and the new shape in [Working](working.md).
 
+## End-to-end smoke scenarios
+
+The unit tests in [Testing](#testing) prove the plumbing is wired. The smoke harness (`pnpm smoke:e2e` → `scripts/smoke-e2e.ts`) proves the _experience_ works — real Chromium driving the real dev server against real Claude SDK calls. Discovery extends this in two ways:
+
+1. The existing golden path (plan → work) runs through discovery as its first phase. The fixture task should be rich enough that discovery proceeds silently. This is a free assertion that the silent-case happy path doesn't break the rest of the loop.
+2. Add discovery-specific scenarios that exercise the heads-up behaviors — questions appearing, answers programmatically submitted, restart paths preserving / restoring state.
+
+**Fixture stream** under `scripts/smoke-fixtures/discovery/email-intros/` — neutral fictional names (no real customer or user data per project convention):
+
+- `playbook.md` — the typical email-intros playbook: research both parties, find common ground, draft, review. Notes "always include a personal anecdote about at least one of them" as a required step.
+- `specs/intro-email.md` — the spec: must include salutation, why-introducing, one-line per person, **personal anecdote**, call to action. Tone, length, banned-words list.
+- `samples/intros/intro-1/extracted.md` — one fictional past intro the user wrote (warm tone, anecdote in body).
+- Two task fixtures: a thin one (`scripts/smoke-fixtures/discovery/tasks/thin-intro.md` — title and frontmatter only, no description) and a rich one (`scripts/smoke-fixtures/discovery/tasks/rich-intro.md` — full description with goal, anecdote, parties named).
+
+**Scenario 1 — Silent proceed (extends the existing golden path).** Use the rich task fixture. Click Start. Assert: header shows "Reviewing the task..." briefly; transitions to "Planning..." without surfacing any question UI; no `## Discovery` section appended (or appended with non-question synthesis only); planning produces `plan.md`; PhaseRecord `{ phase: 'discovery', durationMs > 0, sessionId }` exists in `.run.json`.
+
+**Scenario 2 — Asks questions and integrates answers.** Use the thin task fixture. Click Start. Assert: header reads "Reviewing the task..."; question sub-row appears beneath the header; full `AskUserQuestion` block renders in the island. Take a screenshot for visual regression. Programmatically submit answers via `POST /api/run/answer` with reasonable values (e.g., `{ "What's the goal of this intro?": "Collaboration on a project", "Do you have a personal anecdote?": "Met them at a charity dinner — Bugs stole Tom's bread roll, Tom played along, table laughed" }`). Assert: question UI clears; activity stream resumes; eventually transitions to "Planning..."; `task.md` now contains a `## Discovery` section reflecting the answers; planning produces a `plan.md` that references the anecdote.
+
+**Scenario 3 — Header stays stable across question state.** During Scenario 2, capture the header's text content at three points: (a) before questions surface, (b) while questions are pending, (c) after answers submitted but before planning starts. Assert all three read "Reviewing the task..." — no swap to "Q has questions for you" or anything else.
+
+**Scenario 4 — Restart from discovery restores `task.md`.** After Scenario 2 completes (or partway through, after the `## Discovery` section is written), click "Start over." Assert: `task.md` reverts to the user's original (no `## Discovery` section); discovery runs again; PhaseRecord history shows two discovery entries (the first one's commit is preserved in git but `task.md` content is rewound).
+
+**Scenario 5 — Restart from plan preserves `## Discovery`.** After Scenario 2 reaches `plan_ready`, click "Restart from plan." Assert: `task.md` still contains the `## Discovery` section from Scenario 2; `plan.md` is regenerated; planning runs without re-running discovery.
+
+**Where the scenarios live.** Scenario 1 extends `scripts/smoke-e2e.ts` (the golden path). Scenarios 2–5 can live in the same script as additional test functions or split into `scripts/smoke-discovery.ts` with a sibling `smoke:discovery` package.json script — implementer's call. The harness pattern (boot a fresh dev server pointed at a per-run `/tmp/happyhq-smoke-<uuid>`, pre-seed the fixture stream, drive Chromium, assert filesystem + DOM state) is established; reuse it.
+
+**Why this is worth the cost.** Smoke runs against real Opus calls, so each run is several dollars. Worth it because: (a) discovery's value is "did Q ask sensible questions or proceed sensibly?" — a judgment-driven UX that unit tests can't verify; (b) the calibration anchor lives in the prompt, and the only way to prove the prompt holds up under real model behavior is to run against the real model; (c) regression baseline for prompt drift on future model upgrades. Run discovery scenarios in CI on PRs that touch `prompts/discovery.md`, `lib/agents/config.server.ts` (discovery factory), or `lib/run/loop.server.ts` (discovery iteration / canUseTool). Don't run them on every unrelated PR.
+
 ## Acceptance Criteria
 
 **Run loop and agent:**
@@ -689,6 +717,17 @@ Everything documented in this spec is in v0 _unless_ listed below. The deferred 
 
 - [ ] Billing record spans discovery + planning (single `startTaskRun` / `finalizeTaskRun` lifecycle)
 - [ ] `canStart` gate relaxed: title + stream is sufficient when discovery is enabled (no description/inputs required)
+
+**Smoke (end-to-end, real Opus, real Chromium):**
+
+- [ ] Fixture stream `scripts/smoke-fixtures/discovery/email-intros/` exists with playbook, intro-email spec, and one sample (fictional names — no real user data)
+- [ ] Two task fixtures: `thin-intro.md` (title only) and `rich-intro.md` (full description with anecdote)
+- [ ] Scenario 1 (silent proceed) extends the existing golden path in `scripts/smoke-e2e.ts` — discovery runs and transitions to planning without surfacing question UI
+- [ ] Scenario 2 (asks questions and integrates answers) — discovery on the thin task surfaces question UI, programmatic answers submit, `## Discovery` section reflects answers, planning runs against enriched task.md
+- [ ] Scenario 3 (header stable) — header text is "Reviewing the task..." before, during, and after question state; verified via DOM inspection
+- [ ] Scenario 4 (restart from discovery) — Start over restores task.md to pre-discovery state
+- [ ] Scenario 5 (restart from plan) — Restart from plan preserves `## Discovery` section, regenerates plan.md only
+- [ ] Discovery smoke scenarios run in CI on PRs touching `prompts/discovery.md`, `lib/agents/config.server.ts`, or `lib/run/loop.server.ts` (not on every unrelated PR — they cost real Opus dollars)
 
 ## Edge Cases
 
