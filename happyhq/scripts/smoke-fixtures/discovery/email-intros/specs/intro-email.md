@@ -41,3 +41,12 @@ and the recipients skim past the call to action.
 
 Never use: "synergy", "circle back", "touch base", "leverage" (as a verb),
 "in the loop", "best in class", "rockstar", "ninja". These signal a template.
+
+## Inputs
+
+| Input                                       | Source         |
+| ------------------------------------------- | -------------- |
+| Both parties' full names                    | the introducer |
+| Why the introducer is connecting them       | the introducer |
+| Each party's role / what they're working on | the introducer |
+| Personal anecdote about at least one party  | the introducer |

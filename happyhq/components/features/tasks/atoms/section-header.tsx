@@ -22,6 +22,7 @@ export function SectionHeader({
   disabled,
   onLabelClick,
   rightSlot,
+  compact,
 }: {
   label: string
   durationMs?: number
@@ -30,6 +31,8 @@ export function SectionHeader({
   disabled?: boolean
   onLabelClick?: () => void
   rightSlot?: React.ReactNode
+  // Drop the bottom margin so the header sits centred when nothing follows it.
+  compact?: boolean
 }) {
   const labelText = `${label}${durationMs != null && durationMs > 0 ? ` for ${formatDuration(durationMs)}` : ''}`
 
@@ -45,7 +48,7 @@ export function SectionHeader({
   ) : null
 
   return (
-    <div className="mb-1 flex items-center gap-3 px-2">
+    <div className={`flex items-center gap-3 px-2 ${compact ? '' : 'mb-1'}`}>
       {onLabelClick ? (
         <button
           type="button"

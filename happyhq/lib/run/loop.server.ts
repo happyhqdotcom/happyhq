@@ -121,6 +121,24 @@ export async function startRun(
   assertSafeTaskSlug(taskName)
   const s = getState()
 
+  // Self-heal: if discovery is blocked on AskUserQuestion (activeDiscoverySessionId
+  // is set) and the task it's blocked on has been deleted out-of-band (e.g. via
+  // Finder), the in-memory activeRunTask is a ghost. Abort it so the existing
+  // wait below can let the loop's finally clear state — otherwise every future
+  // start would throw "Run already active" against a deleted task.
+  // Gating on activeDiscoverySessionId avoids racing healthy mid-startup runs
+  // where .run.json hasn't been written to disk yet.
+  if (
+    s.abortController !== null &&
+    s.activeRunTask &&
+    s.activeDiscoverySessionId !== null
+  ) {
+    const stillThere = await readRunInfo(s.activeRunTask)
+    if (!stillThere) {
+      s.abortController.abort()
+    }
+  }
+
   // If a previous run was aborted but the loop hasn't finished cleaning up,
   // wait for it (with a timeout) instead of rejecting immediately.
   if (s.abortController?.signal.aborted && s.loopPromise) {
@@ -578,6 +596,9 @@ async function runDiscoveryIteration(
   let iterationCost = 0
   let peakInputTokens = 0
   let tokenMetrics: Partial<PhaseTokenMetrics> = {}
+  // API time only — excludes time the agent was blocked waiting on tools
+  // (notably AskUserQuestion). 0 until the SDK delivers its result message.
+  let apiDurationMs = 0
   let receivedAnyMessage = false
 
   try {
@@ -613,6 +634,7 @@ async function runDiscoveryIteration(
         if (event.type === 'result') {
           iterationCost = event.costUsd
           resultSubtype = event.subtype
+          apiDurationMs = (msg as SDKResultMessage).duration_api_ms ?? 0
           tokenMetrics = extractTokenMetrics(
             msg as SDKResultMessage,
             peakInputTokens,
@@ -630,7 +652,7 @@ async function runDiscoveryIteration(
       phase: 'discovery',
       sessionId: discoverySessionId,
       costUsd: iterationCost,
-      durationMs: Date.now() - iterStartMs,
+      durationMs: apiDurationMs,
       ...tokenMetrics,
     }
     const priorPhases = (await readRunInfo(taskName))?.phases ?? []
@@ -645,6 +667,7 @@ async function runDiscoveryIteration(
         costUsd: iterationCost,
         phases: [...priorPhases, discoveryPhase],
       })
+      broadcast(encodeEvent({ type: 'task_content_changed' }))
       log('run.stopped', {
         task: taskName,
         stream: streamName,
@@ -666,6 +689,7 @@ async function runDiscoveryIteration(
       costUsd: iterationCost,
       phases: [...priorPhases, discoveryPhase],
     })
+    broadcast(encodeEvent({ type: 'task_content_changed' }))
     log('run.completed', {
       task: taskName,
       stream: streamName,
@@ -686,7 +710,7 @@ async function runDiscoveryIteration(
       phase: 'discovery',
       sessionId: discoverySessionId,
       costUsd: iterationCost,
-      durationMs: Date.now() - iterStartMs,
+      durationMs: apiDurationMs,
       ...tokenMetrics,
     }
     const priorPhases = (await readRunInfo(taskName))?.phases ?? []
@@ -702,6 +726,7 @@ async function runDiscoveryIteration(
         costUsd: iterationCost,
         phases: [...priorPhases, discoveryPhase],
       })
+      broadcast(encodeEvent({ type: 'task_content_changed' }))
       log('run.stopped', {
         task: taskName,
         stream: streamName,
@@ -729,6 +754,7 @@ async function runDiscoveryIteration(
       costUsd: iterationCost,
       phases: [...priorPhases, discoveryPhase],
     })
+    broadcast(encodeEvent({ type: 'task_content_changed' }))
     broadcastErrorEvent(error, stderrTail)
     log('run.error', {
       task: taskName,
@@ -767,6 +793,8 @@ async function runPlanningIteration(
   let iterationCost = 0
   let peakInputTokens = 0
   let tokenMetrics: Partial<PhaseTokenMetrics> = {}
+  // API time only — see runDiscoveryIteration for the rationale.
+  let apiDurationMs = 0
   let receivedAnyMessage = false
 
   try {
@@ -806,6 +834,7 @@ async function runPlanningIteration(
         if (event.type === 'result') {
           iterationCost = event.costUsd
           resultSubtype = event.subtype
+          apiDurationMs = (msg as SDKResultMessage).duration_api_ms ?? 0
           tokenMetrics = extractTokenMetrics(
             msg as SDKResultMessage,
             peakInputTokens,
@@ -825,7 +854,7 @@ async function runPlanningIteration(
       phase: 'planning',
       sessionId: planningSessionId,
       costUsd: iterationCost,
-      durationMs: Date.now() - iterStartMs,
+      durationMs: apiDurationMs,
       ...tokenMetrics,
     }
 
@@ -843,6 +872,7 @@ async function runPlanningIteration(
         costUsd: iterationCost,
         phases: [...priorPhases, planningPhase],
       })
+      broadcast(encodeEvent({ type: 'task_content_changed' }))
       log('run.stopped', {
         task: taskName,
         stream: streamName,
@@ -863,6 +893,7 @@ async function runPlanningIteration(
       costUsd: iterationCost,
       phases: [...priorPhases, planningPhase],
     })
+    broadcast(encodeEvent({ type: 'task_content_changed' }))
     log('run.completed', {
       task: taskName,
       stream: streamName,
@@ -883,7 +914,7 @@ async function runPlanningIteration(
       phase: 'planning',
       sessionId: planningSessionId,
       costUsd: iterationCost,
-      durationMs: Date.now() - iterStartMs,
+      durationMs: apiDurationMs,
       ...tokenMetrics,
     }
     const priorPhases = (await readRunInfo(taskName))?.phases ?? []
@@ -899,6 +930,7 @@ async function runPlanningIteration(
         costUsd: iterationCost,
         phases: [...priorPhases, planningPhase],
       })
+      broadcast(encodeEvent({ type: 'task_content_changed' }))
       log('run.stopped', {
         task: taskName,
         stream: streamName,
@@ -930,6 +962,7 @@ async function runPlanningIteration(
       costUsd: iterationCost,
       phases: [...priorPhases, planningPhase],
     })
+    broadcast(encodeEvent({ type: 'task_content_changed' }))
     broadcastErrorEvent(error, stderrTail)
     log('run.error', {
       task: taskName,

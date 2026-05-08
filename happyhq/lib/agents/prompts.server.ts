@@ -10,20 +10,26 @@ import {
 } from '@/lib/fs/read.server'
 import type { FileEntry, StreamContent, TaskContent } from '@/lib/fs/types'
 
-let _generalPrompt: string | null = null
-let _learningPrompt: string | null = null
-let _learningLayerPrompt: string | null = null
-let _discoveryPrompt: string | null = null
-let _planningPrompt: string | null = null
-let _workingPrompt: string | null = null
-let _draftingPrompt: string | null = null
+// Prompt cache. In production the cache survives the lifetime of the process —
+// prompts are immutable in a deployed build. In development we re-read on every
+// call so editing a `.md` file takes effect on the next request without needing
+// a server restart (Next's HMR doesn't track non-source files).
+const _promptCache = new Map<string, string>()
 function loadPrompt(filename: string): string {
-  return readFileSync(path.join(process.cwd(), 'prompts', filename), 'utf-8')
+  if (process.env.NODE_ENV !== 'development') {
+    const cached = _promptCache.get(filename)
+    if (cached) return cached
+  }
+  const content = readFileSync(
+    path.join(process.cwd(), 'prompts', filename),
+    'utf-8',
+  )
+  _promptCache.set(filename, content)
+  return content
 }
 
 export function generalPrompt(): string {
-  if (!_generalPrompt) _generalPrompt = loadPrompt('general.md')
-  return _generalPrompt.replaceAll('{{WORKSPACE_ROOT}}', HAPPYHQ_ROOT)
+  return loadPrompt('general.md').replaceAll('{{WORKSPACE_ROOT}}', HAPPYHQ_ROOT)
 }
 
 /**
@@ -100,15 +106,13 @@ export async function learningPrompt(
   sessionId: string,
   taskSlug?: string,
 ): Promise<string> {
-  if (!_learningPrompt) _learningPrompt = loadPrompt('learning.md')
-
   const manifest = await buildStreamContext(streamName, sessionId)
 
   const taskContext = taskSlug
     ? `Active task: ${taskSlug}\nTask inputs are at tasks/${taskSlug}/inputs/. You can read and update them.`
     : ''
 
-  return _learningPrompt
+  return loadPrompt('learning.md')
     .replaceAll('{{WORKSPACE_ROOT}}', HAPPYHQ_ROOT)
     .replaceAll('{{Q_PATH}}', qAbsolutePath)
     .replaceAll('{{STREAM_CONTEXT}}', manifest)
@@ -121,10 +125,7 @@ export async function learningPrompt(
  * (NewStream, StreamManifest, LearningTaskContext).
  */
 export function learningLayerPrompt(streamName: string): string {
-  if (!_learningLayerPrompt)
-    _learningLayerPrompt = loadPrompt('learning-layer.md')
-
-  return _learningLayerPrompt
+  return loadPrompt('learning-layer.md')
     .replaceAll('{{WORKSPACE_ROOT}}', HAPPYHQ_ROOT)
     .replaceAll('{{STREAM_NAME}}', streamName)
     .replaceAll('{{STREAM_SLUG}}', streamName)
@@ -202,14 +203,14 @@ export async function discoveryPrompt(
   streamName: string,
   taskName: string,
 ): Promise<string> {
-  if (!_discoveryPrompt) _discoveryPrompt = loadPrompt('discovery.md')
+  const template = loadPrompt('discovery.md')
   const [streamContent, taskContent] = await Promise.all([
     readStreamContent(streamName),
     readTaskContent(taskName),
   ])
 
   if (!taskContent) {
-    return _discoveryPrompt
+    return template
       .replaceAll('{{WORKSPACE_ROOT}}', HAPPYHQ_ROOT)
       .replaceAll('{{TASK_NAME}}', taskName)
       .replaceAll('{{STREAM_SLUG}}', streamName)
@@ -224,7 +225,7 @@ export async function discoveryPrompt(
     taskName,
   )
   const playbook = streamContent.playbook ?? ''
-  return _discoveryPrompt
+  return template
     .replaceAll('{{WORKSPACE_ROOT}}', HAPPYHQ_ROOT)
     .replaceAll('{{TASK_NAME}}', taskName)
     .replaceAll('{{STREAM_SLUG}}', streamName)
@@ -236,14 +237,14 @@ export async function planningPrompt(
   streamName: string,
   taskName: string,
 ): Promise<string> {
-  if (!_planningPrompt) _planningPrompt = loadPrompt('planning.md')
+  const template = loadPrompt('planning.md')
   const [streamContent, taskContent] = await Promise.all([
     readStreamContent(streamName),
     readTaskContent(taskName),
   ])
 
   if (!taskContent) {
-    return _planningPrompt
+    return template
       .replaceAll('{{WORKSPACE_ROOT}}', HAPPYHQ_ROOT)
       .replaceAll('{{TASK_NAME}}', taskName)
       .replaceAll('{{STREAM_SLUG}}', streamName)
@@ -258,7 +259,7 @@ export async function planningPrompt(
     taskName,
   )
   const playbook = streamContent.playbook ?? ''
-  return _planningPrompt
+  return template
     .replaceAll('{{WORKSPACE_ROOT}}', HAPPYHQ_ROOT)
     .replaceAll('{{TASK_NAME}}', taskName)
     .replaceAll('{{STREAM_SLUG}}', streamName)
@@ -270,7 +271,7 @@ export async function workingPrompt(
   streamName: string,
   taskName: string,
 ): Promise<string> {
-  if (!_workingPrompt) _workingPrompt = loadPrompt('working.md')
+  const template = loadPrompt('working.md')
   const [streamContent, taskContent] = await Promise.all([
     readStreamContent(streamName),
     readTaskContent(taskName),
@@ -285,7 +286,7 @@ export async function workingPrompt(
     readingList += `\n- tasks/${taskName}/plan.md`
   }
 
-  return _workingPrompt
+  return template
     .replaceAll('{{WORKSPACE_ROOT}}', HAPPYHQ_ROOT)
     .replaceAll('{{STREAM_NAME}}', streamName)
     .replaceAll('{{STREAM_SLUG}}', streamName)
@@ -294,6 +295,5 @@ export async function workingPrompt(
 }
 
 export function draftingPrompt(): string {
-  if (!_draftingPrompt) _draftingPrompt = loadPrompt('drafting.md')
-  return _draftingPrompt
+  return loadPrompt('drafting.md')
 }

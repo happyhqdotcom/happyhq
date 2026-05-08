@@ -247,8 +247,8 @@ export function TaskPanel({
   const outputs = taskContent?.outputs ?? []
   const workingFiles = taskContent?.working ?? []
   const hasWorkFiles = outputs.length > 0 || workingFiles.length > 0
-  const discoveryPhase = getDiscoveryPhase(taskContent?.run)
-  const planningPhase = getPlanningPhase(taskContent?.run)
+  let discoveryPhase = getDiscoveryPhase(taskContent?.run)
+  let planningPhase = getPlanningPhase(taskContent?.run)
   const workingPhases = getWorkingPhases(taskContent?.run)
   const discoveryDurationMs = discoveryPhase?.durationMs ?? 0
   const planDurationMs = planningPhase?.durationMs ?? 0
@@ -444,12 +444,26 @@ export function TaskPanel({
                         isStopping={runActions.isStopping}
                       />
                       {pendingQuestions && pendingQuestions.length > 0 && (
-                        <div className="mt-1 flex items-center gap-2 text-xs text-amber-700">
-                          <span className="size-1.5 rounded-full bg-amber-500" />
-                          <span>
+                        <div className="group flex h-8 w-full items-center gap-2 rounded-md px-2 text-left transition-colors hover:bg-zinc-950/5">
+                          <span
+                            className="inline-flex shrink-0 items-center justify-center rounded"
+                            style={{
+                              width: 18,
+                              height: 18,
+                              backgroundColor: '#FFEFB8',
+                              color: '#A05900',
+                              fontFamily: 'ui-monospace, monospace',
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              lineHeight: 1,
+                            }}
+                          >
+                            {pendingQuestions.length}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-sm text-zinc-700">
                             {pendingQuestions.length === 1
-                              ? 'Answer the question above to continue'
-                              : `Answer the ${pendingQuestions.length} questions above to continue`}
+                              ? 'Pending Question'
+                              : 'Pending Questions'}
                           </span>
                         </div>
                       )}
@@ -476,6 +490,7 @@ export function TaskPanel({
                     <SectionHeader
                       label="Reviewed"
                       durationMs={discoveryDurationMs}
+                      compact
                       onLabelClick={
                         discoveryPhase?.sessionId && streamSlug && taskSlug
                           ? () =>

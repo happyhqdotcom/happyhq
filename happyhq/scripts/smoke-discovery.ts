@@ -249,18 +249,52 @@ async function pollRunIdle(slug: string, timeoutMs: number): Promise<void> {
   fail(`run.idle (${slug})`, `did not finish within ${timeoutMs / 1000}s`)
 }
 
+// Rich, realistic answers for the thin-intro fixture — written as if a real
+// user typed them into AskUserQuestion's free-text Other slot. The smoke
+// matches the question header against a few topic patterns; unmatched headers
+// fall through to a comprehensive answer that covers names, context, and the
+// anecdote at once. Real answers let discovery synthesize cleanly in one or
+// two rounds — picking option[0] mechanically gave punt strings ("I'll type
+// it out"), which kept the model asking forever.
+const PUNT_PATTERN = /^(?:i'?ll|let me|skip)\b/i
+
+const THIN_INTRO_ANSWERS: Array<[RegExp, string]> = [
+  [
+    /who|name|people|person/i,
+    'Priya Sharma — senior backend engineer at Acme Payments, just led their fraud-detection rewrite. Sam Chen — head of engineering at Beta Robotics, hiring staff infra engineers right now.',
+  ],
+  [
+    /why|reason|hiring|connect/i,
+    "Sam is hiring a staff infra engineer at Beta. Priya fits the profile (deep payments background, ships systems end-to-end) and mentioned last month she's open to a move.",
+  ],
+  [
+    /anecdote|story|memorable|specific/i,
+    'Priya rebuilt our deployment pipeline solo over a weekend after a P0 outage — quietly, no fanfare, and it has been rock-solid since.',
+  ],
+]
+
+const COMPREHENSIVE_FALLBACK =
+  'Priya Sharma at Acme Payments (senior backend, just led the fraud-detection rewrite). Sam Chen at Beta Robotics (head of engineering, hiring staff infra). Sam is hiring; Priya is the profile and is open to a move. Anecdote: Priya rebuilt our deployment pipeline solo over a weekend after a P0 — rock-solid since.'
+
+function answerForQuestion(
+  header: string,
+  options: Array<{ label: string }>,
+): string {
+  for (const [pattern, answer] of THIN_INTRO_ANSWERS) {
+    if (pattern.test(header)) return answer
+  }
+  // Unknown header — prefer a non-punt option, else fall back to a
+  // comprehensive answer that covers everything the model is likely to need.
+  const nonPunt = options.find((o) => !PUNT_PATTERN.test(o.label))
+  return nonPunt?.label ?? COMPREHENSIVE_FALLBACK
+}
+
 async function answerQuestions(
   questions: NonNullable<RunInfoLike['pendingQuestions']>,
 ): Promise<void> {
-  // For each question, pick the first option's label. The smoke verifies
-  // plumbing (question UI → answer endpoint → discovery completes → planning
-  // runs), not specific answer content. Discovery's prompt synthesizes from
-  // whatever answers come back.
   const answers: Record<string, string> = {}
   for (const q of questions) {
-    const first = q.options[0]
-    if (!first) fail('answerQuestions', `question "${q.header}" has no options`)
-    answers[q.header] = first.label
+    answers[q.header] = answerForQuestion(q.header, q.options)
   }
   log('POST /api/run/answer', JSON.stringify(answers))
   const res = await fetch(`${BASE_URL}/api/run/answer`, {
@@ -338,35 +372,76 @@ async function scenario2Asks(): Promise<void> {
 
   await startRun(slug, 'discovery')
 
-  // Wait for pendingQuestions to land on disk OR for the run to finish without
-  // questions (in which case the calibration heuristic chose to proceed).
-  const blocked = await waitForRun(
-    slug,
-    (info) =>
-      (info.status === 'discovering' &&
-        (info.pendingQuestions?.length ?? 0) > 0) ||
-      info.status === 'planning' ||
-      info.status === 'plan_ready' ||
-      info.status === 'stopped',
-    QUESTION_TIMEOUT_MS,
-    'pendingQuestions or terminal state',
-  )
+  // Discovery may ask multiple rounds before synthesizing — first-option
+  // answers can be thin ("I'll type it out"), and the prompt allows the model
+  // to ask again rather than fall back to prose. Loop while NEW
+  // pendingQuestions appear; cap at MAX_ROUNDS to catch a prompt regression
+  // where the model never stops asking.
+  //
+  // The fingerprint guards against a race: after we POST /api/run/answer, the
+  // canUseTool cleanup that clears pendingQuestions on disk runs in a `finally`
+  // — so for a brief window disk still shows the questions we just answered.
+  // Reading those and re-POSTing yields 404 (server already resolved). We wait
+  // for either terminal state OR pendingQuestions whose header set differs
+  // from the one we just answered.
+  const MAX_ROUNDS = 2
+  let firstRoundSeen = false
+  let lastAnsweredFingerprint: string | null = null
 
-  if (!blocked.pendingQuestions || blocked.pendingQuestions.length === 0) {
-    fail(
-      'scenario2',
-      `discovery proceeded without asking (status=${blocked.status}). The thin-intro fixture should provoke at least one question — if the prompt now considers it sufficient, tighten the fixture or update the spec.`,
+  for (let round = 1; round <= MAX_ROUNDS + 1; round++) {
+    const state = await waitForRun(
+      slug,
+      (info) => {
+        // Terminal (or progressed past discovery) — done asking.
+        if (info.status !== 'discovering') return true
+        const qs = info.pendingQuestions
+        // Between rounds (canUseTool cleared, model still thinking) — keep waiting.
+        if (!qs || qs.length === 0) return false
+        const fp = qs
+          .map((q) => q.header)
+          .sort()
+          .join('|')
+        // Same questions we already answered — disk hasn't updated yet.
+        return fp !== lastAnsweredFingerprint
+      },
+      QUESTION_TIMEOUT_MS,
+      `new pendingQuestions or terminal state (round ${round})`,
     )
+
+    // If discovery is no longer asking, leave the loop and let the run finish.
+    if (
+      state.status !== 'discovering' ||
+      !state.pendingQuestions ||
+      state.pendingQuestions.length === 0
+    ) {
+      break
+    }
+
+    if (round > MAX_ROUNDS) {
+      fail(
+        'scenario2',
+        `discovery still asking after ${MAX_ROUNDS} rounds — prompt may be stuck in ask mode`,
+      )
+    }
+
+    firstRoundSeen = true
+    log(
+      `pendingQuestions surfaced (round ${round})`,
+      `${state.pendingQuestions.length} question(s): ${state.pendingQuestions.map((q) => q.header).join(', ')}`,
+    )
+    await answerQuestions(state.pendingQuestions)
+    lastAnsweredFingerprint = state.pendingQuestions
+      .map((q) => q.header)
+      .sort()
+      .join('|')
   }
 
-  log(
-    'pendingQuestions surfaced',
-    `${blocked.pendingQuestions.length} question(s): ${blocked.pendingQuestions.map((q) => q.header).join(', ')}`,
-  )
-
-  // Submit answers via API. canUseTool clears pendingQuestions on disk after
-  // resolving, then continues the SDK session.
-  await answerQuestions(blocked.pendingQuestions)
+  if (!firstRoundSeen) {
+    fail(
+      'scenario2',
+      `discovery proceeded without asking. The thin-intro fixture should provoke at least one question — if the prompt now considers it sufficient, tighten the fixture or update the spec.`,
+    )
+  }
 
   // Wait for plan_ready.
   await pollRunIdle(slug, PHASE_TIMEOUT_MS * 2)
