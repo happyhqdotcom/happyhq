@@ -6,6 +6,8 @@ How Q turns user inputs into a reviewable working plan.
 
 Define how user inputs become a reviewable working plan. The working plan is a key checkpoint for managing the loop — the user sees what Q intends to do and can course-correct before tokens are spent.
 
+**Orientation:** Planning is a **heads-down** mode — Q runs autonomously to a completion signal (`plan.md` written), with no user interaction during the run. `createAutomatedCanUseTool` denies interactive tools; there are no question events on the run stream. Pre-planning user input lives in [Discovery](discovery.md) (the heads-up phase that runs first). See [Agent Configuration → Mode Orientation](agent-config.md#mode-orientation-heads-up-vs-heads-down) for the axis.
+
 ## Preconditions
 
 Q doesn't offer "Start Task" until it has created a playbook. This is prompt behavior, not an app-level gate — by the time the "Start Task" card appears in chat, Q has already written the playbook to disk during the teaching conversation. The sequence is natural: user describes work → Q asks questions → Q creates playbook → Q offers "Start Task." No code-level check needed.

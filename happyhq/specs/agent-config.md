@@ -23,6 +23,34 @@ Configuration is built per-query via factory functions — fresh options each ca
 
 ## Four Mode Configurations
 
+### Mode Orientation: Heads-up vs. Heads-down
+
+Q's modes split on a single architectural axis: whether Q is **interacting with the user** (heads-up) or **running autonomously** (heads-down). This orientation determines the plumbing each mode inherits, not the prompt content.
+
+| Orientation | Modes                            | Key trait                                                     |
+| ----------- | -------------------------------- | ------------------------------------------------------------- |
+| Heads-up    | general, learning, **discovery** | Q asks the user questions and may wait on a wall-clock answer |
+| Heads-down  | planning, working                | Q runs to a completion signal without user input              |
+
+**Heads-up modes share infrastructure:**
+
+- `AskUserQuestion` handled via `canUseTool` blocking (not in `allowedTools`).
+- The pending-questions store (`lib/chat/pending-questions.ts` — `waitForAnswer` / `submitAnswer`) holds the resolved promise across the wait.
+- `pending: 'clarification'` is set on the surface (`task.md` for discovery, chat session state for learning) before blocking and cleared after.
+- A question event is broadcast on the relevant SSE stream (chat stream for learning; run stream for discovery) — the fast path. The disk (`pendingQuestions` in `.run.json` for discovery; chat session state for learning) is authoritative on reconnect.
+- An answer endpoint resolves the pending promise: `POST /api/chat/answer` for chat-side modes, `POST /api/run/answer` for discovery.
+- A UI surface renders the question (composer for chat; island for discovery during a run).
+
+A heads-up session can be alive but idle for hours — billing accrues on token usage, not wall-clock. This becomes acute when channel adapters land (a Slack reply 6h later is a normal heads-up wait).
+
+**Heads-down modes share infrastructure:**
+
+- `createAutomatedCanUseTool()` — auto-approves safe Bash commands (`isSafeBashCommand()`), denies everything else with no user prompt.
+- No question events on their SSE streams. No answer endpoint.
+- Token-only billing semantics. A stalled heads-down session is a bug, not a wait.
+
+**When adding a new mode**, classify it on this axis first. The classification picks the plumbing — write new automated logic only when the heads-up infrastructure genuinely doesn't fit. Discovery's only true delta from learning's heads-up plumbing is the SSE stream it broadcasts on (run vs. chat) and the prompt; everything else is reuse.
+
 ### General Mode
 
 The default for all new chats. Conversational, lightweight, workspace-aware. No stream-specific context loading, no learning interview. See [Chat Modes](chat-modes.md) for the full mode system — how Q transitions between general and learning mode, the composer toggle, and system prompt injection mechanics.
@@ -131,6 +159,10 @@ The MCP tool executes immediately and returns a tool_result. The client renders 
 
 Q assesses a task before planning — reads the task, evaluates whether it has enough context, asks structured questions if not, and enriches `task.md` with what it learns. Runs automatically as the first phase when the user clicks Start.
 
+**Orientation:** Heads-up (see [Mode Orientation](#mode-orientation-heads-up-vs-heads-down)). Discovery joins learning as a heads-up mode and inherits the heads-up infrastructure pattern — `canUseTool` blocking on `AskUserQuestion`, the pending-questions store, `pending: 'clarification'`, a question event on its SSE stream, an answer endpoint, an island UI surface.
+
+**Discovery vs. learning.** Both are heads-up; they differ in _what they enrich_. Learning mutates the **stream** (playbook, samples, specs accrue across tasks — how Q approaches a _class_ of work). Discovery enriches **one task** (does this specific task have what's needed to plan well?). A task created right after a learning conversation still benefits from discovery — the stream got smarter, but this specific task hasn't been triaged.
+
 **Purpose**: Pre-planning assessment and clarification. Ensure Q has enough context to plan well. See [Discovery](discovery.md) for the full spec.
 
 **Characteristics**:
@@ -141,9 +173,9 @@ Q assesses a task before planning — reads the task, evaluates whether it has e
 - Writes `## Discovery` section to `task.md` with synthesized context
 - Auto-transitions to planning when complete
 
-**Model**: Sonnet with adaptive thinking. Configurable via `config.models.discovery`.
+**Model**: Opus with adaptive thinking — same as learning, planning, and working. Consistency at v0; downshift to Sonnet behind `config.models.discovery` once we have a feel for ask-rates and per-Start cost.
 
-**Budget**: `config.limits.discoveryBudgetUsd` — default low. Discovery should be fast and cheap.
+**Budget**: `config.limits.discoveryBudgetUsd` — default conservative. Discovery should still be fast and cheap on Opus since it's read-and-assess, not synthesize-and-create.
 
 **Tools available**:
 
@@ -154,7 +186,11 @@ Q assesses a task before planning — reads the task, evaluates whether it has e
 - Bash (git, ls only)
 - AskUserQuestion (via `canUseTool` — not in `allowedTools`)
 
-**`canUseTool` callback**: Same pattern as learning mode's AskUserQuestion handling, with one addition: sets `pending: clarification` on `task.md` before blocking, clears it after the user answers. This drives the "needs clarification" indicator in the task list.
+**`canUseTool` callback**: Same pattern as learning mode's `AskUserQuestion` handling, with three additions specific to running inside the run loop rather than a chat session:
+
+1. Broadcasts a `question` event through the **run** SSE stream via `notifyClient` (learning broadcasts on the chat stream).
+2. Sets `pending: 'clarification'` on `task.md` before blocking, clears it after the user answers. This drives the "needs clarification" indicator in the task list.
+3. Writes the current question input to `pendingQuestions` on `.run.json` before blocking, clears it after — disk is authoritative on reconnect, the SSE event is a fast path (see [Discovery](discovery.md)).
 
 **Prompt**: `prompts/discovery.md` — tuned for speed and judgment. Bias toward proceeding. 1–3 focused questions max.
 
@@ -377,7 +413,7 @@ When Q tries to use a tool that isn't in `allowedTools`, the `canUseTool` callba
 
 The pending-confirmations store (`lib/chat/pending-confirmations.ts`) is separate from pending-questions but uses the same answer endpoint. **Keyed by `toolUseId`** (not `sessionId`) so multiple blocking tools in the same assistant turn each get their own slot — the SDK can fire parallel tool calls within a single message, and keying by `sessionId` would clobber earlier entries. Confirmations always resolve (true/false) — rejection is reserved for abort signals. See [Chat](chat.md) for the `AskUserConfirmation` design.
 
-**Scope:** The interactive `canUseTool` flow (blocking on user confirmation) is learning mode only. Planning and working modes use `automatedCanUseTool` — a deterministic callback that auto-approves safe Bash commands (via `isSafeBashCommand()` from `lib/agents/bash-safety.server.ts`) and immediately denies everything else. No user prompt, no blocking. This ensures automated agents can run git, ls, cat, and other safe commands without interruption while preventing unexpected tool usage.
+**Scope:** The interactive `canUseTool` flow (blocking on user input) is used by **heads-up modes** — learning and discovery (see [Mode Orientation](#mode-orientation-heads-up-vs-heads-down)). Both modes' callbacks block on the same pending-questions store (`lib/chat/pending-questions.ts`); they differ in which SSE stream broadcasts the question event and which answer endpoint resolves the promise. **Heads-down modes** (planning, working) use `automatedCanUseTool` — a deterministic callback that auto-approves safe Bash commands (via `isSafeBashCommand()` from `lib/agents/bash-safety.server.ts`) and immediately denies everything else. No user prompt, no blocking. This ensures automated agents can run git, ls, cat, and other safe commands without interruption while preventing unexpected tool usage.
 
 ## Design Decisions
 
