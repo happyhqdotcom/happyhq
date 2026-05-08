@@ -63,16 +63,8 @@ export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
 
   const hasOutputs =
     (content?.outputs?.length ?? 0) > 0 || (content?.working?.length ?? 0) > 0
-  const visibleInputs = (content?.inputs ?? []).filter(
-    (i) => i.name !== 'context',
-  )
-  const hasDescription = !!(
-    content?.description ?? taskItem.description
-  )?.trim()
-  const canStart =
-    streamSlug != null &&
-    !!taskTitle.trim() &&
-    (hasDescription || visibleInputs.length > 0)
+  // Discovery fills in any gaps before planning, so title + stream is the only requirement.
+  const canStart = streamSlug != null && !!taskTitle.trim()
 
   // ── Drag-and-drop file upload ─────────────────────────────────────
   const handleFiles = useCallback(
