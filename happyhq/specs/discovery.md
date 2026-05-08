@@ -399,62 +399,28 @@ After discovery completes, a `PhaseRecord` with `phase: 'discovery'` is appended
 
 ### Discovery Commits
 
-When discovery completes successfully (with or without questions), the loop commits: `[stream/task] Discovery complete`. This commit captures the `## Discovery` section added to `task.md`. The commit happens before planning begins.
+When discovery completes successfully and writes anything to `task.md`, the loop commits: `[stream/task] Discovery complete`. This commit is a chronological marker in git history showing what Q contributed. Nothing in v0 reads this commit programmatically — restart paths don't use it as an anchor. Its only role is auditability (git log + diff show what discovery added to `task.md`).
 
-### Restart From Any Phase
+If Q wrote nothing (clean tree), no commit happens. That's fine — the PhaseRecord on `.run.json` still records that discovery ran.
 
-The user controls where they restart from. The three restart points are:
+### Restart From a Phase
 
-| Restart from | `mode` sent   | What happens                                                                                                           |
-| ------------ | ------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Discovery    | `'discovery'` | `task.md` restored to pre-discovery state via git, `plan.md` deleted, `working/` and `outputs/` cleared. Full restart. |
-| Planning     | `'planning'`  | `plan.md` deleted, `working/` and `outputs/` cleared. `## Discovery` section in `task.md` preserved.                   |
-| Working      | `'working'`   | `working/` and `outputs/` cleared, `plan.md` restored from "Plan accepted" commit. Everything else preserved.          |
+Discovery is a heads-up preamble, not a savepoint to "restart from." It just runs whenever a fresh run starts (or resumes from a stopped-during-discovery state — naturally, by sending `mode: 'discovery'`). The user is in control of `task.md` directly: they can edit it freely between runs to remove a stale `## Discovery` section, change the description, or anything else. There's no "restore task.md to pre-discovery state" affordance because the user is the one in charge of task.md.
 
-### Restoring task.md via Git
+The two visible restart paths after a stopped or completed run:
 
-Same pattern as `restorePlanFromGit`. A new `restoreTaskMdFromGit` helper:
+| Restart from | `mode` sent  | What happens                                                                                                  |
+| ------------ | ------------ | ------------------------------------------------------------------------------------------------------------- |
+| Planning     | `'planning'` | `plan.md` deleted, `working/` and `outputs/` cleared. `task.md` (including any `## Discovery`) is untouched.  |
+| Working      | `'working'`  | `working/` and `outputs/` cleared, `plan.md` restored from "Plan accepted" commit. Everything else preserved. |
 
-```typescript
-function restoreTaskMdFromGit(taskName: string): void {
-  const taskRelPath = `tasks/${taskName}/task.md`
-  // Find the "Discovery complete" commit and restore task.md from its parent
-  const hash = execSync(
-    `git log --format='%H' --grep='Discovery complete' -1 -- ${taskRelPath}`,
-    { cwd: HAPPYHQ_ROOT, encoding: 'utf8', stdio: 'pipe' },
-  ).trim()
-  if (!hash) return
-  execSync(`git restore --source=${hash}~1 -- ${taskRelPath}`, {
-    cwd: HAPPYHQ_ROOT,
-    stdio: 'pipe',
-  })
-}
-```
-
-This restores `task.md` to the version _before_ discovery enriched it — the user's original text. Uses `{hash}~1` (parent of the discovery commit) as the restore source.
+There is no "Restart from discovery" button. The mode `'discovery'` exists in the API for fresh starts and for resuming a stopped-during-discovery run, but it isn't surfaced as a restart button — completed runs don't offer "redo from discovery." If a user wants Q to look at the task fresh, they edit `task.md` to remove the prior `## Discovery` section (and/or change the description) and click Restart from plan; planning will read whatever's there. For a fully clean slate, duplicate the task as a new task.
 
 ### startRun Cleanup Updates
 
-The `startRun` function's fresh-run cleanup block gains a discovery case:
+The `startRun` function's fresh-run cleanup block does **not** gain a discovery case. Discovery has nothing to clean up before running — `task.md` is the user's, and the `## Discovery` section (if any from a prior run) is just text in the file. Q's prompt handles the "task already has a `## Discovery` section" case by deciding whether to update or leave it (judgment in the prompt; not enforced by code).
 
-```typescript
-if (mode === 'discovery') {
-  // Full restart — restore task.md to pre-discovery state
-  restoreTaskMdFromGit(taskName)
-  clearDirectory(path.join(taskDir, 'working'))
-  clearDirectory(path.join(taskDir, 'outputs'))
-  fs.rm(path.join(taskDir, 'plan.md'), { force: true })
-  commitGitState(`[${streamName}/${taskName}] Task restarted from scratch`)
-}
-```
-
-The existing `mode === 'planning'` cleanup handles deleting `plan.md` and clearing directories. The existing `mode === 'working'` cleanup handles `restorePlanFromGit`. Discovery adds the `restoreTaskMdFromGit` call.
-
-**Single commit for cleanup.** All restart-from-discovery operations — `restoreTaskMdFromGit`, deleting `plan.md`, clearing `working/` and `outputs/` — must land in the _same_ `commitGitState('Task restarted from scratch')` commit. If they land as multiple commits, the next discovery's `git log --grep='Discovery complete' -1 -- task.md` lookup can hit a stale or unrelated commit (the restart sequence interleaves with prior history). Mirror the ordering in the existing `mode === 'working'` block, which already follows this pattern for `restorePlanFromGit`.
-
-**First run:** `restoreTaskMdFromGit` is a graceful no-op when there's no "Discovery complete" commit (same as `restorePlanFromGit` on first planning run). No special-casing needed.
-
-**Destructive-restore guard: gate `task.md` description editing during a run.** `restoreTaskMdFromGit` does `git restore --source=...` which overwrites uncommitted edits to `task.md`. As of today, the description textarea in the panel ([happyhq/components/features/tasks/panel/index.tsx](happyhq/components/features/tasks/panel/index.tsx) — search for the `<textarea>` used for description editing) has no run-state gate, so a user _can_ type into the description while a run is active. Combined with restart-from-discovery, that means a user could lose mid-run edits silently. **Fix as part of this PR:** disable the description textarea while `isRunning` (the same pattern the panel uses elsewhere — see the many `disabled={runActions.isLoading || isRunning}` sites in the same file). One-line fix; closes the destructive-restore exposure.
+The existing `mode === 'planning'` cleanup handles deleting `plan.md` and clearing `working/`/`outputs/`. The existing `mode === 'working'` cleanup handles `restorePlanFromGit`. Discovery adds nothing.
 
 ## Task Panel UI
 
@@ -530,13 +496,12 @@ The duration shown is **compute time**, recorded as `durationMs` on the discover
 
 ### Restart Options
 
-When a task is stopped or finished, the user can restart from any completed phase:
+When a task is stopped or finished, the user has two restart affordances:
 
-- **Start over** — restarts from discovery (full restart, restores task.md)
-- **Restart from plan** — restarts from planning (preserves discovery)
-- **Restart from work** — restarts from working (preserves discovery + plan)
+- **Restart from plan** — `mode: 'planning'`. `task.md` (including any `## Discovery`) is preserved; `plan.md` deleted; `working/` and `outputs/` cleared. Planning runs.
+- **Restart from work** — `mode: 'working'`. Working/outputs cleared; `plan.md` restored from "Plan accepted" commit; everything else preserved. Working runs.
 
-These map to `POST /api/run/start` with `mode: 'discovery'`, `'planning'`, or `'working'`.
+There is no "Restart from discovery" button by design (see [Restart From a Phase](#restart-from-a-phase)). For a stopped-during-discovery run, clicking the resume affordance (Continue / Start) sends `mode: 'discovery'` naturally and the loop picks up where it stopped. For a completed run that the user wants Q to look at fresh, they edit `task.md` and click Restart from plan, or duplicate the task.
 
 ### Clarification Indicator (task list)
 
@@ -598,9 +563,9 @@ Today, Start requires a stream assignment. A natural extension: tasks created wi
 
 **Questions render in the island, not inline in the task card.** The island is the established surface for structured interactions during task work (plan approval uses it today). The task card shows a question sub-row beneath the "Reviewing the task..." header that points to the island. This avoids bloating the task card with interactive UI and keeps the question experience focused — same large, clear question blocks the user knows from learning mode.
 
-**Discovery enriches task.md, not a separate directory.** The task is the canonical object. After discovery, the task description should be self-contained. A separate `discovery/` directory would add surface area for limited benefit — the session log (via `discoverySessionId`) is the audit trail, and `task.md` is what planning reads. Git-based restore handles restart cleanly.
+**Discovery enriches task.md, not a separate directory.** The task is the canonical object. After discovery, the task description should be self-contained. A separate `discovery/` directory would add surface area for limited benefit — the session log (via the discovery `PhaseRecord.sessionId`) is the audit trail, and `task.md` is what planning reads.
 
-**Git-based restore, not string-stripping.** On restart from discovery, `task.md` is restored from git (parent of the "Discovery complete" commit) rather than parsing and stripping the `## Discovery` section. This follows the `restorePlanFromGit` pattern already used for `plan.md` during working restarts. Reliable, no markdown parsing, and handles any content Q might have written.
+**`task.md` is the user's; no destructive restore.** When a run is restarted, `task.md` is left untouched. The user controls its content between runs — they can keep, edit, or delete a prior `## Discovery` section as they wish. There is no `restoreTaskMdFromGit` helper, no commit-message-grep restore path, and no "Restart from discovery" button. Earlier drafts of this spec proposed those; they were dropped because (a) discovery is a heads-up preamble, not a savepoint to "restore to," and (b) handing the user a button that silently rewrites `task.md` makes the destructive case (overwriting their edits) too easy to hit. If a future "wipe plan/working but keep task.md" affordance is needed, it's a thin extension of the existing planning-mode cleanup — not a new restore mechanism.
 
 **No `discovered` status.** It would exist for ~0ms between discovery completing and planning starting. Nothing would render it. The task panel's "Reviewed 2m 10s" comes from the discovery `PhaseRecord` in the `phases` array, not the status field.
 
@@ -645,13 +610,9 @@ The unit tests in [Testing](#testing) prove the plumbing is wired. The smoke har
 
 **Scenario 1 — Silent proceed (extends the existing golden path).** Use the rich task fixture. Click Start. Assert: header shows "Reviewing the task..." briefly; transitions to "Planning..." without surfacing any question UI; no `## Discovery` section appended (or appended with non-question synthesis only); planning produces `plan.md`; PhaseRecord `{ phase: 'discovery', durationMs > 0, sessionId }` exists in `.run.json`.
 
-**Scenario 2 — Asks questions and integrates answers.** Use the thin task fixture. Click Start. Assert: header reads "Reviewing the task..."; question sub-row appears beneath the header; full `AskUserQuestion` block renders in the island. Take a screenshot for visual regression. Programmatically submit answers via `POST /api/run/answer` with reasonable values (e.g., `{ "What's the goal of this intro?": "Collaboration on a project", "Do you have a personal anecdote?": "Met them at a charity dinner — Bugs stole Tom's bread roll, Tom played along, table laughed" }`). Assert: question UI clears; activity stream resumes; eventually transitions to "Planning..."; `task.md` now contains a `## Discovery` section reflecting the answers; planning produces a `plan.md` that references the anecdote.
+**Scenario 2 — Asks questions and integrates answers.** Use the thin task fixture. Click Start. Assert: question sub-row appears beneath the header; full `AskUserQuestion` block renders in the island. Take a screenshot for visual regression. Programmatically submit answers via `POST /api/run/answer` with reasonable values. Assert: question UI clears; activity stream resumes; eventually transitions to "Planning..."; `task.md` now contains a `## Discovery` section reflecting the answers; planning produces a `plan.md` that references what was learned in discovery.
 
-**Scenario 3 — Header stays stable across question state.** During Scenario 2, capture the header's text content at three points: (a) before questions surface, (b) while questions are pending, (c) after answers submitted but before planning starts. Assert all three read "Reviewing the task..." — no swap to "Q has questions for you" or anything else.
-
-**Scenario 4 — Restart from discovery restores `task.md`.** After Scenario 2 completes (or partway through, after the `## Discovery` section is written), click "Start over." Assert: `task.md` reverts to the user's original (no `## Discovery` section); discovery runs again; PhaseRecord history shows two discovery entries (the first one's commit is preserved in git but `task.md` content is rewound).
-
-**Scenario 5 — Restart from plan preserves `## Discovery`.** After Scenario 2 reaches `plan_ready`, click "Restart from plan." Assert: `task.md` still contains the `## Discovery` section from Scenario 2; `plan.md` is regenerated; planning runs without re-running discovery.
+**Scenario 3 — Restart from plan preserves `## Discovery`.** After Scenario 2 reaches `plan_ready`, click "Restart from plan." Assert: `task.md` still contains the `## Discovery` section from Scenario 2; `plan.md` is regenerated; planning runs.
 
 **Where the scenarios live.** Scenario 1 extends `scripts/smoke-e2e.ts` (the golden path). Scenarios 2–5 can live in the same script as additional test functions or split into `scripts/smoke-discovery.ts` with a sibling `smoke:discovery` package.json script — implementer's call. The harness pattern (boot a fresh dev server pointed at a per-run `/tmp/happyhq-smoke-<uuid>`, pre-seed the fixture stream, drive Chromium, assert filesystem + DOM state) is established; reuse it.
 
@@ -690,10 +651,9 @@ The unit tests in [Testing](#testing) prove the plumbing is wired. The smoke har
 
 **Restart:**
 
-- [ ] Restart from discovery restores task.md to pre-discovery state via `restoreTaskMdFromGit`
-- [ ] Restart-from-discovery cleanup (`restoreTaskMdFromGit`, delete `plan.md`, clear `working/`/`outputs/`) lands in a single `commitGitState('Task restarted from scratch')` commit
-- [ ] Restart from planning preserves `## Discovery` section, only deletes plan.md
-- [ ] Description textarea in the task panel is disabled while `isRunning` (closes the destructive-restore exposure on `task.md`)
+- [ ] Restart from planning preserves `task.md` (including any `## Discovery` section), only deletes plan.md, clears `working/`/`outputs/`
+- [ ] No "Restart from discovery" button surfaced in v0; the `mode: 'discovery'` API path remains for fresh starts and stopped-during-discovery resume
+- [ ] No `restoreTaskMdFromGit` helper (`task.md` is the user's; the user controls its content between runs)
 
 **UI (task card / island / list):**
 
@@ -724,9 +684,7 @@ The unit tests in [Testing](#testing) prove the plumbing is wired. The smoke har
 - [ ] Two task fixtures: `thin-intro.md` (title only) and `rich-intro.md` (full description with anecdote)
 - [ ] Scenario 1 (silent proceed) extends the existing golden path in `scripts/smoke-e2e.ts` — discovery runs and transitions to planning without surfacing question UI
 - [ ] Scenario 2 (asks questions and integrates answers) — discovery on the thin task surfaces question UI, programmatic answers submit, `## Discovery` section reflects answers, planning runs against enriched task.md
-- [ ] Scenario 3 (header stable) — header text is "Reviewing the task..." before, during, and after question state; verified via DOM inspection
-- [ ] Scenario 4 (restart from discovery) — Start over restores task.md to pre-discovery state
-- [ ] Scenario 5 (restart from plan) — Restart from plan preserves `## Discovery` section, regenerates plan.md only
+- [ ] Scenario 3 (restart from plan preserves `## Discovery`) — Restart from plan keeps `## Discovery` in task.md, regenerates plan.md only
 - [ ] Discovery smoke scenarios run in CI on PRs touching `prompts/discovery.md`, `lib/agents/config.server.ts`, or `lib/run/loop.server.ts` (not on every unrelated PR — they cost real Opus dollars)
 
 ## Edge Cases
@@ -735,14 +693,13 @@ The unit tests in [Testing](#testing) prove the plumbing is wired. The smoke har
 - **Task has only a title**: Q almost certainly asks questions. This is the primary use case — quick-added tasks that need fleshing out.
 - **User navigates away during discovery Q&A**: The `canUseTool` callback is blocking server-side. The run stream disconnects but the session stays alive. On return, the client reads `pendingQuestions` from `.run.json` (via the task content API) and re-renders the question UI. If the user never returns, the session eventually times out via budget limit.
 - **User closes the app after answering last question**: Server-driven transition means planning starts regardless. User returns to find planning done or `plan_ready`.
-- **Discovery fails or errors**: Same pattern as planning errors. Write `status: 'stopped'`, `stoppedDuring: 'discovery'`. UI shows restart options. User can restart from discovery or skip to planning.
-- **Discovery times out (budget)**: Write `status: 'stopped'`, `stopReason: 'budget'`, `stoppedDuring: 'discovery'`. Continue button resumes discovery.
-- **Server restart during discovery Q&A**: Session is lost. `clearStaleRun` writes `status: 'stopped'`, `stoppedDuring: 'discovery'`. User restarts. The `## Discovery` section is only written when Q completes successfully, so a partial run leaves task.md unchanged.
+- **Discovery fails or errors**: Same pattern as planning errors. Write `status: 'stopped'`, `stoppedDuring: 'discovery'`. UI shows the standard stopped affordances (Continue / Restart from plan).
+- **Discovery times out (budget)**: Write `status: 'stopped'`, `stopReason: 'budget'`, `stoppedDuring: 'discovery'`. Continue resumes discovery.
+- **Server restart during discovery Q&A**: Session is lost. `clearStaleRun` writes `status: 'stopped'`, `stoppedDuring: 'discovery'` and clears `pendingQuestions`. User clicks Continue (resumes from `mode: 'discovery'`) or Restart from plan.
 - **Stream has no playbook or specs**: Discovery is especially useful here — Q recognizes it has little context and asks questions the playbook would normally answer. But if the task description is detailed enough, Q should still proceed.
-- **User stops mid-conversation**: Session is aborted. Answers from prior rounds are lost (session context is gone). task.md is unchanged (Q hadn't written yet). User can restart from discovery (try again) or from planning (skip).
-- **Restart with no discovery commit**: `restoreTaskMdFromGit` is a graceful no-op when there's no "Discovery complete" commit in history. No special-casing needed.
-- **Discovery writes nothing to task.md**: Possible when Q has enough context. `commitGitState` is a no-op on clean tree. No "Discovery complete" commit exists, so future `restoreTaskMdFromGit` is a no-op. Clean.
-- **Multiple runs on the same task**: Each restart from discovery restores task.md to before the _latest_ "Discovery complete" commit. Since restart clears previous state before re-running, this always finds the right commit.
+- **User stops mid-conversation**: Session is aborted. Answers from prior rounds are lost (session context is gone). `task.md` may have been updated already by an earlier successful `## Discovery` write — that content is preserved. The user can Continue (resumes discovery; Q may re-ask or update what's there) or Restart from plan (uses task.md as-is).
+- **Discovery writes nothing to `task.md`**: Possible when Q has enough context. `commitGitState` is a no-op on clean tree. No "Discovery complete" commit exists; the PhaseRecord on `.run.json` still records that discovery ran.
+- **Multiple runs on the same task**: Each run reads whatever `task.md` is at the moment Q starts. If a prior `## Discovery` section is present, Q's prompt judgment decides whether to update it, replace it, or leave it. The user can also delete it manually between runs.
 
 ## Testing
 
@@ -765,10 +722,8 @@ Run loop — discovery mode (`lib/run/loop.server.test.ts`):
 
 Restart (`lib/run/loop.server.test.ts`):
 
-- [ ] Restart from discovery (`mode: 'discovery'`) calls `restoreTaskMdFromGit`, deletes plan.md, clears working/ and outputs/
-- [ ] Restart-from-discovery cleanup operations land in a single git commit (verify `git log` after restart shows one "Task restarted from scratch" commit)
-- [ ] Restart from planning (`mode: 'planning'`) preserves task.md (including `## Discovery`), deletes plan.md
-- [ ] `restoreTaskMdFromGit` is no-op when no "Discovery complete" commit exists
+- [ ] Restart from planning (`mode: 'planning'`) preserves `task.md` (including any `## Discovery` section), deletes plan.md, clears `working/`/`outputs/`
+- [ ] Restart from working (`mode: 'working'`) — no change from existing behavior
 
 Agent config (`lib/agents/config.server.test.ts`):
 
