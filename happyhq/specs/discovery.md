@@ -28,10 +28,6 @@ Architecturally, discovery is a **heads-up** mode that joins learning. See [Agen
 - Run lifecycle, `.run.json`, and `PhaseRecord` / `RunInfo` types → [Working](working.md)
 - Agent modes and orchestration → [Agent Configuration](agent-config.md)
 
-## Type refactor (ships in this same change)
-
-Discovery's `PhaseRecord` write is the forcing function for the `phases: PhaseRecord[]` structure on `RunInfo` described in [Working](working.md). The two ship together as one PR. Splitting them would mean the refactor lands without a forcing function (and rots) or discovery adds yet another flat field set (`discoveryCostUsd`, `discoverySessionId`, ...) to the structure the refactor is trying to replace. See [Working](working.md) for the new shape and the read-time compat shim that handles existing `.run.json` files.
-
 ## Trigger
 
 The user clicks Start on a task. Discovery runs immediately — it is the first phase of every run. Planning always follows discovery.
@@ -126,33 +122,177 @@ The bias-to-proceed heuristic is the entire UX. Ship the prompt with worked exam
 
 The pattern: **ASK** when (a) the playbook or spec lists something as required AND (b) Q can't derive it from inputs/specs/samples AND (c) it would change the plan. **PROCEED** otherwise. Over time, specs may say "if X is missing, assume Y" — that further reduces unnecessary questions and is a separate stream-level investment.
 
-## Interactive Q&A Plumbing
+## Lifecycle and Run State
 
-Discovery runs inside the run loop (like planning and working) but adds one new capability: the run stream can emit question events, and the client can submit answers back. This keeps the server in control of transitions and billing while enabling interactivity.
+Discovery adds one new status to `.run.json`:
 
-### How Questions Reach the Client
+| Status        | Meaning                                                         |
+| ------------- | --------------------------------------------------------------- |
+| `discovering` | Discovery agent is running (including waiting for user answers) |
+
+No `discovered` status. When discovery completes, the loop writes `status: 'planning'` immediately. The `discovering` → `planning` transition is instantaneous — nothing renders between them.
+
+The full `RunInfo.status` union becomes:
+
+```
+'discovering' | 'planning' | 'plan_ready' | 'working' | 'completed' | 'stopped'
+```
+
+The `stoppedDuring` union gets `'discovery'` alongside `'planning'` and `'working'`.
+
+### Phase Records and pendingQuestions
+
+Discovery uses the `phases` array on `RunInfo` (see [Working](working.md) for the full `PhaseRecord` and `RunInfo` type definitions). When discovery completes, a `PhaseRecord` with `phase: 'discovery'` is appended — recording `costUsd`, `durationMs`, and `sessionId`. The panel reads `phases.find(p => p.phase === 'discovery')` for duration, cost, and session transcript link.
+
+When discovery is blocking on AskUserQuestion, the `pendingQuestions` field on `RunInfo` stores the current question input. Cleared when the user answers. This enables client reconnect and multi-channel adapters to read the pending questions from the task content API.
+
+**Stale-run cleanup must clear `pendingQuestions`.** When `clearStaleRun()` flips a leftover `'discovering'` status to `'stopped'` (server restart, HMR, etc.), it also clears `pendingQuestions`. Otherwise the client could read a stopped run with `pendingQuestions` still set and incorrectly render the question UI. The render rule is "if `pendingQuestions` is present, show the question UI" — so the disk write must keep status and pendingQuestions consistent.
+
+### Canonical write order between discovery and planning
+
+Order matters for crash recovery:
+
+1. Discovery `query()` resolves successfully. Q has already written any `## Discovery` section to `task.md` and exited.
+2. `commitGitState('[stream/task] Discovery complete')` — captures the `## Discovery` diff (no-op if Q wrote nothing, since `commitGitState` is a no-op on a clean tree).
+3. Append `PhaseRecord { phase: 'discovery', sessionId, costUsd, durationMs, ... }` to `phases` on `.run.json`.
+4. Flip `.run.json.status` to `'planning'` (combine with step 3 in a single atomic write where possible).
+5. Run the planning agent.
+
+A crash between step 2 and step 3 leaves a "Discovery complete" commit on disk but no `PhaseRecord` for it. On the next read, `clearStaleRun` flips status to `'stopped'` and the user sees Restart options. The commit remains in history; the next discovery will append a fresh `PhaseRecord`. No data loss; no inconsistency that requires manual recovery.
+
+### Loop dispatch
+
+In `loop.server.ts`, the `runLoop` function dispatches based on mode:
+
+```typescript
+if (mode === 'discovery') {
+  // Run discovery, then planning sequentially
+  const discoveryStatus = await runDiscoveryIteration(...)
+  if (discoveryStatus !== 'completed') {
+    // 'stopped' (user/error/budget) — don't continue to planning
+    finalStatus = discoveryStatus
+  } else {
+    // Discovery succeeded — commit and continue to planning.
+    // commitGitState is a no-op on a clean tree, so this only creates a
+    // commit if Q wrote a ## Discovery section to task.md.
+    commitGitState(`[${streamName}/${taskName}] Discovery complete`)
+    finalStatus = await runPlanningIteration(...)
+  }
+} else if (mode === 'planning') {
+  finalStatus = await runPlanningIteration(...)
+} else {
+  finalStatus = await runWorkingLoop(...)
+}
+```
+
+`runDiscoveryIteration` follows the same structure as `runPlanningIteration`: create a session, run `query()`, handle abort/budget/error, return `Promise<RunInfo['status']>`. The key difference: discovery uses `canUseTool` with AskUserQuestion blocking and question broadcasting, while planning uses `createAutomatedCanUseTool()` (fully automated). In practice, discovery returns `'completed'` on success and `'stopped'` for any abort/error/budget case (with `stopReason` and `stoppedDuring` written to `.run.json` before returning). The dispatcher only proceeds to planning on `=== 'completed'`.
+
+### Type changes required
+
+Add `'discovery'` to every `mode` union and `'discovering'` to every `RunInfo.status` union. Concrete sites:
+
+- `app/api/run/start/route.ts` — request body schema (currently `'planning' | 'working'`).
+- `lib/run/loop.server.ts` — `startRun()` and `runLoop()` signatures + dispatch.
+- `lib/fs/types.ts` — `RunInfo.status` and `RunInfo.stoppedDuring` unions (see [Working](working.md) for the full new shape).
+- Client run-actions hook (find via `grep -rn '"planning" | "working"' happyhq/components` — look for the `useRunActions` / `use-run-actions` file).
+
+After updating the unions, run `pnpm check-types` from `happyhq/`. TypeScript will surface every site that switches on `status` or `mode` without a default — add a `'discovering'` arm to each. Don't suppress with `as any`; an unhandled status arm is the kind of bug that goes silent in production.
+
+### Billing
+
+Discovery cost is tracked within the same billing task run record that spans the full run lifecycle. The `runLoop` function starts a billing record at the top (`startTaskRun`) and finalizes at the bottom (`finalizeTaskRun`). When `mode: 'discovery'`, the loop runs discovery then planning sequentially — the billing record naturally spans both.
+
+After discovery completes, a `PhaseRecord` with `phase: 'discovery'` is appended to the `phases` array on `.run.json`, recording cost and duration. The `costUsd` field on RunInfo tracks the cumulative total (discovery + planning + working). `updateUsage` calls happen after each phase.
+
+## Plumbing
+
+### Question event on the run stream
 
 The run stream already broadcasts activity events via `notifyClient` in the run loop. Discovery adds a new event type:
 
 ```typescript
-// New event type in ChatStreamEvent
+// New variant in ChatStreamEvent
 | { type: 'question'; sessionId: string; questions: AskUserQuestionInput['questions'] }
 ```
 
-When the discovery agent calls AskUserQuestion, the `canUseTool` callback runs the setup sequence (see [canUseTool Callback](#canusetool-callback) for the canonical ordering — disk write first, then task.md pending, then broadcast, then block). The summary:
+`notifyClient` in the run loop is `(event) => broadcast(encodeEvent(event))`. Adding the new variant to `ChatStreamEvent` is sufficient — no new transport is needed. This uses the same callback pattern that PostToolUse hooks already use to emit activity step events; it does not go through `filterMessage` (which converts SDK messages into events, a separate path).
 
-1. Write `pendingQuestions` to `.run.json`.
-2. Set `pending: 'clarification'` on `task.md`.
-3. Broadcast `{ type: 'question', sessionId, questions }` through `notifyClient`.
-4. Block on `Promise.race([waitForAnswer(sessionId), abortPromise])`.
+### canUseTool callback
 
-The client receives the question event via `GET /api/run/stream` (same SSE connection it's already using for activity steps) and renders the question UI. This uses the same `notifyClient` callback pattern that PostToolUse hooks already use to emit activity step events — it does not go through `filterMessage` (which converts SDK messages into events, a separate path).
+```typescript
+canUseTool: async (toolName, input, { signal }) => {
+  if (toolName === 'AskUserQuestion') {
+    // Setup ordering: disk first (most critical for reconnect), then
+    // task.md pending, then broadcast, then block.
+    try {
+      await updateRunInfoPendingQuestions(taskName, input.questions)
+      await updateTaskMdPending(taskPath(taskName), 'clarification')
+    } catch (err) {
+      // Setup-write failure: log, then deny rather than block on
+      // input we can't surface.
+      log('run.error', {
+        stream: streamName,
+        task: taskName,
+        error: 'Discovery state write failed',
+      })
+      return { result: 'deny', message: 'Discovery state write failed' }
+    }
+    notifyClient({ type: 'question', sessionId, questions: input.questions })
+    try {
+      const answers = await Promise.race([
+        waitForAnswer(sessionId),
+        new Promise<never>((_, reject) => {
+          signal.addEventListener('abort', () => reject(new Error('Aborted')), {
+            once: true,
+          })
+        }),
+      ])
+      return { result: 'allow', updatedInput: { ...input, answers } }
+    } finally {
+      // Clear pendingQuestions + pending whether answered or aborted.
+      // Fire-and-forget — the loop's next status write reconciles disk state.
+      await updateRunInfoPendingQuestions(taskName, undefined).catch(() => {})
+      await updateTaskMdPending(taskPath(taskName), undefined).catch(() => {})
+    }
+  }
+  return {
+    result: 'deny',
+    message: `Tool ${toolName} not available in discovery mode`,
+  }
+}
+```
 
-### Client Reconnect
+Same structure as the learning agent's `canUseTool`, with three additions specific to running inside the run loop:
 
-If the client disconnects and reconnects while discovery is waiting for answers, it needs to recover the pending questions. The `pendingQuestions` field on `RunInfo` stores the current AskUserQuestion input when discovery is blocking. The task content API (`GET /api/fs/task`) returns this as part of `.run.json`, so on reconnect the client sees `status: 'discovering'` + `pendingQuestions` and re-renders the question UI. This also serves the multi-channel case — a Slack adapter reads `pendingQuestions` from `.run.json` to know what to relay.
+1. Broadcasts a `question` event through the **run** SSE stream via `notifyClient` (learning broadcasts on the chat stream).
+2. Writes `pendingQuestions` to `.run.json` before blocking, clears it after.
+3. Sets `pending: 'clarification'` on `task.md` before blocking, clears it after.
 
-The `canUseTool` callback writes `pendingQuestions` to `.run.json` before blocking and clears it after the user answers. `pendingQuestions` (on `.run.json`) and `pending: 'clarification'` (on `task.md`) are two separate writes that the callback keeps in sync — see [canUseTool Callback](#canusetool-callback) for the exact setup and cleanup ordering.
+**Setup ordering before blocking** (disk write first because it's the only correctness mechanism for reconnect; the SSE event is a fast path):
+
+1. `updateRunInfoPendingQuestions(taskName, input.questions)` — disk first.
+2. `updateTaskMdPending(taskPath(taskName), 'clarification')` — drives the task-list badge.
+3. `notifyClient({ type: 'question', ... })` — fire-and-forget.
+4. `Promise.race([waitForAnswer(sessionId), abortPromise])` — block.
+
+If step 1 or 2 throws, the callback logs `run.error`, returns `{ result: 'deny', message: 'Discovery state write failed' }`. Q falls back without blocking; we never block on user input we can't reliably surface. **No silent denials.**
+
+**Cleanup** (in `finally`): clear `pendingQuestions` and `pending` in the same order as setup, both with `.catch(() => {})` since the callback is exiting and the loop's next status write will reconcile disk state.
+
+**Implementation note: `updateRunInfoPendingQuestions` is a new helper.** The existing `writeRunInfo` (private in `lib/run/loop.server.ts`) takes a full `RunInfo`, not a partial. The simplest implementation is a thin read-merge-write wrapper:
+
+```typescript
+async function updateRunInfoPendingQuestions(
+  taskName: string,
+  questions: AskUserQuestionInput['questions'] | undefined,
+): Promise<void> {
+  const info = await readRunInfo(taskName)
+  if (!info) return
+  await writeRunInfo(taskName, { ...info, pendingQuestions: questions })
+}
+```
+
+Live alongside `writeRunInfo` in `lib/run/loop.server.ts`, or hoist both to `lib/fs/run-json.server.ts` if `parseRunInfo` lands there too. The spec doesn't prescribe — implementer's call. `updateTaskMdPending` is the parallel pattern, already in `lib/fs/task-md.server.ts`.
 
 ### Event vs. disk precedence (rule)
 
@@ -162,11 +302,13 @@ The disk is authoritative; the SSE `question` event is a fast path. Concretely:
 - The SSE `question` event is fire-and-forget (the run stream uses `writer.write(...).catch(() => {})` — see [Working](working.md) on stream writes). A client mid-reconnect can miss it; the disk write closes that race.
 - Multi-channel adapters (future Slack, email) read `pendingQuestions` from `.run.json` directly. They never depend on the SSE event existing.
 
-This means: if discovery has questions but the SSE event was dropped, the client still renders correctly on next read of the task content API. The event is an optimization for in-app liveness, not a correctness mechanism.
+If discovery has questions but the SSE event was dropped, the client still renders correctly on next read of the task content API. The event is an optimization for in-app liveness, not a correctness mechanism.
 
-### How Answers Get Back
+### Client reconnect
 
-New endpoint: `POST /api/run/answer` — thin wrapper that calls `submitAnswer(sessionId, answers)` on the pending-questions store. The client doesn't need to know the sessionId — the server knows which discovery session is active (module-level state, same as `getActiveRunInfo()`).
+If the client disconnects and reconnects while discovery is waiting for answers, the task content API (`GET /api/fs/task`) returns `.run.json` including `pendingQuestions`. The client sees `status: 'discovering'` + `pendingQuestions` and re-renders the question UI. This also serves the multi-channel case — a Slack adapter reads `pendingQuestions` from `.run.json` to know what to relay.
+
+### POST /api/run/answer
 
 ```typescript
 // POST /api/run/answer
@@ -184,19 +326,11 @@ New endpoint: `POST /api/run/answer` — thin wrapper that calls `submitAnswer(s
 
 When the promise resolves, `canUseTool` clears `pending: 'clarification'` on `task.md` and returns the answers to the SDK. Q continues within the same `query()` call — more activity events stream through the existing connection.
 
-### Why Not a Chat Session
+The client doesn't need to know the sessionId — the server knows which discovery session is active (module-level state, same as `getActiveRunInfo()`).
 
-Discovery could use the chat infrastructure (`POST /api/chat`) which already handles AskUserQuestion. But this would mean:
+## Agent and Wiring
 
-- The client has to orchestrate the transition from discovery chat → planning run (fragile — what if user navigates away?)
-- Billing spans two separate systems (chat session cost + run cost)
-- `.run.json` status management is split between chat and run code
-
-Keeping discovery in the run loop means the server owns the full lifecycle: `discovering` → planning → `plan_ready` → working → `completed`. One billing record. One state machine. The new plumbing (question event + answer endpoint) is small and contained.
-
-## Agent Configuration
-
-Discovery is a new agent mode alongside learning, planning, and working. The `discoveryAgentOptions()` factory in `config.server.ts` defines it.
+Discovery is a new agent mode alongside learning, planning, and working. The `discoveryAgentOptions()` factory in `lib/agents/config.server.ts` defines it.
 
 ### Model and Budget
 
@@ -227,219 +361,6 @@ allowedTools: [
 - `persistSession: true` (enables session resume on budget stop, same as planning/working).
 - `settingSources: []` (SDK isolation mode, same as other modes).
 
-### canUseTool Callback
-
-```typescript
-canUseTool: async (toolName, input, { signal }) => {
-  if (toolName === 'AskUserQuestion') {
-    // Setup ordering: disk first (most critical for reconnect), then
-    // task.md pending, then broadcast, then block.
-    try {
-      await updateRunInfoPendingQuestions(taskName, input.questions)
-      await updateTaskMdPending(taskPath(taskName), 'clarification')
-    } catch (err) {
-      // Setup-write failure: deny rather than block on input we can't surface.
-      return { result: 'deny', message: 'Discovery state write failed' }
-    }
-    notifyClient({ type: 'question', sessionId, questions: input.questions })
-    try {
-      const answers = await Promise.race([
-        waitForAnswer(sessionId),
-        new Promise<never>((_, reject) => {
-          signal.addEventListener('abort', () => reject(new Error('Aborted')), {
-            once: true,
-          })
-        }),
-      ])
-      return { result: 'allow', updatedInput: { ...input, answers } }
-    } finally {
-      // Clear pendingQuestions + pending whether answered or aborted.
-      // Fire-and-forget — the loop's next status write reconciles disk state.
-      await updateRunInfoPendingQuestions(taskName, undefined).catch(() => {})
-      await updateTaskMdPending(taskPath(taskName), undefined).catch(() => {})
-    }
-  }
-  return {
-    result: 'deny',
-    message: `Tool ${toolName} not available in discovery mode`,
-  }
-}
-```
-
-Same structure as the learning agent's `canUseTool`, with additions specific to running inside the run loop.
-
-**Setup ordering before blocking** (the canUseTool callback runs these in order; the disk write is most critical for reconnect, so it goes first):
-
-1. Write `pendingQuestions` to `.run.json` via `updateRunInfoPendingQuestions(taskName, input.questions)`.
-2. Set `pending: 'clarification'` on `task.md` via `updateTaskMdPending(...)`.
-3. Broadcast the `question` event via `notifyClient` — fire-and-forget.
-4. Block on `Promise.race([waitForAnswer(sessionId), abortPromise])`.
-
-If step 1 or 2 throws, the callback returns `{ result: 'deny', message: 'Discovery state write failed' }` — Q falls back without blocking, and discovery proceeds to write whatever `## Discovery` section it has and exit. We never block on user input we can't reliably surface.
-
-**Cleanup on resolution or abort** (in `finally`): clear `pendingQuestions` and `pending` in the same order as setup, both with `.catch(() => {})` since the callback is exiting and the disk state will be reconciled by the loop's next status write.
-
-**Implementation note: `updateRunInfoPendingQuestions` is a new helper.** The existing `writeRunInfo` (private in `lib/run/loop.server.ts`) takes a full `RunInfo`, not a partial. The simplest implementation is a thin read-merge-write wrapper:
-
-```typescript
-async function updateRunInfoPendingQuestions(
-  taskName: string,
-  questions: AskUserQuestionInput['questions'] | undefined,
-): Promise<void> {
-  const info = await readRunInfo(taskName)
-  if (!info) return
-  await writeRunInfo(taskName, { ...info, pendingQuestions: questions })
-}
-```
-
-Live alongside `writeRunInfo` in `lib/run/loop.server.ts` (private), or hoist both to `lib/fs/run-json.server.ts` if `parseRunInfo` lands there too. The spec doesn't prescribe — implementer's call. `updateTaskMdPending` is the parallel pattern, already in `lib/fs/task-md.server.ts`.
-
-### System Prompt
-
-New file: `prompts/discovery.md`. The prompt tells Q:
-
-- Your job is the gut check before planning: does this task have what's needed to plan well?
-- **Read first, ask second.** Read the task description, inputs, playbook, specs, and samples _before_ deciding whether to ask anything. Questions are about what those materials don't cover.
-- If everything's there, write a brief `## Discovery` synthesis to `task.md` (or nothing if there's nothing useful to add) and exit.
-- If something's genuinely missing that would change the plan, use `AskUserQuestion` with structured multiple-choice options.
-- Bias toward proceeding. Don't ask just because you can.
-- 1–3 focused questions max per round.
-- Web research (`WebFetch`, `WebSearch`) is for filling specific gaps when needed — not a default exploration mode.
-
-The reading list is built the same way as planning: `buildReadingList()` from `prompts.server.ts` injects specs, samples, inputs, and playbook paths.
-
-Worked calibration examples ship in the prompt itself (see [Calibration: when to ask vs. proceed](#calibration-when-to-ask-vs-proceed) above). Without them, the prompt iterates by vibe.
-
-## Run State
-
-Discovery adds one new status to `.run.json`:
-
-| Status        | Meaning                                                         |
-| ------------- | --------------------------------------------------------------- |
-| `discovering` | Discovery agent is running (including waiting for user answers) |
-
-No `discovered` status. When discovery completes, the loop writes `status: 'planning'` immediately. The `discovering` → `planning` transition is instantaneous — nothing renders between them.
-
-The full `RunInfo.status` union becomes:
-
-```
-'discovering' | 'planning' | 'plan_ready' | 'working' | 'completed' | 'stopped'
-```
-
-The `stoppedDuring` union gets `'discovery'` alongside `'planning'` and `'working'`.
-
-### Phase Records
-
-Discovery uses the `phases` array on `RunInfo` (see [Working](working.md) for the full `PhaseRecord` and `RunInfo` type definitions). When discovery completes, a `PhaseRecord` with `phase: 'discovery'` is appended — recording `costUsd`, `durationMs`, and `sessionId`. The panel reads `phases.find(p => p.phase === 'discovery')` for duration, cost, and session transcript link.
-
-When discovery is blocking on AskUserQuestion, the `pendingQuestions` field on `RunInfo` stores the current question input. Cleared when the user answers. This enables client reconnect and multi-channel adapters to read the pending questions from the task content API.
-
-**Stale-run cleanup must clear `pendingQuestions`.** When `clearStaleRun()` flips a leftover `'discovering'` status to `'stopped'` (server restart, HMR, etc.), it also clears `pendingQuestions`. Otherwise the client could read a stopped run with `pendingQuestions` still set and incorrectly render the question UI. The render rule is "if `pendingQuestions` is present, show the question UI" — so the disk write must keep status and pendingQuestions consistent.
-
-### Lifecycle
-
-```
-startRun(stream, task, 'discovery')
-  │
-  ├── writes .run.json { status: 'discovering' }
-  │
-  ├── runs discovery agent (single session via query())
-  │     │
-  │     ├── Q reads task, inputs, playbook, specs
-  │     ├── Q evaluates sufficiency
-  │     │
-  │     ├── has questions → AskUserQuestion
-  │     │     ├── canUseTool broadcasts question event to run stream
-  │     │     ├── canUseTool sets pending: 'clarification'
-  │     │     ├── user answers via POST /api/run/answer → canUseTool clears pending → Q continues
-  │     │     └── user stops run → abort signal → session ends
-  │     │
-  │     ├── Q synthesizes → appends ## Discovery to task.md
-  │     └── session ends
-  │
-  ├── commits: [stream/task] Discovery complete (no-op if Q wrote nothing)
-  │
-  ├── appends PhaseRecord { phase: 'discovery', sessionId, costUsd, durationMs, ... }
-  │   to phases array on .run.json
-  │
-  ├── flips .run.json { status: 'planning' }   (single write where possible)
-  │
-  └── runs planning agent (same as today)
-```
-
-The auto-transition from discovery to planning happens inside the server process. There is no conditional — planning always follows discovery. The only branching is if discovery errors or is stopped, in which case planning doesn't run. The user can close the tab after answering Q's last question and come back to find planning done (or `plan_ready`).
-
-**Canonical write order between discovery and planning** (matters for crash recovery):
-
-1. Discovery `query()` resolves successfully. Q has already written any `## Discovery` section to `task.md` and exited.
-2. `commitGitState('[stream/task] Discovery complete')` — the commit captures the `## Discovery` diff (or is a no-op if Q wrote nothing).
-3. Append `PhaseRecord { phase: 'discovery', ... }` to `phases` on `.run.json` — single atomic write.
-4. Flip `.run.json.status` to `'planning'` — single atomic write (can be combined with step 3).
-5. Run the planning agent.
-
-A crash between step 2 and step 3 leaves a "Discovery complete" commit on disk but no `PhaseRecord` for it. On the next read, `clearStaleRun` flips status to `'stopped'` and the user sees Restart options. The commit remains in history; the next discovery will append a fresh PhaseRecord. No data loss; no inconsistency that requires manual recovery.
-
-### Loop Implementation
-
-In `loop.server.ts`, the `runLoop` function dispatches based on mode:
-
-```typescript
-if (mode === 'discovery') {
-  // Run discovery, then planning sequentially
-  const discoveryStatus = await runDiscoveryIteration(...)
-  if (discoveryStatus !== 'completed') {
-    // 'stopped' (user/error) or 'budget' — don't continue to planning
-    finalStatus = discoveryStatus
-  } else {
-    // Discovery succeeded — commit and continue to planning.
-    // commitGitState is a no-op on a clean tree, so this only creates a
-    // commit if Q wrote a ## Discovery section to task.md.
-    commitGitState(`[${streamName}/${taskName}] Discovery complete`)
-    finalStatus = await runPlanningIteration(...)
-  }
-} else if (mode === 'planning') {
-  finalStatus = await runPlanningIteration(...)
-} else {
-  finalStatus = await runWorkingLoop(...)
-}
-```
-
-`runDiscoveryIteration` follows the same structure as `runPlanningIteration`: create a session, run `query()`, handle abort/budget/error, return `Promise<RunInfo['status']>`. The key difference: discovery uses `canUseTool` with AskUserQuestion blocking and question broadcasting, while planning uses `createAutomatedCanUseTool()` (fully automated). In practice, discovery returns `'completed'` on success and `'stopped'` for any abort/error/budget case (with the corresponding `stopReason` and `stoppedDuring` written to `.run.json` before returning). The dispatcher only continues to planning on `=== 'completed'`.
-
-**Type changes required.** Add `'discovery'` to every `mode` union and `'discovering'` to every `RunInfo.status` union. The concrete sites:
-
-- `app/api/run/start/route.ts` — request body schema (currently `'planning' | 'working'`).
-- `lib/run/loop.server.ts` — `startRun()` and `runLoop()` signatures + dispatch.
-- `lib/fs/types.ts` — `RunInfo.status` and `RunInfo.stoppedDuring` unions (see [Working](working.md) for the full new shape).
-- Client run-actions hook (find via `grep -rn '"planning" | "working"' happyhq/components` — look for the `useRunActions` / `use-run-actions` file).
-
-After updating the unions, run `pnpm check-types` from `happyhq/`. TypeScript will surface every site that switches on `status` or `mode` without a default — add a `'discovering'` arm to each. Don't suppress with `as any`; an unhandled status arm is the kind of bug that goes silent in production.
-
-### Billing
-
-Discovery cost is tracked within the same billing task run record that spans the full run lifecycle. The `runLoop` function starts a billing record at the top (`startTaskRun`) and finalizes at the bottom (`finalizeTaskRun`). When `mode: 'discovery'`, the loop runs discovery then planning sequentially — the billing record naturally spans both.
-
-After discovery completes, a `PhaseRecord` with `phase: 'discovery'` is appended to the `phases` array on `.run.json`, recording cost and duration. The `costUsd` field on RunInfo tracks the cumulative total (discovery + planning + working). `updateUsage` calls happen after each phase.
-
-### Config schema additions
-
-The `discoveryAgentOptions()` factory needs `config.models.discovery` and `config.limits.discoveryBudgetUsd` to exist. These fields don't exist today — the schemas at `happyhq/lib/config/types.ts` only list learning/planning/working. Add:
-
-- `AppConfig.models.discovery?: ModelConfig` (optional — user override).
-- `AppConfig.limits.discoveryBudgetUsd?: number` (optional — user override).
-- `ResolvedConfig.models.discovery: Required<ModelConfig>` (required in resolved form).
-- `ResolvedConfig.limits.discoveryBudgetUsd: number` (required in resolved form).
-
-Add corresponding defaults in `happyhq/lib/config/defaults.ts`. Mirror the existing `models.planning` / `limits.planningBudgetUsd` defaults — Opus model with adaptive thinking, conservative budget.
-
-The factory then reads them the same way the other factories do today:
-
-```typescript
-// happyhq/lib/agents/config.server.ts — discoveryAgentOptions
-model: MODEL_IDS[config.models.discovery.model],
-maxBudgetUsd: config.limits.discoveryBudgetUsd,
-```
-
 ### PostToolUse hook for Write
 
 Discovery's factory needs a `PostToolUse` hook that fires after `Write` to emit `task_content_changed` — same pattern as planning/working at [`happyhq/lib/agents/config.server.ts:507-515`](happyhq/lib/agents/config.server.ts#L507-L515). Without this, the user won't see the `## Discovery` section appear in the panel until they manually refresh.
@@ -464,30 +385,55 @@ hooks: {
 
 Same shape as planning's hook; only the agent factory it's wired to differs.
 
+### Config schema additions
+
+The factory needs `config.models.discovery` and `config.limits.discoveryBudgetUsd` to exist. These fields don't exist today — the schemas at `happyhq/lib/config/types.ts` only list learning/planning/working. Add:
+
+- `AppConfig.models.discovery?: ModelConfig` (optional — user override).
+- `AppConfig.limits.discoveryBudgetUsd?: number` (optional — user override).
+- `ResolvedConfig.models.discovery: Required<ModelConfig>` (required in resolved form).
+- `ResolvedConfig.limits.discoveryBudgetUsd: number` (required in resolved form).
+
+Add corresponding defaults in `happyhq/lib/config/defaults.ts`. Mirror the existing `models.planning` / `limits.planningBudgetUsd` defaults — Opus model with adaptive thinking, conservative budget.
+
+The factory then reads them the same way the other factories do today:
+
+```typescript
+// happyhq/lib/agents/config.server.ts — discoveryAgentOptions
+model: MODEL_IDS[config.models.discovery.model],
+maxBudgetUsd: config.limits.discoveryBudgetUsd,
+```
+
+### System prompt
+
+New file: `prompts/discovery.md`. The prompt tells Q:
+
+- Your job is the gut check before planning: does this task have what's needed to plan well?
+- **Read first, ask second.** Read the task description, inputs, playbook, specs, and samples _before_ deciding whether to ask anything. Questions are about what those materials don't cover.
+- If everything's there, write a brief `## Discovery` synthesis to `task.md` (or nothing if there's nothing useful to add) and exit.
+- If something's genuinely missing that would change the plan, use `AskUserQuestion` with structured multiple-choice options.
+- Bias toward proceeding. Don't ask just because you can.
+- 1–3 focused questions max per round.
+- Web research (`WebFetch`, `WebSearch`) is for filling specific gaps when needed — not a default exploration mode.
+
+The reading list is built the same way as planning: `buildReadingList()` from `prompts.server.ts` injects specs, samples, inputs, and playbook paths. Worked calibration examples ship in the prompt itself (see [Calibration: when to ask vs. proceed](#calibration-when-to-ask-vs-proceed)). Without them, the prompt iterates by vibe.
+
 ### Logging
 
-Discovery emits the existing `run.*` structured-log events ([`happyhq/lib/log.server.ts`](happyhq/lib/log.server.ts)). No new event namespace.
+Discovery emits the existing `run.*` structured-log events (`lib/log.server.ts`). No new event namespace.
 
 - `run.started` already includes a `mode` field — when `mode: 'discovery'`, that's discovery starting.
 - `run.stopped` with `stoppedDuring: 'discovery'` for user/error/budget aborts.
-- `run.error` for fatal errors during discovery (e.g., setup-write failure in `canUseTool`).
+- `run.error` for fatal errors during discovery (including the `canUseTool` setup-write failure described above).
 - `run.completed` for the run as a whole (after planning + working finish).
 
-PhaseRecord on `.run.json` captures success metrics (cost, duration, sessionId) — no separate per-phase log event needed. The mode and stoppedDuring fields are sufficient to grep discovery activity.
+PhaseRecord on `.run.json` captures success metrics (cost, duration, sessionId) — no separate per-phase log event needed. The mode and `stoppedDuring` fields are sufficient to grep discovery activity.
 
-**`canUseTool` setup-write failure** specifically should emit `run.error` with an explanatory message before returning `{ result: 'deny', message: 'Discovery state write failed' }` — silent denials are bad ops.
+## Restart and Cleanup
 
-## Git Commits and Restart
+Discovery is a heads-up preamble, not a savepoint to "restart from." It just runs whenever a fresh run starts (or resumes from a stopped-during-discovery state — naturally, by sending `mode: 'discovery'`). The user is in control of `task.md` directly: they can edit it freely between runs to remove a stale `## Discovery` section, change the description, or anything else.
 
-### Discovery Commits
-
-When discovery completes successfully and writes anything to `task.md`, the loop commits: `[stream/task] Discovery complete`. This commit is a chronological marker in git history showing what Q contributed. Nothing in v0 reads this commit programmatically — restart paths don't use it as an anchor. Its only role is auditability (git log + diff show what discovery added to `task.md`).
-
-If Q wrote nothing (clean tree), no commit happens. That's fine — the PhaseRecord on `.run.json` still records that discovery ran.
-
-### Restart From a Phase
-
-Discovery is a heads-up preamble, not a savepoint to "restart from." It just runs whenever a fresh run starts (or resumes from a stopped-during-discovery state — naturally, by sending `mode: 'discovery'`). The user is in control of `task.md` directly: they can edit it freely between runs to remove a stale `## Discovery` section, change the description, or anything else. There's no "restore task.md to pre-discovery state" affordance because the user is the one in charge of task.md.
+### Restart options
 
 The two visible restart paths after a stopped or completed run:
 
@@ -496,13 +442,29 @@ The two visible restart paths after a stopped or completed run:
 | Planning     | `'planning'` | `plan.md` deleted, `working/` and `outputs/` cleared. `task.md` (including any `## Discovery`) is untouched.  |
 | Working      | `'working'`  | `working/` and `outputs/` cleared, `plan.md` restored from "Plan accepted" commit. Everything else preserved. |
 
-There is no "Restart from discovery" button. The mode `'discovery'` exists in the API for fresh starts and for resuming a stopped-during-discovery run, but it isn't surfaced as a restart button — completed runs don't offer "redo from discovery." If a user wants Q to look at the task fresh, they edit `task.md` to remove the prior `## Discovery` section (and/or change the description) and click Restart from plan; planning will read whatever's there. For a fully clean slate, duplicate the task as a new task.
+There is no "Restart from discovery" button. The mode `'discovery'` exists in the API for fresh starts and for resuming a stopped-during-discovery run, but it isn't surfaced as a restart button — completed runs don't offer "redo from discovery." If a user wants Q to look at the task fresh, they edit `task.md` to remove the prior `## Discovery` section (and/or change the description) and click Restart from plan; planning will read whatever's there. For a fully clean slate, duplicate the task.
 
-### startRun Cleanup Updates
+### startRun cleanup
 
 The `startRun` function's fresh-run cleanup block does **not** gain a discovery case. Discovery has nothing to clean up before running — `task.md` is the user's, and the `## Discovery` section (if any from a prior run) is just text in the file. Q's prompt handles the "task already has a `## Discovery` section" case by deciding whether to update or leave it (judgment in the prompt; not enforced by code).
 
 The existing `mode === 'planning'` cleanup handles deleting `plan.md` and clearing `working/`/`outputs/`. The existing `mode === 'working'` cleanup handles `restorePlanFromGit`. Discovery adds nothing.
+
+### Discovery git commit
+
+When discovery completes successfully and writes anything to `task.md`, the loop commits: `[stream/task] Discovery complete`. This commit is a chronological marker in git history showing what Q contributed. Nothing in v0 reads this commit programmatically — restart paths don't use it as an anchor. Its only role is auditability (git log + diff show what discovery added to `task.md`).
+
+If Q wrote nothing (clean tree), no commit happens. That's fine — the PhaseRecord on `.run.json` still records that discovery ran.
+
+### Stopping during discovery
+
+There is no dedicated "skip discovery" button during the live Q&A. The Stop button (already present during every run phase) serves this purpose. When the user stops during discovery:
+
+- The session is aborted; `status: 'stopped'`, `stoppedDuring: 'discovery'` is written.
+- The `canUseTool` `finally` clears `pendingQuestions` and `pending: 'clarification'`. The island clears.
+- The task panel shows the standard stopped affordances: **Continue** (resumes discovery — sends `mode: 'discovery'`, picks up where it stopped) and **Restart from plan** (sends `mode: 'planning'`, runs planning against the current `task.md`).
+
+This keeps the UI simple (one Stop button, not Stop + Skip) and gives the user a clear choice between "let Q keep triaging" (Continue) and "I'm done with triage, just plan it" (Restart from plan).
 
 ## Task Panel UI
 
@@ -540,7 +502,7 @@ When the user submits answers (`POST /api/run/answer`), the question block clear
 
 When discovery completes and the loop flips status to `'planning'`, the user sees the header text change from "Reviewing the task..." to "Planning..." and the activity stream restart with planning's events. There's no flicker, no spinner reset, no empty intermediate state — same shape as the existing `planning → plan_ready` transition. The brief gap (write status + append PhaseRecord + start planning's `query()`) is invisible at human timescales. The Stop button persists across the transition.
 
-### Completed-state row: clicking opens the session
+### Completed-state row
 
 ```
  Reviewed                                       2m 10s
@@ -576,18 +538,9 @@ The duration shown is **compute time**, recorded as `durationMs` on the discover
 
 > **Implementation note (transcript display).** Discovery sessions are SDK sessions associated with a run, accessed via `phase.sessionId`. They do not live in `.chats/{sessionId}/` like learning chats. The transcript-display component reads from the SDK journal regardless of which session-creation path produced it — to the user, the experience is identical. Don't fork into a second display component.
 
-### Restart Options
+### Clarification badge (task list)
 
-When a task is stopped or finished, the user has two restart affordances:
-
-- **Restart from plan** — `mode: 'planning'`. `task.md` (including any `## Discovery`) is preserved; `plan.md` deleted; `working/` and `outputs/` cleared. Planning runs.
-- **Restart from work** — `mode: 'working'`. Working/outputs cleared; `plan.md` restored from "Plan accepted" commit; everything else preserved. Working runs.
-
-There is no "Restart from discovery" button by design (see [Restart From a Phase](#restart-from-a-phase)). For a stopped-during-discovery run, clicking the resume affordance (Continue / Start) sends `mode: 'discovery'` naturally and the loop picks up where it stopped. For a completed run that the user wants Q to look at fresh, they edit `task.md` and click Restart from plan, or duplicate the task.
-
-### Clarification Indicator (task list)
-
-Separate from the in-card sub-row above, the task list item — anywhere a task title appears in a list (sidebar, home, search results) — shows a clarification badge when Q is waiting for answers:
+Separate from the in-card sub-row, the task list item — anywhere a task title appears in a list (sidebar, home, search results) — shows a clarification badge when Q is waiting for answers:
 
 ```
   Draft Q4 Proposal              · Needs clarification
@@ -595,11 +548,22 @@ Separate from the in-card sub-row above, the task list item — anywhere a task 
 
 This uses the existing `pending: 'clarification'` indicator pattern — same visual treatment as other pending states. Together with the in-card question sub-row, this gives the user two ways to find a discovery session that needs them: the badge wherever they encounter the task in a list, and the sub-row when they're already viewing the task.
 
-## Skip Mechanisms
+## v0 vs. v1 scope
 
-### Per-Stream Auto-Skip (deferred to v1 — design held for later)
+Everything documented in this spec is in v0 _unless_ listed below. The deferred items are not abandoned — they're held for v1 once we see how v0 lands in the wild.
 
-This subsection documents the design held for v1; it is **not in v0 scope** (see [v0 vs. v1 scope](#v0-vs-v1-scope)). v0 runs discovery on every Start.
+**Deferred from v0 (revisit after v0 ships):**
+
+- **`skipDiscovery` playbook frontmatter flag.** v0 runs discovery on every Start. Bias-to-proceed in the prompt should be enough — if a stream's playbook is rich and a task is well-formed, discovery transitions to planning in seconds without writing anything. Add the flag once we observe ask-rates that warrant a stream-level opt-out. Requires extending `PlaybookFrontmatter` (currently a closed schema) when added. Design held below for reference.
+- **Stream selection during discovery.** Tasks created with just a title would let Q suggest which stream to assign. Out of v0 scope; the architecture supports it.
+- **Channel adapters (Slack, email).** This spec keeps the architecture channel-ready (`pendingQuestions` on `.run.json`, `pending: 'clarification'` as a notification trigger, `AskUserQuestion` as the abstraction), but no adapter ships in v0. See [Multi-Channel Awareness](#multi-channel-awareness) for the readiness story.
+- **Concurrency-safe answer routing.** `POST /api/run/answer` resolves against module-level singleton state (same pattern as `getActiveRunInfo()`). When concurrency lands and the singleton becomes a `Map<>` (see [Working](working.md)), the answer endpoint will need a task identifier in the body. Decoupled from this PR.
+
+**Bundled into v0 (despite the original spec splitting them):**
+
+- **`phases: PhaseRecord[]` migration on `RunInfo`.** Discovery's `PhaseRecord` write is the forcing function for the new shape on `RunInfo` described in [Working](working.md). The two ship together as one PR — splitting them means the refactor lands without a forcing function (and rots) or discovery adds yet another flat field set (`discoveryCostUsd`, `discoverySessionId`, ...) to the structure the refactor is trying to replace. See [Working](working.md) for the new shape and the read-time compat shim that handles existing `.run.json` files.
+
+### v1 design — `skipDiscovery` playbook flag (held for later)
 
 Playbook frontmatter gains an optional `skipDiscovery` field:
 
@@ -614,16 +578,6 @@ When `skipDiscovery: true`, the Start button sends `mode: 'planning'` instead of
 
 This lives in the playbook because it's the right granularity — "I trust Q to plan SOWs without asking, but for research tasks it should always check." It's human-editable and is already read by the system during prompt construction. Adding it requires extending `PlaybookFrontmatter` (currently a closed schema) at v1 implementation time.
 
-### Stopping During Discovery
-
-There is no dedicated "skip discovery" button during the live Q&A. The Stop button (already present during every run phase) serves this purpose. When the user stops during discovery:
-
-- The session is aborted; `status: 'stopped'`, `stoppedDuring: 'discovery'` is written.
-- The `canUseTool` `finally` clears `pendingQuestions` and `pending: 'clarification'`. The island clears.
-- The task panel shows the standard stopped affordances: **Continue** (resumes discovery — sends `mode: 'discovery'`, picks up where it stopped) and **Restart from plan** (sends `mode: 'planning'`, runs planning against the current `task.md`).
-
-This keeps the UI simple (one Stop button, not Stop + Skip) and gives the user a clear choice between "let Q keep triaging" (Continue) and "I'm done with triage, just plan it" (Restart from plan).
-
 ## Multi-Channel Awareness
 
 This spec covers the in-app experience only. The design is channel-agnostic by construction:
@@ -635,53 +589,14 @@ This spec covers the in-app experience only. The design is channel-agnostic by c
 
 A separate spec will cover the channel routing layer, adapters, and the `source`/`notify` fields. The key architectural insight: channels are dumb pipes, Q is the only writer, and task.md is the canonical object.
 
-### Future: Stream Selection During Discovery
-
-Today, Start requires a stream assignment. A natural extension: tasks created with just a title could enter discovery without a stream, and Q could suggest which stream to assign based on the task description — "This looks like an Acme Client task — should I assign it there?" This would make quick-add even faster (title → Start → Q figures out the rest). Deferred from v0 (see [v0 vs. v1 scope](#v0-vs-v1-scope)); the architecture supports it.
-
-## Design Decisions
-
-**Discovery runs in the run loop, not as a chat session.** Discovery could use the chat infrastructure (`POST /api/chat`), which already handles AskUserQuestion rendering and answer submission. But this splits the lifecycle: the client would have to orchestrate the transition from discovery chat to planning run, billing would span two systems, and `.run.json` management would be divided between chat and run code. Keeping discovery in the run loop means the server owns the full lifecycle — `discovering` → `planning` → `plan_ready` → working → `completed`. One billing record. One state machine. The new plumbing (question event in run stream + answer endpoint) is small and contained.
-
-**Questions render in the island, not inline in the task card.** The island is the established surface for structured interactions during task work (plan approval uses it today). The task card shows a question sub-row beneath the "Reviewing the task..." header that points to the island. This avoids bloating the task card with interactive UI and keeps the question experience focused — same large, clear question blocks the user knows from learning mode.
-
-**Discovery enriches task.md, not a separate directory.** The task is the canonical object. After discovery, the task description should be self-contained. A separate `discovery/` directory would add surface area for limited benefit — the session log (via the discovery `PhaseRecord.sessionId`) is the audit trail, and `task.md` is what planning reads.
-
-**`task.md` is the user's; no destructive restore.** When a run is restarted, `task.md` is left untouched. The user controls its content between runs — they can keep, edit, or delete a prior `## Discovery` section as they wish. There is no `restoreTaskMdFromGit` helper, no commit-message-grep restore path, and no "Restart from discovery" button. Earlier drafts of this spec proposed those; they were dropped because (a) discovery is a heads-up preamble, not a savepoint to "restore to," and (b) handing the user a button that silently rewrites `task.md` makes the destructive case (overwriting their edits) too easy to hit. If a future "wipe plan/working but keep task.md" affordance is needed, it's a thin extension of the existing planning-mode cleanup — not a new restore mechanism.
-
-**No `discovered` status.** It would exist for ~0ms between discovery completing and planning starting. Nothing would render it. The task panel's "Reviewed 2m 10s" comes from the discovery `PhaseRecord` in the `phases` array, not the status field.
-
-**Opus, matching the other modes.** Discovery joins learning, planning, and working at Opus for consistency at v0. Sonnet would be cheaper and likely sufficient for read-and-assess work, but mixing models across modes complicates evaluation and prompt tuning early on. Once discovery is shipped and we have a feel for ask-rates and per-Start cost, we can downshift to Sonnet behind `config.models.discovery` without touching the rest of the system.
-
-**Bias toward proceeding.** The prompt should lean toward moving forward, asking only when the gap would materially change the plan. Specs define what's needed — if something is missing that specs call for, ask. But don't over-interrogate. Over time, specs can say "if X is missing, assume Y" to further reduce unnecessary questions.
-
-**Stop replaces skip.** No dedicated "skip discovery" button during the session. The Stop button already exists and does the right thing — abort the session, then the user chooses where to restart (including "Restart from plan" which skips discovery). This avoids a second button alongside Stop that does nearly the same thing.
-
-**Server-driven transitions.** The run loop handles discovery → planning sequentially, same as how it handles planning → `plan_ready`. No client orchestration needed. The user can close the tab after answering Q's last question and come back to find planning done. If Q had no questions, the transition is instant — the user sees "Reviewing the task..." briefly then "Planning..." with no gap.
-
-**Header stays stable across question state.** When questions surface, the header text doesn't change to something like "Q has questions for you" — the header is the _phase_ indicator, not the _state_ indicator. State (questions pending, files attached, plan ready) lives in sub-rows beneath the header. Swapping the header text would be jarring and would conflict with the sub-row pattern other phases already use. One header per phase, sub-rows for what's happening inside it.
-
-## v0 vs. v1 scope
-
-Everything documented in this spec is in v0 _unless_ listed below. The deferred items are not abandoned — they're held for v1 once we see how v0 lands in the wild.
-
-**Deferred from v0 (revisit after v0 ships):**
-
-- **`skipDiscovery` playbook frontmatter flag.** v0 runs discovery on every Start. Bias-to-proceed in the prompt should be enough — if a stream's playbook is rich and a task is well-formed, discovery transitions to planning in seconds without writing anything. Add the flag once we observe ask-rates that warrant a stream-level opt-out. Requires extending `PlaybookFrontmatter` (currently a closed schema) when added.
-- **Stream selection during discovery.** Tasks created with just a title would let Q suggest which stream to assign. Out of v0 scope; the architecture supports it.
-- **Channel adapters (Slack, email).** This spec keeps the architecture channel-ready (`pendingQuestions` on `.run.json`, `pending: 'clarification'` as a notification trigger, `AskUserQuestion` as the abstraction), but no adapter ships in v0. See [Multi-Channel Awareness](#multi-channel-awareness) for the readiness story.
-- **Concurrency-safe answer routing.** `POST /api/run/answer` resolves against module-level singleton state (same pattern as `getActiveRunInfo()`). When concurrency lands and the singleton becomes a `Map<>` (see [Working](working.md)), the answer endpoint will need a task identifier in the body. Decoupled from this PR.
-
-**Bundled into v0 (despite the spec originally splitting them):**
-
-- **`phases: PhaseRecord[]` migration on `RunInfo`.** Originally listed as a prerequisite; ships together with discovery. See [Type refactor](#type-refactor-ships-in-this-same-change) above and the new shape in [Working](working.md).
+**Future: stream selection during discovery.** Today, Start requires a stream assignment. A natural extension: tasks created with just a title could enter discovery without a stream, and Q could suggest which stream to assign based on the task description. This would make quick-add even faster (title → Start → Q figures out the rest). Deferred from v0 (see [v0 vs. v1 scope](#v0-vs-v1-scope)); the architecture supports it.
 
 ## End-to-end smoke scenarios
 
 The unit tests in [Testing](#testing) prove the plumbing is wired. The smoke harness (`pnpm smoke:e2e` → `scripts/smoke-e2e.ts`) proves the _experience_ works — real Chromium driving the real dev server against real Claude SDK calls. Discovery extends this in two ways:
 
 1. The existing golden path (plan → work) runs through discovery as its first phase. The fixture task should be rich enough that discovery proceeds silently. This is a free assertion that the silent-case happy path doesn't break the rest of the loop.
-2. Add discovery-specific scenarios that exercise the heads-up behaviors — questions appearing, answers programmatically submitted, restart paths preserving / restoring state.
+2. Add discovery-specific scenarios that exercise the heads-up behaviors — questions appearing, answers programmatically submitted, restart paths preserving state.
 
 **Fixture stream** under `scripts/smoke-fixtures/discovery/email-intros/` — neutral fictional names (no real customer or user data per project convention):
 
@@ -717,7 +632,7 @@ The unit tests in [Testing](#testing) prove the plumbing is wired. The smoke har
 **`canUseTool` and answers:**
 
 - [ ] `canUseTool` setup ordering: write `pendingQuestions` to `.run.json`, set `pending: 'clarification'` on task.md, broadcast `question` event, then block on `Promise.race([waitForAnswer, abort])`
-- [ ] Setup write failure (steps 1 or 2) returns `{ result: 'deny', message: ... }` — never blocks on input we can't surface
+- [ ] Setup write failure (steps 1 or 2) logs `run.error` and returns `{ result: 'deny', message: ... }` — never blocks on input we can't surface
 - [ ] Cleanup in `finally` clears both `pendingQuestions` and `pending: 'clarification'`, both with `.catch(() => {})`
 - [ ] Q can ask follow-up questions within the same session (multiple rounds)
 - [ ] `POST /api/run/answer` validates body via zod (`{ answers: Record<string, string> }`), returns 400 on schema fail, 404 on no-pending-question, 200 `{ status: 'answered' }` on success
@@ -783,20 +698,6 @@ The unit tests in [Testing](#testing) prove the plumbing is wired. The smoke har
 - [ ] Scenario 2 (asks questions and integrates answers) — discovery on the thin task surfaces question UI, programmatic answers submit, `## Discovery` section reflects answers, planning runs against enriched task.md
 - [ ] Scenario 3 (restart from plan preserves `## Discovery`) — Restart from plan keeps `## Discovery` in task.md, regenerates plan.md only
 - [ ] Discovery smoke scenarios run in CI on PRs touching `prompts/discovery.md`, `lib/agents/config.server.ts`, or `lib/run/loop.server.ts` (not on every unrelated PR — they cost real Opus dollars)
-
-## Edge Cases
-
-- **Task has rich description and inputs**: Q says "ready," may not write anything to task.md, and transitions immediately. No "Discovery complete" commit if task.md is unchanged (clean tree = no commit).
-- **Task has only a title**: Q almost certainly asks questions. This is the primary use case — quick-added tasks that need fleshing out.
-- **User navigates away during discovery Q&A**: The `canUseTool` callback is blocking server-side. The run stream disconnects but the session stays alive. On return, the client reads `pendingQuestions` from `.run.json` (via the task content API) and re-renders the question UI. If the user never returns, the session eventually times out via budget limit.
-- **User closes the app after answering last question**: Server-driven transition means planning starts regardless. User returns to find planning done or `plan_ready`.
-- **Discovery fails or errors**: Same pattern as planning errors. Write `status: 'stopped'`, `stoppedDuring: 'discovery'`. UI shows the standard stopped affordances (Continue / Restart from plan).
-- **Discovery times out (budget)**: Write `status: 'stopped'`, `stopReason: 'budget'`, `stoppedDuring: 'discovery'`. Continue resumes discovery.
-- **Server restart during discovery Q&A**: Session is lost. `clearStaleRun` writes `status: 'stopped'`, `stoppedDuring: 'discovery'` and clears `pendingQuestions`. User clicks Continue (resumes from `mode: 'discovery'`) or Restart from plan.
-- **Stream has no playbook or specs**: Discovery is especially useful here — Q recognizes it has little context and asks questions the playbook would normally answer. But if the task description is detailed enough, Q should still proceed.
-- **User stops mid-conversation**: Session is aborted. Answers from prior rounds are lost (session context is gone). `task.md` may have been updated already by an earlier successful `## Discovery` write — that content is preserved. The user can Continue (resumes discovery; Q may re-ask or update what's there) or Restart from plan (uses task.md as-is).
-- **Discovery writes nothing to `task.md`**: Possible when Q has enough context. `commitGitState` is a no-op on clean tree. No "Discovery complete" commit exists; the PhaseRecord on `.run.json` still records that discovery ran.
-- **Multiple runs on the same task**: Each run reads whatever `task.md` is at the moment Q starts. If a prior `## Discovery` section is present, Q's prompt judgment decides whether to update it, replace it, or leave it. The user can also delete it manually between runs.
 
 ## Testing
 
@@ -865,3 +766,31 @@ Not unit-tested (covered by smoke):
 
 - Discovery-to-planning auto-transition as end-to-end flow with a real SDK session — exercised by smoke Scenario 1.
 - The actual prompt's ask-vs-proceed judgment under real model behavior — exercised by smoke Scenarios 1 and 2.
+
+## Edge Cases
+
+- **Task has rich description and inputs**: Q says "ready," may not write anything to task.md, and transitions immediately. No "Discovery complete" commit if task.md is unchanged (clean tree = no commit).
+- **Task has only a title**: Q almost certainly asks questions. This is the primary use case — quick-added tasks that need fleshing out.
+- **User navigates away during discovery Q&A**: The `canUseTool` callback is blocking server-side. The run stream disconnects but the session stays alive. On return, the client reads `pendingQuestions` from `.run.json` (via the task content API) and re-renders the question UI. If the user never returns, the session eventually times out via budget limit.
+- **User closes the app after answering last question**: Server-driven transition means planning starts regardless. User returns to find planning done or `plan_ready`.
+- **Discovery fails or errors**: Same pattern as planning errors. Write `status: 'stopped'`, `stoppedDuring: 'discovery'`. UI shows the standard stopped affordances (Continue / Restart from plan).
+- **Discovery times out (budget)**: Write `status: 'stopped'`, `stopReason: 'budget'`, `stoppedDuring: 'discovery'`. Continue resumes discovery.
+- **Server restart during discovery Q&A**: Session is lost. `clearStaleRun` writes `status: 'stopped'`, `stoppedDuring: 'discovery'` and clears `pendingQuestions`. User clicks Continue (resumes from `mode: 'discovery'`) or Restart from plan.
+- **Stream has no playbook or specs**: Discovery is especially useful here — Q recognizes it has little context and asks questions the playbook would normally answer. But if the task description is detailed enough, Q should still proceed.
+- **User stops mid-conversation**: Session is aborted. Answers from prior rounds are lost (session context is gone). `task.md` may have been updated already by an earlier successful `## Discovery` write — that content is preserved. The user can Continue (resumes discovery; Q may re-ask or update what's there) or Restart from plan (uses task.md as-is).
+- **Discovery writes nothing to `task.md`**: Possible when Q has enough context. `commitGitState` is a no-op on clean tree. No "Discovery complete" commit exists; the PhaseRecord on `.run.json` still records that discovery ran.
+- **Multiple runs on the same task**: Each run reads whatever `task.md` is at the moment Q starts. If a prior `## Discovery` section is present, Q's prompt judgment decides whether to update it, replace it, or leave it. The user can also delete it manually between runs.
+
+## Design Decisions
+
+The architectural calls that aren't obvious from the body. Decisions that purely follow from the body sections (e.g., "questions render in the island," "header stays stable") aren't repeated here — see the relevant section for the reasoning.
+
+**Discovery runs in the run loop, not as a chat session.** Discovery could use the chat infrastructure (`POST /api/chat`), which already handles AskUserQuestion rendering and answer submission. But splitting the lifecycle means the client orchestrates the transition from discovery chat to planning run (fragile), billing spans two systems (chat session cost + run cost), and `.run.json` status management is divided between chat and run code. Keeping discovery in the run loop means the server owns the full lifecycle — `discovering` → `planning` → `plan_ready` → `working` → `completed`. One billing record. One state machine. The new plumbing (question event in run stream + answer endpoint) is small and contained.
+
+**`task.md` is the user's; no destructive restore.** When a run is restarted, `task.md` is left untouched. The user controls its content between runs — they can keep, edit, or delete a prior `## Discovery` section as they wish. There is no `restoreTaskMdFromGit` helper, no commit-message-grep restore path, and no "Restart from discovery" button. Earlier drafts of this spec proposed those; they were dropped because (a) discovery is a heads-up preamble, not a savepoint to "restore to," and (b) handing the user a button that silently rewrites `task.md` makes the destructive case (overwriting their edits) too easy to hit. If a future "wipe plan/working but keep task.md" affordance is needed, it's a thin extension of the existing planning-mode cleanup — not a new restore mechanism.
+
+**Opus, matching the other modes.** Discovery joins learning, planning, and working at Opus for consistency at v0. Sonnet would be cheaper and likely sufficient for read-and-assess work, but mixing models across modes complicates evaluation and prompt tuning early on. Once discovery is shipped and we have a feel for ask-rates and per-Start cost, we can downshift to Sonnet behind `config.models.discovery` without touching the rest of the system.
+
+**Server-driven transitions.** The run loop handles discovery → planning sequentially, same as how it handles planning → `plan_ready`. No client orchestration needed. The user can close the tab after answering Q's last question and come back to find planning done. If Q had no questions, the transition is instant — the user sees "Reviewing the task..." briefly then "Planning..." with no gap.
+
+**No `discovered` status.** It would exist for ~0ms between discovery completing and planning starting. Nothing would render it. The task panel's "Reviewed 2m 10s" comes from the discovery `PhaseRecord` in the `phases` array, not the status field.
