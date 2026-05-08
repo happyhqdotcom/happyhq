@@ -1,0 +1,55 @@
+name: Smoke (discovery)
+
+# Real-Opus end-to-end smoke for the heads-up Discovery phase. Each run costs
+# real dollars, so this workflow is path-gated to PRs that touch the
+# discovery surface — discovery prompt, agent factory, run loop, fixtures, or
+# the smoke harness itself. Other PRs skip the workflow entirely.
+
+on:
+  pull_request:
+    paths:
+      - 'happyhq/prompts/discovery.md'
+      - 'happyhq/lib/agents/config.server.ts'
+      - 'happyhq/lib/run/loop.server.ts'
+      - 'happyhq/scripts/smoke-discovery.ts'
+      - 'happyhq/scripts/smoke-fixtures/discovery/**'
+      - '.github/workflows/smoke-discovery.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-discovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # ANTHROPIC_API_KEY must be configured as a repo secret. The smoke makes
+    # real Opus calls; without the key, the SDK will fail and the job is a
+    # waste of CI minutes — fail fast with a clear message instead.
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Verify ANTHROPIC_API_KEY is configured
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::ANTHROPIC_API_KEY secret is not configured. Add it to repo secrets to enable discovery smoke."
+            exit 1
+          fi
+      - name: Run discovery smoke scenarios
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        working-directory: happyhq
+        run: pnpm smoke:discovery
