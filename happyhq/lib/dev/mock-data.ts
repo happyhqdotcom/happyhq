@@ -13,53 +13,68 @@ const NOW = new Date().toISOString()
 
 const PLANNING_RUN: RunInfo = {
   status: 'planning',
-  iteration: 0,
   startedAt: NOW,
   lastIterationAt: NOW,
-  error: null,
+  phases: [],
 }
 
 const PLAN_READY_RUN: RunInfo = {
   status: 'plan_ready',
-  iteration: 1,
   startedAt: NOW,
   lastIterationAt: NOW,
-  error: null,
-  planningCostUsd: 0.03,
-  iterations: [{ costUsd: 0.03, durationMs: 12000 }],
-  planningSessionId: 'mock-planning-session',
+  costUsd: 0.03,
+  phases: [
+    {
+      phase: 'planning',
+      sessionId: 'mock-planning-session',
+      costUsd: 0.03,
+      durationMs: 12000,
+    },
+  ],
 }
 
 const RUNNING_RUN: RunInfo = {
   status: 'working',
-  iteration: 2,
   startedAt: NOW,
   lastIterationAt: NOW,
-  error: null,
-  planningCostUsd: 0.03,
   costUsd: 0.08,
-  iterations: [
-    { costUsd: 0.03, durationMs: 12000 },
-    { costUsd: 0.05, durationMs: 18000 },
+  phases: [
+    {
+      phase: 'planning',
+      sessionId: 'mock-planning-session',
+      costUsd: 0.03,
+      durationMs: 12000,
+    },
+    {
+      phase: 'working',
+      iteration: 1,
+      sessionId: 'mock-working-session-1',
+      costUsd: 0.05,
+      durationMs: 18000,
+    },
   ],
-  planningSessionId: 'mock-planning-session',
-  workingSessionIds: ['mock-working-session-1'],
 }
 
 const COMPLETED_RUN: RunInfo = {
   status: 'completed',
-  iteration: 2,
   startedAt: NOW,
   lastIterationAt: NOW,
-  error: null,
-  planningCostUsd: 0.03,
   costUsd: 0.12,
-  iterations: [
-    { costUsd: 0.03, durationMs: 12000 },
-    { costUsd: 0.09, durationMs: 25000 },
+  phases: [
+    {
+      phase: 'planning',
+      sessionId: 'mock-planning-session',
+      costUsd: 0.03,
+      durationMs: 12000,
+    },
+    {
+      phase: 'working',
+      iteration: 1,
+      sessionId: 'mock-working-session-1',
+      costUsd: 0.09,
+      durationMs: 25000,
+    },
   ],
-  planningSessionId: 'mock-planning-session',
-  workingSessionIds: ['mock-working-session-1'],
 }
 
 const STOPPED_RUN: RunInfo = {
@@ -67,21 +82,23 @@ const STOPPED_RUN: RunInfo = {
   status: 'stopped',
   stoppedDuring: 'working',
   stopReason: 'user',
-  error: null,
 }
 
 const STOPPED_PLANNING_RUN: RunInfo = {
   status: 'stopped',
   stoppedDuring: 'planning',
   stopReason: 'user',
-  iteration: 0,
   startedAt: NOW,
   lastIterationAt: NOW,
-  error: null,
-  planningCostUsd: 0.02,
   costUsd: 0.02,
-  iterations: [{ costUsd: 0.02, durationMs: 8000 }],
-  planningSessionId: 'mock-planning-session',
+  phases: [
+    {
+      phase: 'planning',
+      sessionId: 'mock-planning-session',
+      costUsd: 0.02,
+      durationMs: 8000,
+    },
+  ],
 }
 
 const BUDGET_STOPPED_WORKING_RUN: RunInfo = {
@@ -95,15 +112,17 @@ const BUDGET_STOPPED_PLANNING_RUN: RunInfo = {
   status: 'stopped',
   stoppedDuring: 'planning',
   stopReason: 'budget',
-  iteration: 0,
   startedAt: NOW,
   lastIterationAt: NOW,
-  error: null,
-  planningCostUsd: 0.02,
   costUsd: 0.02,
-  iterations: [{ costUsd: 0.02, durationMs: 8000 }],
-  planningSessionId: 'mock-planning-session',
-  workingSessionIds: [],
+  phases: [
+    {
+      phase: 'planning',
+      sessionId: 'mock-planning-session',
+      costUsd: 0.02,
+      durationMs: 8000,
+    },
+  ],
 }
 
 // ── Mock plan content ───────────────────────────────────────────────────

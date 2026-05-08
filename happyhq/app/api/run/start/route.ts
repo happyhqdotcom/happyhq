@@ -101,15 +101,10 @@ export async function POST(request: Request) {
               status: 'stopped',
               stoppedDuring: 'working',
               stopReason: 'budget',
-              iteration: 0,
               startedAt: now,
               lastIterationAt: now,
-              error: null,
               costUsd: content.run?.costUsd ?? 0,
-              planningCostUsd: content.run?.planningCostUsd ?? null,
-              iterations: content.run?.iterations ?? [],
-              planningSessionId: content.run?.planningSessionId,
-              workingSessionIds: [],
+              phases: content.run?.phases ?? [],
             }
             await writeTextFile(
               path.join(taskPath(task), '.run.json'),

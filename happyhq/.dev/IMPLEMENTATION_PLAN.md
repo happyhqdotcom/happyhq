@@ -32,6 +32,8 @@ The deltas land in **one PR** because they tear together (per `specs/discovery.m
 
 ## 1. Foundation — types & migration shim
 
+**Status: ✅ Done (2026-05-07).** All sub-tasks 1.1–1.6 landed on `ralphie/discovery`. `parseRunInfo` shim covers planning-only, planning + N working, empty/never-run, legacy `usage_limited`/`paused` → `stopped+budget`, legacy `running` → `working`, and `error: null` → `undefined`. All 13 writer sites in `loop.server.ts`, the API route, mock fixtures, and 6 test files emit the new `phases: PhaseRecord[]` shape. `IterationMetrics` renamed to `PhaseTokenMetrics`. Helpers `getDiscoveryPhase`/`getPlanningPhase`/`getWorkingPhases` added in `lib/fs/run-info.ts` and wired through three UI consumers (panel, plan-section, outputs-section). Verification: `pnpm check-types && pnpm lint && pnpm test` green (1480 tests, 123 files). Foundation is ready for Task 2 (config schema) to build on.
+
 **Task 1.1 — Update `lib/fs/types.ts`.** (`RunInfo` is at lines 21–34.)
 
 Replace with the shape from `specs/working.md:200–218`:

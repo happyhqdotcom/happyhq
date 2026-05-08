@@ -264,10 +264,9 @@ export function useChatActions(): ChatActions {
       const now = new Date().toISOString()
       const planningRun = {
         status: 'planning' as const,
-        iteration: 0,
         startedAt: now,
         lastIterationAt: now,
-        error: null,
+        phases: [],
       }
 
       // Seed the task content cache so it shows planning status

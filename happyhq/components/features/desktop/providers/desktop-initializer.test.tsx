@@ -58,10 +58,9 @@ const TASK_CONTENT: TaskContent = {
   description: null,
   run: {
     status: 'working',
-    iteration: 2,
     startedAt: '2024-01-01',
     lastIterationAt: '2024-01-01',
-    error: null,
+    phases: [],
   },
   inputs: [],
   working: [],

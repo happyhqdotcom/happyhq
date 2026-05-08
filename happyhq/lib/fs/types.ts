@@ -1,3 +1,5 @@
+import type { AskUserQuestionInput } from '@anthropic-ai/claude-agent-sdk/sdk-tools'
+
 export interface FileEntry {
   name: string
   path: string // Relative path within ~/HappyHQ/ (e.g., "my-stream/specs/tone.md")
@@ -6,7 +8,11 @@ export interface FileEntry {
   modifiedAt: string // ISO 8601 timestamp from fs.stat().mtime
 }
 
-export interface IterationMetrics {
+/**
+ * Token & cost metrics staged during a phase invocation. Folded into a
+ * PhaseRecord when the phase completes.
+ */
+export interface PhaseTokenMetrics {
   costUsd: number
   durationMs: number
   // Token usage from SDK modelUsage (sum across all models in the iteration)
@@ -18,19 +24,39 @@ export interface IterationMetrics {
   contextWindowUsedPct?: number // peak single-call input tokens / contextWindow * 100
 }
 
+/** Metrics for a single phase invocation (discovery, planning, or one working iteration). */
+export interface PhaseRecord {
+  phase: 'discovery' | 'planning' | 'working'
+  iteration?: number // Working iterations only (1, 2, 3...). Absent for discovery/planning.
+  sessionId: string // SDK session UUID — used to open session transcript
+  costUsd: number
+  durationMs: number
+  inputTokens?: number
+  outputTokens?: number
+  cacheReadInputTokens?: number
+  cacheCreationInputTokens?: number
+  contextWindow?: number
+  contextWindowUsedPct?: number
+}
+
 export interface RunInfo {
-  status: 'planning' | 'plan_ready' | 'working' | 'completed' | 'stopped'
-  stoppedDuring?: 'planning' | 'working' // which phase was active when stopped
+  status:
+    | 'queued'
+    | 'discovering'
+    | 'planning'
+    | 'plan_ready'
+    | 'working'
+    | 'completed'
+    | 'stopped'
+  stoppedDuring?: 'discovery' | 'planning' | 'working' // which phase was active when stopped
+  queuedAt?: string // ISO 8601 — set when status is 'queued'
   stopReason?: 'budget' | 'user' | 'error' | 'iteration_limit' | 'no_progress'
-  iteration: number // 0 on initial write, 1-based during/after iterations
   startedAt: string // ISO 8601 timestamp
-  lastIterationAt: string // ISO 8601 timestamp, updated after each iteration
-  error: string | null // e.g., "Iteration limit reached" when stopped at MAX_ITERATIONS
-  costUsd?: number // Total cost across all phases (planning + working)
-  planningCostUsd?: number | null // Cost of planning phase alone
-  iterations?: IterationMetrics[] // Per-iteration cost and duration breakdown
-  planningSessionId?: string // SDK session UUID for planning phase
-  workingSessionIds?: string[] // SDK session UUID per working iteration
+  lastIterationAt: string // ISO 8601 timestamp, updated after each phase/iteration
+  error?: string // Set when status is 'stopped' with a real error
+  costUsd?: number // Cumulative total across all phases
+  phases: PhaseRecord[] // Append-only log — one entry per discovery, planning, each working iteration
+  pendingQuestions?: AskUserQuestionInput['questions'] // Set when a heads-up phase is blocked on AskUserQuestion
 }
 
 export interface TaskContent {

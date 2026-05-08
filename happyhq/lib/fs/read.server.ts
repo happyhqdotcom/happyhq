@@ -19,6 +19,7 @@ import type {
   ChatItem,
   FileEntry,
   FileItem,
+  PhaseRecord,
   RunInfo,
   SampleEntry,
   SampleType,
@@ -30,6 +31,115 @@ import type {
 
 /** Directory names at ~/HappyHQ/ root that are not streams. */
 export const RESERVED_ROOT_DIRS = new Set(['tasks', '.chats', 'task'])
+
+/**
+ * Parse a `.run.json` payload into a normalized RunInfo.
+ *
+ * Handles three legacy concerns in one place:
+ *   1. Old-shape `.run.json` files (pre-PhaseRecord) — synthesizes `phases[]`
+ *      from `planningCostUsd`, `planningSessionId`, `workingSessionIds`, and
+ *      positional `iterations[]`. Writers always emit the new shape, so
+ *      stored files re-saved by the new code drop the old fields naturally.
+ *   2. Pre-stopReason status values — `'usage_limited'`/`'paused'` collapse
+ *      to `'stopped' + stoppedDuring: 'working' + stopReason: 'budget'`,
+ *      and `'running'` collapses to `'working'`.
+ *   3. `error: null` from the old shape collapses to `error?: undefined`.
+ */
+export function parseRunInfo(raw: unknown): RunInfo {
+  const r = (raw ?? {}) as Record<string, unknown>
+
+  // Legacy status normalization
+  let status = r.status as RunInfo['status']
+  let stoppedDuring = r.stoppedDuring as RunInfo['stoppedDuring']
+  let stopReason = r.stopReason as RunInfo['stopReason']
+  const legacyStatus = status as string
+  if (legacyStatus === 'usage_limited' || legacyStatus === 'paused') {
+    status = 'stopped'
+    stoppedDuring = stoppedDuring ?? 'working'
+    stopReason = stopReason ?? 'budget'
+  } else if (legacyStatus === 'running') {
+    status = 'working'
+  }
+
+  // Synthesize phases from old shape if needed
+  const hasOldShape =
+    'planningCostUsd' in r ||
+    'planningSessionId' in r ||
+    'workingSessionIds' in r ||
+    'iterations' in r
+  let phases: PhaseRecord[]
+  if (Array.isArray(r.phases)) {
+    phases = r.phases as PhaseRecord[]
+  } else if (hasOldShape) {
+    phases = []
+    const planningCostUsd = r.planningCostUsd as number | null | undefined
+    const planningSessionId = r.planningSessionId as string | undefined
+    if (planningCostUsd != null || planningSessionId != null) {
+      phases.push({
+        phase: 'planning',
+        sessionId: planningSessionId ?? '',
+        costUsd: planningCostUsd ?? 0,
+        durationMs: 0,
+      })
+    }
+    const oldIters = (r.iterations as PhaseTokenMetricsArray | undefined) ?? []
+    const oldIds = (r.workingSessionIds as string[] | undefined) ?? []
+    // Pair by index; iterations.length wins on disagreement.
+    const len = oldIters.length
+    for (let i = 0; i < len; i++) {
+      const m = oldIters[i] ?? {}
+      phases.push({
+        phase: 'working',
+        iteration: i + 1,
+        sessionId: oldIds[i] ?? '',
+        costUsd: m.costUsd ?? 0,
+        durationMs: m.durationMs ?? 0,
+        ...(m.inputTokens != null && { inputTokens: m.inputTokens }),
+        ...(m.outputTokens != null && { outputTokens: m.outputTokens }),
+        ...(m.cacheReadInputTokens != null && {
+          cacheReadInputTokens: m.cacheReadInputTokens,
+        }),
+        ...(m.cacheCreationInputTokens != null && {
+          cacheCreationInputTokens: m.cacheCreationInputTokens,
+        }),
+        ...(m.contextWindow != null && { contextWindow: m.contextWindow }),
+        ...(m.contextWindowUsedPct != null && {
+          contextWindowUsedPct: m.contextWindowUsedPct,
+        }),
+      })
+    }
+  } else {
+    phases = []
+  }
+
+  const out: RunInfo = {
+    status,
+    startedAt: r.startedAt as string,
+    lastIterationAt: r.lastIterationAt as string,
+    phases,
+  }
+  if (stoppedDuring) out.stoppedDuring = stoppedDuring
+  if (stopReason) out.stopReason = stopReason
+  if (typeof r.queuedAt === 'string') out.queuedAt = r.queuedAt
+  // error: null → omit; error string → preserve
+  if (typeof r.error === 'string' && r.error.length > 0) out.error = r.error
+  if (typeof r.costUsd === 'number') out.costUsd = r.costUsd
+  if (Array.isArray(r.pendingQuestions)) {
+    out.pendingQuestions = r.pendingQuestions as RunInfo['pendingQuestions']
+  }
+  return out
+}
+
+type PhaseTokenMetricsArray = Array<{
+  costUsd?: number
+  durationMs?: number
+  inputTokens?: number
+  outputTokens?: number
+  cacheReadInputTokens?: number
+  cacheCreationInputTokens?: number
+  contextWindow?: number
+  contextWindowUsedPct?: number
+}>
 
 /** Parse the title field from a raw .meta.json string. Returns null on missing/malformed. */
 function parseTitle(raw: string | null): string | null {
@@ -522,7 +632,7 @@ export async function listAllTaskItems(): Promise<TaskItem[]> {
           let run: RunInfo | null = null
           if (runJson) {
             try {
-              run = JSON.parse(runJson) as RunInfo
+              run = parseRunInfo(JSON.parse(runJson))
             } catch {
               // Malformed .run.json — leave as null
             }
@@ -676,16 +786,7 @@ export async function readTaskContent(
   let run: RunInfo | null = null
   if (runJson !== null) {
     try {
-      run = JSON.parse(runJson) as RunInfo
-      // Normalize legacy status values from before stopReason migration
-      const s = run.status as string
-      if (s === 'usage_limited' || s === 'paused') {
-        run.status = 'stopped'
-        run.stoppedDuring ??= 'working'
-        run.stopReason ??= 'budget'
-      } else if (s === 'running') {
-        run.status = 'working'
-      }
+      run = parseRunInfo(JSON.parse(runJson))
     } catch {
       // Malformed .run.json — return null rather than crashing.
     }

@@ -209,9 +209,9 @@ describe('startRun', () => {
     const writes = getRunInfoWrites()
     expect(writes[0]).toMatchObject({
       status: 'planning',
-      iteration: 0,
-      error: null,
+      phases: [],
     })
+    expect(writes[0].error).toBeUndefined()
     expect(writes[0].startedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
   })
 
@@ -224,9 +224,9 @@ describe('startRun', () => {
     const writes = getRunInfoWrites()
     expect(writes[0]).toMatchObject({
       status: 'working',
-      iteration: 0,
-      error: null,
+      phases: [],
     })
+    expect(writes[0].error).toBeUndefined()
   })
 
   it('throws when a run is already active', async () => {
@@ -268,9 +268,11 @@ describe('planning mode', () => {
     const terminal = writes[writes.length - 1]
     expect(terminal).toMatchObject({
       status: 'plan_ready',
-      iteration: 0,
-      error: null,
     })
+    expect(terminal.error).toBeUndefined()
+    expect(
+      terminal.phases.filter((p: { phase: string }) => p.phase === 'planning'),
+    ).toHaveLength(1)
   })
 
   it('writes stopped with error when planning fails', async () => {
@@ -287,7 +289,6 @@ describe('planning mode', () => {
     const terminal = writes[writes.length - 1]
     expect(terminal).toMatchObject({
       status: 'stopped',
-      iteration: 0,
       error: 'SDK exploded',
     })
   })
@@ -328,8 +329,8 @@ describe('planning mode', () => {
     const terminal = writes[writes.length - 1]
     expect(terminal).toMatchObject({
       status: 'stopped',
-      error: null,
     })
+    expect(terminal.error).toBeUndefined()
   })
 })
 
@@ -356,8 +357,10 @@ describe('working mode', () => {
     const terminal = writes[writes.length - 1]
     expect(terminal).toMatchObject({
       status: 'completed',
-      iteration: 2,
     })
+    expect(
+      terminal.phases.filter((p: { phase: string }) => p.phase === 'working'),
+    ).toHaveLength(2)
   })
 
   it('stops at MAX_ITERATIONS with error when [done] not found', async () => {
@@ -371,9 +374,11 @@ describe('working mode', () => {
     const terminal = writes[writes.length - 1]
     expect(terminal).toMatchObject({
       status: 'stopped',
-      iteration: 3,
       error: 'Iteration limit reached',
     })
+    expect(
+      terminal.phases.filter((p: { phase: string }) => p.phase === 'working'),
+    ).toHaveLength(3)
   })
 
   it('continues on iteration errors — fresh context self-heals', async () => {
@@ -413,8 +418,10 @@ describe('working mode', () => {
     expect(terminal).toMatchObject({
       status: 'stopped',
       stopReason: 'no_progress',
-      iteration: 2,
     })
+    expect(
+      terminal.phases.filter((p: { phase: string }) => p.phase === 'working'),
+    ).toHaveLength(2)
     expect(terminal.error).toContain('No progress')
   })
 
@@ -434,8 +441,10 @@ describe('working mode', () => {
     expect(terminal).toMatchObject({
       status: 'stopped',
       stopReason: 'iteration_limit',
-      iteration: 3,
     })
+    expect(
+      terminal.phases.filter((p: { phase: string }) => p.phase === 'working'),
+    ).toHaveLength(3)
   })
 
   it('continues iterating when isTaskCompleted returns false', async () => {
@@ -450,9 +459,11 @@ describe('working mode', () => {
     const terminal = writes[writes.length - 1]
     expect(terminal).toMatchObject({
       status: 'stopped',
-      iteration: 3,
       error: 'Iteration limit reached',
     })
+    expect(
+      terminal.phases.filter((p: { phase: string }) => p.phase === 'working'),
+    ).toHaveLength(3)
   })
 })
 
@@ -478,8 +489,8 @@ describe('stopRun', () => {
     const terminal = writes[writes.length - 1]
     expect(terminal).toMatchObject({
       status: 'stopped',
-      error: null,
     })
+    expect(terminal.error).toBeUndefined()
   })
 })
 

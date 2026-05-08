@@ -50,6 +50,7 @@ import {
 } from '@/lib/actions'
 import { ALLOWED_INPUT_ACCEPT } from '@/lib/file-types'
 import { displayTitle } from '@/lib/format'
+import { getPlanningPhase, getWorkingPhases } from '@/lib/fs/run-info'
 import type { FileItem } from '@/lib/fs/types'
 import { invalidateStream } from '@/lib/swr-helpers'
 import { taskItemsKey } from '@/lib/swr-keys'
@@ -236,14 +237,13 @@ export function TaskPanel({
   const outputs = taskContent?.outputs ?? []
   const workingFiles = taskContent?.working ?? []
   const hasWorkFiles = outputs.length > 0 || workingFiles.length > 0
-  const iterations = taskContent?.run?.iterations ?? []
-  const hadPlanning = (taskContent?.run?.planningCostUsd ?? 0) > 0
-  const planDurationMs = hadPlanning ? (iterations[0]?.durationMs ?? 0) : 0
-  const workIterations = hadPlanning ? iterations.slice(1) : iterations
-  const workDurationMs = workIterations.reduce(
-    (sum, i) => sum + i.durationMs,
-    0,
-  )
+  const planningPhase = getPlanningPhase(taskContent?.run)
+  const workingPhases = getWorkingPhases(taskContent?.run)
+  const planDurationMs = planningPhase?.durationMs ?? 0
+  const workDurationMs = workingPhases.reduce((sum, p) => sum + p.durationMs, 0)
+  const workingSessionIds = workingPhases
+    .map((p) => p.sessionId)
+    .filter((id): id is string => !!id)
 
   return (
     <Shell
@@ -486,13 +486,11 @@ export function TaskPanel({
                       }
                       disabled={runActions.isLoading || isRunning}
                       onLabelClick={
-                        taskContent?.run?.planningSessionId &&
-                        streamSlug &&
-                        taskSlug
+                        planningPhase?.sessionId && streamSlug && taskSlug
                           ? () =>
                               openChatSessionWindow(
                                 streamSlug,
-                                [taskContent.run!.planningSessionId!],
+                                [planningPhase.sessionId],
                                 'Planning Session',
                                 `chat-${taskSlug}-planning`,
                               )
@@ -609,13 +607,11 @@ export function TaskPanel({
                       }
                       disabled={runActions.isLoading || isRunning}
                       onLabelClick={
-                        taskContent?.run?.workingSessionIds?.length &&
-                        streamSlug &&
-                        taskSlug
+                        workingSessionIds.length > 0 && streamSlug && taskSlug
                           ? () =>
                               openChatSessionWindow(
                                 streamSlug,
-                                taskContent.run!.workingSessionIds!,
+                                workingSessionIds,
                                 'Working Session',
                                 `chat-${taskSlug}-working`,
                               )

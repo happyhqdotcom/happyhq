@@ -24,8 +24,14 @@ import {
   assertSafeTaskSlug,
   taskPath,
 } from '@/lib/fs/paths'
+import { parseRunInfo } from '@/lib/fs/read.server'
 import { updateTaskMdPending } from '@/lib/fs/task-md.server'
-import type { IterationMetrics, PendingType, RunInfo } from '@/lib/fs/types'
+import type {
+  PendingType,
+  PhaseRecord,
+  PhaseTokenMetrics,
+  RunInfo,
+} from '@/lib/fs/types'
 import { clearDirectory, writeTextFile } from '@/lib/fs/write.server'
 import {
   commitGitState,
@@ -168,7 +174,7 @@ export async function startRun(
                 stoppedDuring: undefined,
                 stopReason: undefined,
                 lastIterationAt: startedAt,
-                error: null,
+                error: undefined,
               })
             } else {
               // Fresh-run cleanup — no-op on first run from createTask()
@@ -201,15 +207,10 @@ export async function startRun(
               // the tree and cause a false "Task restarted" on first run.
               await writeRunInfo(taskName, {
                 status: mode === 'planning' ? 'planning' : 'working',
-                iteration: 0,
                 startedAt,
                 lastIterationAt: startedAt,
-                error: null,
                 costUsd: existingRun?.costUsd ?? 0,
-                planningCostUsd: existingRun?.planningCostUsd ?? null,
-                iterations: existingRun?.iterations ?? [],
-                planningSessionId: existingRun?.planningSessionId,
-                workingSessionIds: existingRun?.workingSessionIds,
+                phases: existingRun?.phases ?? [],
               })
             }
           } catch (err) {
@@ -282,18 +283,23 @@ export async function clearStaleRun(taskName: string): Promise<void> {
   assertSafeTaskSlug(taskName)
   const info = await readRunInfo(taskName)
   if (!info) return
-  const stoppedDuring =
-    info.status === 'planning'
-      ? 'planning'
-      : info.status === 'working'
-        ? 'working'
-        : info.stoppedDuring
+  const stoppedDuring: RunInfo['stoppedDuring'] =
+    info.status === 'discovering'
+      ? 'discovery'
+      : info.status === 'planning'
+        ? 'planning'
+        : info.status === 'working'
+          ? 'working'
+          : info.stoppedDuring
+  // Clear pendingQuestions when flipping a leftover discovering run — otherwise
+  // a stopped run with pendingQuestions still set would render the question UI.
   await writeRunInfo(taskName, {
     ...info,
     status: 'stopped',
     stoppedDuring,
     stopReason: 'error',
     error: 'Run lost (server restarted)',
+    pendingQuestions: undefined,
   })
 }
 
@@ -383,7 +389,8 @@ async function runLoop(
         try {
           const { updateUsage } = await import('@/ee/lib/billing/usage.server')
           const planRun = await readRunInfo(taskName)
-          const planCost = planRun?.planningCostUsd ?? 0
+          const planCost =
+            planRun?.phases?.find((p) => p.phase === 'planning')?.costUsd ?? 0
           const planCostMinutes = planCost / LLM_COST_PER_MINUTE_USD
           await updateUsage(taskRunId, planCostMinutes)
         } catch (err) {
@@ -466,7 +473,7 @@ async function runPlanningIteration(
   const iterStartMs = Date.now()
   let iterationCost = 0
   let peakInputTokens = 0
-  let tokenMetrics: Partial<IterationMetrics> = {}
+  let tokenMetrics: Partial<PhaseTokenMetrics> = {}
   let receivedAnyMessage = false
 
   try {
@@ -521,11 +528,16 @@ async function runPlanningIteration(
       throw new Error('Agent exited before producing any output')
     }
 
-    const metrics: IterationMetrics = {
+    const planningPhase: PhaseRecord = {
+      phase: 'planning',
+      sessionId: planningSessionId,
       costUsd: iterationCost,
       durationMs: Date.now() - iterStartMs,
       ...tokenMetrics,
     }
+
+    // Carry forward any prior phases (e.g. discovery) when appending planning.
+    const priorPhases = (await readRunInfo(taskName))?.phases ?? []
 
     // Billing budget hit during planning — stop with budget reason
     if (billingCapped && resultSubtype === 'error_max_budget_usd') {
@@ -533,14 +545,10 @@ async function runPlanningIteration(
         status: 'stopped',
         stoppedDuring: 'planning',
         stopReason: 'budget',
-        iteration: 0,
         startedAt,
         lastIterationAt: new Date().toISOString(),
-        error: null,
         costUsd: iterationCost,
-        planningCostUsd: iterationCost,
-        iterations: [metrics],
-        planningSessionId,
+        phases: [...priorPhases, planningPhase],
       })
       log('run.stopped', {
         task: taskName,
@@ -557,14 +565,10 @@ async function runPlanningIteration(
     // client knows it's safe to show the approve dialog.
     await writeRunInfo(taskName, {
       status: 'plan_ready',
-      iteration: 0,
       startedAt,
       lastIterationAt: new Date().toISOString(),
-      error: null,
       costUsd: iterationCost,
-      planningCostUsd: iterationCost,
-      iterations: [metrics],
-      planningSessionId,
+      phases: [...priorPhases, planningPhase],
     })
     log('run.completed', {
       task: taskName,
@@ -582,11 +586,14 @@ async function runPlanningIteration(
       console.error('[Q:stderr:planning]', stderrBuf.getLines().join('\n'))
     }
 
-    const metrics: IterationMetrics = {
+    const planningPhase: PhaseRecord = {
+      phase: 'planning',
+      sessionId: planningSessionId,
       costUsd: iterationCost,
       durationMs: Date.now() - iterStartMs,
       ...tokenMetrics,
     }
+    const priorPhases = (await readRunInfo(taskName))?.phases ?? []
 
     if (parentSignal.aborted) {
       // User clicked Stop during planning
@@ -594,14 +601,10 @@ async function runPlanningIteration(
         status: 'stopped',
         stoppedDuring: 'planning',
         stopReason: 'user',
-        iteration: 0,
         startedAt,
         lastIterationAt: new Date().toISOString(),
-        error: null,
         costUsd: iterationCost,
-        planningCostUsd: iterationCost,
-        iterations: [metrics],
-        planningSessionId,
+        phases: [...priorPhases, planningPhase],
       })
       log('run.stopped', {
         task: taskName,
@@ -628,14 +631,11 @@ async function runPlanningIteration(
       status: 'stopped',
       stoppedDuring: 'planning',
       stopReason: 'error',
-      iteration: 0,
       startedAt,
       lastIterationAt: new Date().toISOString(),
       error: stderrTail ? `${errMsg}\n\nstderr:\n${stderrTail}` : errMsg,
       costUsd: iterationCost,
-      planningCostUsd: iterationCost,
-      iterations: [metrics],
-      planningSessionId,
+      phases: [...priorPhases, planningPhase],
     })
     broadcastErrorEvent(error, stderrTail)
     log('run.error', {
@@ -670,18 +670,16 @@ async function runWorkingLoop(
   const config = resolveConfig(await readConfig())
   const maxIterations = config.limits.maxIterations
 
-  // Seed cost accumulators from existing .run.json (carries planning cost forward)
+  // Seed cost accumulators from existing .run.json (carries planning + prior
+  // working phases forward). Phases are append-only, so we copy and grow.
   const existingRun = await readRunInfo(taskName)
   let totalCost = existingRun?.costUsd ?? 0
-  const planningCostUsd = existingRun?.planningCostUsd ?? null
-  const planningSessionId = existingRun?.planningSessionId
-  const allIterations: IterationMetrics[] = [...(existingRun?.iterations ?? [])]
-  const workingSessionIds: string[] = [
-    ...(existingRun?.workingSessionIds ?? []),
-  ]
+  const phases: PhaseRecord[] = [...(existingRun?.phases ?? [])]
+  const planningCostUsd =
+    phases.find((p) => p.phase === 'planning')?.costUsd ?? 0
 
   // Track cost-based minutes for billing (planning cost + working iterations)
-  let totalCostMinutes = (planningCostUsd ?? 0) / LLM_COST_PER_MINUTE_USD
+  let totalCostMinutes = planningCostUsd / LLM_COST_PER_MINUTE_USD
 
   // Track only cost accrued in THIS loop invocation for budget calculation.
   // remainingBudgetUsd (from canStartTask) already accounts for historical spend,
@@ -690,9 +688,12 @@ async function runWorkingLoop(
 
   // Resume from pause: start from the next iteration after where we stopped.
   // Each iteration is independent (fresh SDK session, reads filesystem state).
+  // Derive iteration count from the phases array — last working PhaseRecord
+  // wins (working iterations are 1-based and append-only).
+  const priorWorkingCount = phases.filter((p) => p.phase === 'working').length
   const startIteration =
-    existingRun?.status === 'working' && existingRun.iteration > 0
-      ? existingRun.iteration + 1
+    existingRun?.status === 'working' && priorWorkingCount > 0
+      ? priorWorkingCount + 1
       : 1
 
   // No-progress detection. The working prompt mandates a `git commit` per
@@ -719,15 +720,10 @@ async function runWorkingLoop(
         status: 'stopped',
         stoppedDuring: 'working',
         stopReason: 'user',
-        iteration: iteration - 1,
         startedAt,
         lastIterationAt: new Date().toISOString(),
-        error: null,
         costUsd: totalCost,
-        planningCostUsd,
-        iterations: allIterations,
-        planningSessionId,
-        workingSessionIds,
+        phases,
       })
       log('run.stopped', {
         task: taskName,
@@ -748,7 +744,7 @@ async function runWorkingLoop(
     const iterStartMs = Date.now()
     let iterationCost = 0
     let peakInputTokens = 0
-    let tokenMetrics: Partial<IterationMetrics> = {}
+    let tokenMetrics: Partial<PhaseTokenMetrics> = {}
     let billingCapped = false
     let resultSubtype: string | undefined
     let receivedAnyMessage = false
@@ -814,12 +810,14 @@ async function runWorkingLoop(
       totalCost += iterationCost
       currentLoopWorkingCost += iterationCost
       const iterDurationMs = Date.now() - iterStartMs
-      allIterations.push({
+      phases.push({
+        phase: 'working',
+        iteration,
+        sessionId: iterSessionId,
         costUsd: iterationCost,
         durationMs: iterDurationMs,
         ...tokenMetrics,
       })
-      workingSessionIds.push(iterSessionId)
 
       // Billing: update usage with this iteration's LLM cost
       if (taskRunId) {
@@ -839,15 +837,10 @@ async function runWorkingLoop(
           status: 'stopped',
           stoppedDuring: 'working',
           stopReason: 'user',
-          iteration,
           startedAt,
           lastIterationAt: new Date().toISOString(),
-          error: null,
           costUsd: totalCost,
-          planningCostUsd,
-          iterations: allIterations,
-          planningSessionId,
-          workingSessionIds,
+          phases,
         })
         log('run.stopped', {
           task: taskName,
@@ -870,15 +863,11 @@ async function runWorkingLoop(
           status: 'stopped',
           stoppedDuring: 'working',
           stopReason: 'error',
-          iteration,
           startedAt,
           lastIterationAt: new Date().toISOString(),
           error: stderrTail ? `${errMsg}\n\nstderr:\n${stderrTail}` : errMsg,
           costUsd: totalCost,
-          planningCostUsd,
-          iterations: allIterations,
-          planningSessionId,
-          workingSessionIds,
+          phases,
         })
         broadcastErrorEvent(error, stderrTail)
         log('run.error', {
@@ -909,15 +898,10 @@ async function runWorkingLoop(
       const iterStderrTail = stderrBuf.getTail()
       await writeRunInfo(taskName, {
         status: 'working',
-        iteration,
         startedAt,
         lastIterationAt: new Date().toISOString(),
-        error: null,
         costUsd: totalCost,
-        planningCostUsd,
-        iterations: allIterations,
-        planningSessionId,
-        workingSessionIds,
+        phases,
       })
       log('run.iteration', {
         task: taskName,
@@ -944,15 +928,11 @@ async function runWorkingLoop(
             status: 'stopped',
             stoppedDuring: 'working',
             stopReason: 'no_progress',
-            iteration,
             startedAt,
             lastIterationAt: new Date().toISOString(),
             error: `No progress: agent committed no work for ${NO_PROGRESS_LIMIT} consecutive iterations`,
             costUsd: totalCost,
-            planningCostUsd,
-            iterations: allIterations,
-            planningSessionId,
-            workingSessionIds,
+            phases,
           })
           log('run.stopped', {
             task: taskName,
@@ -973,12 +953,14 @@ async function runWorkingLoop(
     totalCost += iterationCost
     currentLoopWorkingCost += iterationCost
     const iterDurationMs = Date.now() - iterStartMs
-    allIterations.push({
+    phases.push({
+      phase: 'working',
+      iteration,
+      sessionId: iterSessionId,
       costUsd: iterationCost,
       durationMs: iterDurationMs,
       ...tokenMetrics,
     })
-    workingSessionIds.push(iterSessionId)
 
     // Billing: update usage with this iteration's LLM cost
     if (taskRunId) {
@@ -998,15 +980,10 @@ async function runWorkingLoop(
         status: 'stopped',
         stoppedDuring: 'working',
         stopReason: 'budget',
-        iteration,
         startedAt,
         lastIterationAt: new Date().toISOString(),
-        error: null,
         costUsd: totalCost,
-        planningCostUsd,
-        iterations: allIterations,
-        planningSessionId,
-        workingSessionIds,
+        phases,
       })
       log('run.stopped', {
         task: taskName,
@@ -1022,15 +999,10 @@ async function runWorkingLoop(
     // Iteration completed normally. Update .run.json.
     await writeRunInfo(taskName, {
       status: 'working',
-      iteration,
       startedAt,
       lastIterationAt: new Date().toISOString(),
-      error: null,
       costUsd: totalCost,
-      planningCostUsd,
-      iterations: allIterations,
-      planningSessionId,
-      workingSessionIds,
+      phases,
     })
     log('run.iteration', {
       task: taskName,
@@ -1047,15 +1019,10 @@ async function runWorkingLoop(
     if (isTaskCompleted(taskName)) {
       await writeRunInfo(taskName, {
         status: 'completed',
-        iteration,
         startedAt,
         lastIterationAt: new Date().toISOString(),
-        error: null,
         costUsd: totalCost,
-        planningCostUsd,
-        iterations: allIterations,
-        planningSessionId,
-        workingSessionIds,
+        phases,
       })
       log('run.completed', {
         task: taskName,
@@ -1085,15 +1052,11 @@ async function runWorkingLoop(
           status: 'stopped',
           stoppedDuring: 'working',
           stopReason: 'no_progress',
-          iteration,
           startedAt,
           lastIterationAt: new Date().toISOString(),
           error: `No progress: agent committed no work for ${NO_PROGRESS_LIMIT} consecutive iterations`,
           costUsd: totalCost,
-          planningCostUsd,
-          iterations: allIterations,
-          planningSessionId,
-          workingSessionIds,
+          phases,
         })
         log('run.stopped', {
           task: taskName,
@@ -1113,15 +1076,11 @@ async function runWorkingLoop(
     status: 'stopped',
     stoppedDuring: 'working',
     stopReason: 'iteration_limit',
-    iteration: maxIterations,
     startedAt,
     lastIterationAt: new Date().toISOString(),
     error: 'Iteration limit reached',
     costUsd: totalCost,
-    planningCostUsd,
-    iterations: allIterations,
-    planningSessionId,
-    workingSessionIds,
+    phases,
   })
   log('run.stopped', {
     task: taskName,
@@ -1239,7 +1198,7 @@ async function readRunInfo(taskName: string): Promise<RunInfo | null> {
       path.join(taskPath(taskName), '.run.json'),
       'utf-8',
     )
-    return JSON.parse(raw) as RunInfo
+    return parseRunInfo(JSON.parse(raw))
   } catch {
     return null
   }
@@ -1272,7 +1231,7 @@ function extractTokenMetrics(
   msg: SDKResultMessage,
   peakInputTokens: number,
 ): Pick<
-  IterationMetrics,
+  PhaseTokenMetrics,
   | 'inputTokens'
   | 'outputTokens'
   | 'cacheReadInputTokens'

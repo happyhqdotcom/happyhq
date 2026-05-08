@@ -11,6 +11,7 @@ import {
 } from '@/components/features/tasks/atoms/section-header'
 import { WorkingRow } from '@/components/features/tasks/atoms/working-row'
 import { deleteFile } from '@/lib/actions'
+import { getWorkingPhases } from '@/lib/fs/run-info'
 import { useTaskStore } from '@/stores/taskStore'
 import { useWindowStore } from '@/stores/windowStore'
 import { useRouter } from 'next/navigation'
@@ -53,14 +54,11 @@ export function OutputsSection({ isWorking }: { isWorking?: boolean }) {
     isStopped && content?.run?.stoppedDuring === 'working'
   const isBudgetStop = content?.run?.stopReason === 'budget'
 
-  // Work duration from iterations (skip planning iteration if present)
-  const iterations = content?.run?.iterations ?? []
-  const hadPlanning = (content?.run?.planningCostUsd ?? 0) > 0
-  const workIterations = hadPlanning ? iterations.slice(1) : iterations
-  const workDurationMs = workIterations.reduce(
-    (sum, i) => sum + i.durationMs,
-    0,
-  )
+  const workingPhases = getWorkingPhases(content?.run)
+  const workDurationMs = workingPhases.reduce((sum, p) => sum + p.durationMs, 0)
+  const workingSessionIds = workingPhases
+    .map((p) => p.sessionId)
+    .filter((id): id is string => !!id)
 
   const lastStep = activitySteps.findLast((s) => s.label)
 
@@ -135,11 +133,11 @@ export function OutputsSection({ isWorking }: { isWorking?: boolean }) {
             }
             disabled={runActionsLoading || isRunActive}
             onLabelClick={
-              content?.run?.workingSessionIds?.length && streamSlug && taskSlug
+              workingSessionIds.length > 0 && streamSlug && taskSlug
                 ? () =>
                     openChatSessionWindow(
                       streamSlug,
-                      content.run!.workingSessionIds!,
+                      workingSessionIds,
                       'Working Session',
                       `chat-${taskSlug}-working`,
                     )

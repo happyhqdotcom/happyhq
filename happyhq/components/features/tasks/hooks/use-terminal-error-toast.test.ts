@@ -11,10 +11,10 @@ vi.mock('@/components/common/ui/sonner', () => ({
 function makeRun(overrides: Partial<RunInfo> = {}): RunInfo {
   return {
     status: 'stopped',
-    iteration: 0,
     startedAt: '2026-05-06T15:00:00.000Z',
     lastIterationAt: '2026-05-06T15:00:00.500Z',
     error: 'boom',
+    phases: [],
     ...overrides,
   }
 }
@@ -108,14 +108,14 @@ describe('useTerminalErrorToast', () => {
       run: makeRun({
         startedAt: '2026-05-06T15:30:00.000Z',
         status: 'completed',
-        error: null,
+        error: undefined,
       }),
     })
     rerender({
       run: makeRun({
         startedAt: '2026-05-06T15:31:00.000Z',
         status: 'working',
-        error: null,
+        error: undefined,
       }),
     })
     expect(toastErrorMock).not.toHaveBeenCalled()

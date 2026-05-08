@@ -70,10 +70,9 @@ export function useRunActions(
       const now = new Date().toISOString()
       const fallbackRun: RunInfo = {
         status,
-        iteration: 0,
         startedAt: now,
         lastIterationAt: now,
-        error: null,
+        phases: [],
       }
 
       // When restarting from planning, clear stale plan/working/outputs
@@ -92,7 +91,7 @@ export function useRunActions(
                 ...current.taskContent.run,
                 status,
                 lastIterationAt: now,
-                error: null,
+                error: undefined,
               }
             : fallbackRun
           return {
@@ -117,7 +116,7 @@ export function useRunActions(
         (current: TaskContent | undefined) => {
           if (!current) return current
           const run = current.run
-            ? { ...current.run, status, lastIterationAt: now, error: null }
+            ? { ...current.run, status, lastIterationAt: now, error: undefined }
             : fallbackRun
           return {
             ...current,
