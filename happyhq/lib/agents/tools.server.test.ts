@@ -6,9 +6,6 @@ const mockExtractTextFromPdf = vi.hoisted(() =>
 
 const mockSetSessionMode = vi.hoisted(() => vi.fn())
 const mockSetChatMode = vi.hoisted(() => vi.fn(() => Promise.resolve()))
-const mockReadStreamContent = vi.hoisted(() => vi.fn())
-const mockListDirectory = vi.hoisted(() => vi.fn())
-const mockFormatStreamContext = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/pdf/extract-text.server', () => ({
   extractTextFromPdf: mockExtractTextFromPdf,
@@ -30,15 +27,6 @@ vi.mock('@/lib/fs/paths', () => ({
   assertSafeSessionId: () => {},
   assertSafeStreamName: () => {},
   assertSafePathSegment: () => {},
-}))
-
-vi.mock('@/lib/fs/read.server', () => ({
-  readStreamContent: mockReadStreamContent,
-  listDirectory: mockListDirectory,
-}))
-
-vi.mock('./prompts.server', () => ({
-  formatStreamContext: mockFormatStreamContext,
 }))
 
 import { createQsMcpServer } from './tools.server'
@@ -318,16 +306,8 @@ describe('EnterLearningMode', () => {
     expect(mockSetSessionMode).not.toHaveBeenCalled()
   })
 
-  it('updates session mode and returns stream context', async () => {
+  it('updates session mode and returns abbreviated framing', async () => {
     mockFs.existsSync.mockReturnValue(true)
-    mockReadStreamContent.mockResolvedValue({
-      playbook: 'workflow',
-      specs: [],
-      samples: [],
-      sampleTypes: [],
-    })
-    mockListDirectory.mockResolvedValue([])
-    mockFormatStreamContext.mockReturnValue('Playbook: exists\nSpecs: none')
 
     const notifyClient = vi.fn()
     const server = createQsMcpServer('/tmp/root', 'session-1', {
@@ -338,8 +318,12 @@ describe('EnterLearningMode', () => {
 
     const result = await handler({ streamSlug: 'client-reports' }, {})
 
-    expect(result.content[0].text).toContain('Entered learning mode')
-    expect(result.content[0].text).toContain('Playbook: exists')
+    // Tool result is a brief mode-framing sentence — orientation/rules come
+    // from the learning reminder injected via the PostToolUse hook.
+    expect(result.content[0].text).toContain(
+      'Entered learning mode for client-reports',
+    )
+    expect(result.content[0].text).toContain('playbook, specs, and samples')
     expect(mockSetSessionMode).toHaveBeenCalledWith(
       'session-1',
       'learning',
@@ -359,14 +343,6 @@ describe('EnterLearningMode', () => {
 
   it('skips chatDir persistence when chatDir is not provided', async () => {
     mockFs.existsSync.mockReturnValue(true)
-    mockReadStreamContent.mockResolvedValue({
-      playbook: null,
-      specs: [],
-      samples: [],
-      sampleTypes: [],
-    })
-    mockListDirectory.mockResolvedValue([])
-    mockFormatStreamContext.mockReturnValue('brand new stream')
 
     const server = createQsMcpServer('/tmp/root', 'session-1')
     const handler = getToolHandler(server, 'EnterLearningMode')

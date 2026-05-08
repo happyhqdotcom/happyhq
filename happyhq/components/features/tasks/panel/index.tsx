@@ -39,6 +39,7 @@ import {
 import { WorkingRow } from '@/components/features/tasks/atoms/working-row'
 import { useOptimisticUploads } from '@/components/features/tasks/hooks/use-optimistic-uploads'
 import { shouldShowWorkSection } from '@/components/features/tasks/panel/work-gate'
+import { canStartIdleTask } from '@/components/features/tasks/start-gate'
 import {
   deleteFile,
   deleteTaskByLocation,
@@ -90,7 +91,6 @@ export function TaskPanel({
   const router = useRouter()
   const taskSlug = useParams<{ task?: string }>().task
   const activeTask = useActiveTask()
-  const taskTitle = activeTask?.frontmatter.title ?? null
   const { mutate } = useSWRConfig()
   const taskContent = useTaskContent()
   const streamSlug = useStreamSlug()
@@ -164,8 +164,10 @@ export function TaskPanel({
 
   // Initialize from server data — inline during render so title/description
   // are visible on the very first paint (no useEffect timing gap).
-  if (taskContent && !initialized) {
-    setTitle(displayTitle(taskTitle, taskSlug ?? ''))
+  // Title is the raw frontmatter value (not displayTitle's slug fallback) so
+  // the start-task gate sees what the user actually saved — see issue #255.
+  if (taskContent && activeTask && !initialized) {
+    setTitle(activeTask.frontmatter.title ?? '')
     setDescription(taskContent.description ?? '')
     setInitialized(true)
   }
@@ -806,12 +808,13 @@ export function TaskPanel({
                   type="button"
                   onClick={() => runActions.start?.()}
                   disabled={
-                    !streamSlug ||
-                    !title.trim() ||
-                    (!description.trim() && visibleInputs.length === 0) ||
-                    isUploading ||
-                    runActions.isLoading ||
-                    runActions.upgradeNeeded
+                    !canStartIdleTask({
+                      streamSlug,
+                      title,
+                      isUploading,
+                      runActionsLoading: runActions.isLoading,
+                      runActionsUpgradeNeeded: runActions.upgradeNeeded,
+                    })
                   }
                   className="flex h-6 shrink-0 items-center justify-center rounded-full bg-zinc-900 px-3 font-mono text-[10px] font-semibold tracking-wider text-white uppercase transition-colors hover:bg-zinc-800 disabled:opacity-30"
                 >

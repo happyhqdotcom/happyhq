@@ -43,7 +43,7 @@ function getPending(): Map<string, PendingEntry> {
 
 /**
  * Create a Promise that blocks until the user allows or denies the tool.
- * Called by the canUseTool callback in learningAgentOptions.
+ * Called by the canUseTool callback in chatAgentOptions.
  *
  * @param toolUseId - Unique ID for this specific tool call (from SDK canUseTool options).
  */

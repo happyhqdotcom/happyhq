@@ -15,6 +15,7 @@ import type { FileEntry, StreamContent, TaskContent } from '@/lib/fs/types'
 // call so editing a `.md` file takes effect on the next request without needing
 // a server restart (Next's HMR doesn't track non-source files).
 const _promptCache = new Map<string, string>()
+
 function loadPrompt(filename: string): string {
   if (process.env.NODE_ENV !== 'development') {
     const cached = _promptCache.get(filename)
@@ -100,32 +101,13 @@ export async function buildStreamContext(
   return formatStreamContext(content, uploads)
 }
 
-export async function learningPrompt(
-  qAbsolutePath: string,
-  streamName: string,
-  sessionId: string,
-  taskSlug?: string,
-): Promise<string> {
-  const manifest = await buildStreamContext(streamName, sessionId)
-
-  const taskContext = taskSlug
-    ? `Active task: ${taskSlug}\nTask inputs are at tasks/${taskSlug}/inputs/. You can read and update them.`
-    : ''
-
-  return loadPrompt('learning.md')
-    .replaceAll('{{WORKSPACE_ROOT}}', HAPPYHQ_ROOT)
-    .replaceAll('{{Q_PATH}}', qAbsolutePath)
-    .replaceAll('{{STREAM_CONTEXT}}', manifest)
-    .replaceAll('{{TASK_CONTEXT}}', taskContext)
-}
-
 /**
- * Build the learning layer prompt for injection as a <system-reminder>.
+ * Build the learning prompt for injection as a <system-reminder>.
  * Pure instructions — no I/O. Context comes from separate reminders
  * (NewStream, StreamManifest, LearningTaskContext).
  */
-export function learningLayerPrompt(streamName: string): string {
-  return loadPrompt('learning-layer.md')
+export function learningPrompt(streamName: string): string {
+  return loadPrompt('learning.md')
     .replaceAll('{{WORKSPACE_ROOT}}', HAPPYHQ_ROOT)
     .replaceAll('{{STREAM_NAME}}', streamName)
     .replaceAll('{{STREAM_SLUG}}', streamName)

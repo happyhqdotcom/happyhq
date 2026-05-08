@@ -9,7 +9,7 @@
 - `pnpm check-types` — type-check
 - `pnpm format` — format with Prettier (run from repo root)
 
-**Important**: All commands above must be run from the `happyhq/` directory, not the repo root. From the repo root, use `pnpm --filter=happyhq test` to target this package specifically.
+**Important**: All commands above must be run from the `happyhq/` directory, not the repo root. From the repo root, use `pnpm --filter=happyhq <script>` to target this package specifically (e.g. `pnpm --filter=happyhq smoke:e2e`).
 
 ## Structure
 
