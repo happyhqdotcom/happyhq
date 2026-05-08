@@ -264,7 +264,7 @@ Each mode has its own model and thinking configuration. All three currently use 
 
 | Setting           | Description                      | Control                            | Default  | Source                                                 |
 | ----------------- | -------------------------------- | ---------------------------------- | -------- | ------------------------------------------------------ |
-| Learning model    | Model for learning conversations | Dropdown: Haiku / Sonnet / Opus    | Opus     | `learningAgentOptions` in `config.server.ts`           |
+| Learning model    | Model for learning conversations | Dropdown: Haiku / Sonnet / Opus    | Opus     | `chatAgentOptions` in `config.server.ts`               |
 | Learning thinking | Thinking behavior for learning   | Dropdown: Adaptive / Enabled / Off | Adaptive | `thinking: { type: 'adaptive' }` in `config.server.ts` |
 | Planning model    | Model for plan generation        | Dropdown: Haiku / Sonnet / Opus    | Opus     | `planningAgentOptions` in `config.server.ts`           |
 | Planning thinking | Thinking behavior for planning   | Dropdown: Adaptive / Enabled / Off | Adaptive | `thinking: { type: 'adaptive' }` in `config.server.ts` |
@@ -364,7 +364,7 @@ interface AppConfig {
 
 **API**: `GET /api/config` reads the file and returns a fully resolved config with all defaults filled in. `PUT /api/config` accepts a partial update, merges it with the existing config, and returns the resolved result. Client hook: `useConfig()` (SWR) and `useUpdateConfig()` in `lib/config/use-config.ts`.
 
-**Integration**: The agent config factories (`planningAgentOptions`, `workingAgentOptions`, `learningAgentOptions` in `lib/agents/config.server.ts`) read from this config at invocation time, falling back to the current hardcoded defaults in `constants.ts` when values are missing.
+**Integration**: The agent config factories (`chatAgentOptions`, `planningAgentOptions`, `workingAgentOptions` in `lib/agents/config.server.ts`) read from this config at invocation time, falling back to the current hardcoded defaults in `constants.ts` when values are missing.
 
 **What is NOT exposed** (intentionally):
 

@@ -122,7 +122,7 @@ See [Chat](chat.md) for rendering details and [Data Flow](data-flow.md) for the 
 
 For genuinely open-ended questions (e.g., "Describe your ideal SOW"), the agent asks in prose and the user types freely — this is a normal conversation turn, not an `AskUserQuestion` call.
 
-**Task-aware learning**: The `learningAgentOptions` factory accepts an optional `taskSlug` parameter. When present, `learningPrompt()` injects a `{{TASK_CONTEXT}}` block into the system prompt — the active task slug and inputs path (`tasks/{task-slug}/inputs/`), plus boundary rules (Q can read/update task inputs and stream specs, but must never write to `plan.md`, `working/`, or `outputs/`). This is used when plan feedback opens a learning chat via the island (see [Planning](planning.md) "Give Q Feedback" flow). Without `taskSlug`, the `{{TASK_CONTEXT}}` placeholder is replaced with an empty string.
+**Task-aware learning**: When a learning chat has an active task (e.g., when plan feedback opens a learning chat via the island — see [Planning](planning.md) "Give Q Feedback" flow), the `chatAgentOptions` factory passes `taskSlug` through to `buildReminders`, which fires a `learningTaskContext` reminder. The reminder names the task and its inputs path (`tasks/{task-slug}/inputs/`); the boundary rules (Q can read/update task inputs and stream specs, but must never write to `plan.md`, `working/`, or `outputs/`) live in the learning layer itself. Without `taskSlug`, no task reminder fires.
 
 **Model**: Opus with adaptive thinking (`thinking: { type: 'adaptive' }`). The original spike (see `specs/refs/learning-reference/`) used Opus with extended thinking and produced excellent results with a minimal prompt. Q in learning mode mirrors this — context over process engineering.
 
@@ -302,7 +302,7 @@ Tools are defined per mode. The SDK provides built-in file tools; we configure w
 
 ### Initialization
 
-Each `query()` call is independent — it spawns a new Claude Code subprocess, runs the agent, and returns results via an async generator. There is no persistent SDK client object. Configuration is built per-query via factory functions (`learningAgentOptions`, `planningAgentOptions`, `workingAgentOptions` in `lib/agents/config.server.ts`) — fresh options each call because MCP server instances capture closures (e.g., `streamName`), abort controllers change per call, and session IDs are unique. Key options set per mode:
+Each `query()` call is independent — it spawns a new Claude Code subprocess, runs the agent, and returns results via an async generator. There is no persistent SDK client object. Configuration is built per-query via factory functions (`chatAgentOptions`, `planningAgentOptions`, `workingAgentOptions` in `lib/agents/config.server.ts`) — fresh options each call because MCP server instances capture closures (e.g., `streamName`), abort controllers change per call, and session IDs are unique. Key options set per mode:
 
 - `model` — Short name mapped via `MODEL_IDS` constant in `lib/constants.ts` (e.g., `'opus'` for all modes). Full model ID strings resolved at the constant level, updated in one place when new models drop.
 - `thinking` — Controls extended thinking behavior. All three modes use `{ type: 'adaptive' }` — Claude decides when and how much to think. Learning mode benefits from adaptive thinking for natural conversation and synthesis. Planning needs it for one-shot plan synthesis from cold file reads. Working needs it for file-state reasoning and step selection.
@@ -464,7 +464,7 @@ For server wiring — API routes, streaming, and session management — see [Dat
 
 Agent mode factories (`lib/agents/config.server.ts`):
 
-- [x] `learningAgentOptions`: Opus model, adaptive thinking, acceptEdits, MCP server, allowedTools, env override (`lib/agents/config.server.test.ts`)
+- [x] `chatAgentOptions`: general mode uses `general.md` as system prompt, learning mode injects `learning.md` per-turn as a `<system-reminder>`, MCP server, allowedTools, env override (`lib/agents/config.server.test.ts`, `app/api/chat/route.test.ts`)
 - [x] `planningAgentOptions`: Opus model, workspace root cwd, budget, exploration tools + git bash, no MCP, env override (`lib/agents/config.server.test.ts`)
 - [x] `workingAgentOptions`: Opus model, workspace root cwd, exploration tools + git bash, budget, settings isolation, env override (`lib/agents/config.server.test.ts`)
 

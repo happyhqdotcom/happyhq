@@ -11,7 +11,7 @@ import { resolveConfig } from '@/lib/config/defaults'
 import type { ThinkingMode } from '@/lib/config/types'
 import { MODEL_IDS } from '@/lib/constants'
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
-import { qPath, streamPath, taskPath } from '@/lib/fs/paths'
+import { streamPath, taskPath } from '@/lib/fs/paths'
 import { persistWebInput } from '@/lib/fs/web-input.server'
 
 import {
@@ -21,7 +21,6 @@ import {
 import {
   draftingPrompt,
   generalPrompt,
-  learningPrompt,
   planningPrompt,
   workingPrompt,
 } from './prompts.server'
@@ -65,172 +64,6 @@ function thinkingOption(
       return { type: 'enabled', budgetTokens: 10000 }
     case 'disabled':
       return { type: 'disabled' }
-  }
-}
-
-/**
- * Options factory for the Learning Agent.
- *
- * The Learning Agent is conversational (Opus with adaptive thinking),
- * operates at stream root, and has custom MCP tools for task creation.
- *
- * @param streamName - Current stream directory name
- * @param sessionId - UUID for new sessions, or session ID to resume
- * @param opts.resume - If true, resume an existing session instead of starting new
- */
-export async function learningAgentOptions(
-  streamName: string,
-  sessionId: string,
-  opts?: {
-    resume?: boolean
-    abortController?: AbortController
-    notifyClient?: (event: ChatStreamEvent) => void
-    env?: Record<string, string | undefined>
-    taskSlug?: string
-  },
-): Promise<Options> {
-  const config = resolveConfig(await readConfig())
-  const qsMcp: McpSdkServerConfigWithInstance = createQsMcpServer(
-    streamPath(streamName),
-    sessionId,
-  )
-
-  return {
-    model: MODEL_IDS[config.models.learning.model],
-    thinking: thinkingOption(config.models.learning.thinking),
-    systemPrompt: await learningPrompt(
-      qPath(),
-      streamName,
-      sessionId,
-      opts?.taskSlug,
-    ),
-    cwd: HAPPYHQ_ROOT,
-    permissionMode: 'acceptEdits',
-    allowedTools: [
-      // AskUserQuestion is NOT listed — it must trigger canUseTool to collect the user's answer.
-      // Read-only exploration tools — safe to auto-approve
-      'Glob',
-      'Grep',
-      'Read',
-      'Task',
-      'WebFetch',
-      'WebSearch',
-      'Bash(git:*)',
-      'Bash(ls:*)',
-      // SDK requires explicit listing to auto-approve custom MCP tools.
-      mcpToolName('ProcessSample'),
-      // CreateTask is auto-approved — renders a task card inline, agent continues.
-      // The user starts the task at any time; no blocking needed.
-      mcpToolName('CreateTask'),
-    ],
-    disallowedTools: ['EnterPlanMode', 'ExitPlanMode'],
-    canUseTool: async (toolName, input, { signal, toolUseID }) => {
-      if (toolName === 'AskUserQuestion') {
-        // Block until user answers via POST /api/chat/answer.
-        // Race against the abort signal so client disconnect / server shutdown
-        // doesn't leave a hanging promise. Rejects if user dismisses (deny).
-        try {
-          const answers = await Promise.race([
-            waitForAnswer(sessionId),
-            new Promise<never>((_, reject) => {
-              signal.addEventListener(
-                'abort',
-                () => reject(new Error('Aborted')),
-                { once: true },
-              )
-            }),
-          ])
-
-          return {
-            behavior: 'allow' as const,
-            updatedInput: { ...input, answers },
-          }
-        } catch {
-          return {
-            behavior: 'deny' as const,
-            message: 'User dismissed the question',
-          }
-        }
-      }
-
-      // Auto-approve safe Bash commands — handles chains like "cd /path && git commit"
-      // that miss allowedTools prefix matching because 'cd' is the leading command.
-      if (
-        toolName === 'Bash' &&
-        typeof (input as Record<string, unknown>).command === 'string' &&
-        isSafeBashCommand((input as Record<string, unknown>).command as string)
-      ) {
-        return {
-          behavior: 'allow' as const,
-          updatedInput: input as Record<string, unknown>,
-        }
-      }
-
-      // Block until user allows or denies via AskUserConfirmation card
-      try {
-        opts?.notifyClient?.({
-          type: 'pending_confirmation',
-          toolName,
-          input: input as Record<string, unknown>,
-          toolUseId: toolUseID,
-        })
-        const allowed = await Promise.race([
-          waitForConfirmation(toolUseID),
-          new Promise<never>((_, reject) => {
-            signal.addEventListener(
-              'abort',
-              () => reject(new Error('Aborted')),
-              { once: true },
-            )
-          }),
-        ])
-        return allowed
-          ? {
-              behavior: 'allow' as const,
-              updatedInput: input as Record<string, unknown>,
-            }
-          : { behavior: 'deny' as const, message: 'User denied tool' }
-      } catch {
-        return {
-          behavior: 'deny' as const,
-          message: 'User dismissed tool confirmation',
-        }
-      }
-    },
-    hooks: {
-      PostToolUse: [
-        {
-          hooks: [
-            async (input) => {
-              if (
-                input.hook_event_name === 'PostToolUse' &&
-                (input.tool_name === 'Write' || input.tool_name === 'Edit')
-              ) {
-                opts?.notifyClient?.({ type: 'stream_content_changed' })
-              }
-              return { continue: true }
-            },
-          ],
-        },
-      ],
-    },
-    includePartialMessages: true,
-    mcpServers: { [MCP_SERVER_NAME]: qsMcp },
-    settingSources: [],
-    env: agentEnv(opts?.env),
-    agents: {
-      Drafting: {
-        description:
-          'Spec-driven production agent. Takes a synthesized brief, file paths to a spec and samples directory, and a target output path. Reads the spec and samples, produces a quality artifact that meets every acceptance criterion, and writes it to the target path. Use for writing playbooks and specs -- any artifact that has a quality spec to write against.',
-        prompt: draftingPrompt(),
-        model: 'opus',
-        tools: ['Read', 'Glob', 'Grep', 'Write'],
-        maxTurns: 10,
-      },
-    },
-    ...(opts?.abortController && { abortController: opts.abortController }),
-    // New session: set sessionId. Resume: set resume to the session ID.
-    ...(opts?.resume ? { resume: sessionId } : { sessionId }),
   }
 }
 

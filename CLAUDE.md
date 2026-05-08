@@ -14,9 +14,8 @@ not in this monorepo.
 - `pnpm install` — install deps (always from repo root)
 - `pnpm dev` — start all apps (`pnpm turbo dev`)
 - `pnpm turbo dev --filter=<workspace>` — start one workspace
-- `pnpm --filter=<workspace> build` — build one workspace (never build from root)
-- `pnpm lint` / `pnpm check-types` / `pnpm format`
-- `pnpm --filter=<workspace> test` — run tests for one workspace
+- `pnpm --filter=<workspace> <script>` — run any package script from the repo root (e.g. `build`, `test`, `smoke:e2e`). Or `cd` into the workspace and run the script directly. Never build from root.
+- `pnpm lint` / `pnpm check-types` / `pnpm format` — root-level scripts that span the monorepo
 
 ## Before committing
 

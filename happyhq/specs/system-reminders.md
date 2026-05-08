@@ -48,7 +48,7 @@ The same data gets different framing depending on mode and location. On a task i
 
 ### Prompt vs. Reminder
 
-The learning layer (`prompts/learning-layer.md`) is pure standing instructions — classification system, interview methodology, subagent delegation, drafting workflow, git conventions, quality standards. True every turn the mode is active. No situational context.
+The learning layer (`prompts/learning.md`) is pure standing instructions — classification system, interview methodology, subagent delegation, drafting workflow, git conventions, quality standards. True every turn the mode is active. No situational context.
 
 Situational context lives in reminders — stream manifest, task context, upload awareness. These vary by session, turn, or state and fire only when their trigger is met.
 
@@ -103,7 +103,7 @@ Don't auto-process uploads as samples. Read, understand intent, confirm with the
 
 **Token estimate**: ~70.
 
-**Cross-mode**: Fires in both general and learning mode. The learning layer currently includes upload handling rules (lines 63-74 of `learning-layer.md`) on every turn regardless of whether uploads exist. This reminder replaces that with conditional firing. The upload section should eventually be removed from the learning layer — it's situational context, not standing instructions.
+**Cross-mode**: Fires in both general and learning mode. This reminder is the single surface for upload extraction guidance and the don't-auto-process rule — the learning layer never restates it, so we don't pay the token cost on turns with no uploads. The layer keeps only the learning-specific routing once an upload is classified (sample → ProcessSample, task input → CreateTask, reference → spec updates).
 
 ### 3. First-Time / Empty Workspace
 
@@ -156,13 +156,13 @@ The user has "New Pie Experiment" open. No content yet. The task directory is ta
 
 **Trigger**: Learning mode, every turn. Also injected via PostToolUse hook on the turn Q calls `EnterLearningMode`.
 
-**Content**: `learning-layer.md` — pure standing instructions (~85 lines, ~2000 tokens). Classification system, interview methodology, subagent delegation, drafting workflow, git conventions, quality standards.
+**Content**: `learning.md` — pure standing instructions (~80 lines, ~1700 tokens). Classification system, interview methodology, subagent delegation, drafting workflow, git conventions, quality standards.
 
 The learning layer describes artifact _types_ (playbook, specs, samples) without pointing to specific files. Paths to actual files come from the `NewStream` or `StreamManifest` reminders, which only list files that exist.
 
 Template variables: `{{STREAM_NAME}}`, `{{STREAM_SLUG}}`, `{{Q_PATH}}` (identity/location only — no situational context). The function is sync — no I/O.
 
-Owned by `prompts/learning-layer.md` and `specs/learning.md`.
+Owned by `prompts/learning.md` and `specs/learning.md`.
 
 ### 7. NewStream
 
@@ -307,7 +307,7 @@ Reminders fire in order, most stable context first, most situational last:
 ### Key files
 
 - `app/lib/agents/reminders.server.ts` — builder functions for all reminders, `buildReminders()` for general mode, `buildLearningReminders()` for learning mode. Each function has a catalog-style JSDoc (name, trigger, why, examples) that serves as the living spec.
-- `app/lib/agents/prompts.server.ts` — `learningLayerPrompt()` (sync, instructions only), `formatStreamContext()`, `streamManifest()`
+- `app/lib/agents/prompts.server.ts` — `learningPrompt()` (sync, instructions only), `formatStreamContext()`, `streamManifest()`
 - `app/lib/agents/config.server.ts` — PostToolUse hook uses `buildLearningReminders()`
 - `app/api/chat/route.ts` — composes reminders into individual `<system-reminder>` blocks
 

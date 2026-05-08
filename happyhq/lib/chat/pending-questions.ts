@@ -36,7 +36,7 @@ function getPending(): Map<string, PendingEntry> {
 
 /**
  * Create a Promise that blocks until the user submits an answer.
- * Called by the canUseTool callback in learningAgentOptions.
+ * Called by the canUseTool callback in chatAgentOptions.
  *
  * If a stale entry exists for this sessionId (e.g., previous question
  * that was never answered), it's deleted before creating the new one.

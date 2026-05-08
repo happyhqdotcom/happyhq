@@ -12,7 +12,6 @@ import type { FileEntry, StreamContent, TaskContent } from '@/lib/fs/types'
 
 let _generalPrompt: string | null = null
 let _learningPrompt: string | null = null
-let _learningLayerPrompt: string | null = null
 let _planningPrompt: string | null = null
 let _workingPrompt: string | null = null
 let _draftingPrompt: string | null = null
@@ -93,37 +92,15 @@ export async function buildStreamContext(
   return formatStreamContext(content, uploads)
 }
 
-export async function learningPrompt(
-  qAbsolutePath: string,
-  streamName: string,
-  sessionId: string,
-  taskSlug?: string,
-): Promise<string> {
-  if (!_learningPrompt) _learningPrompt = loadPrompt('learning.md')
-
-  const manifest = await buildStreamContext(streamName, sessionId)
-
-  const taskContext = taskSlug
-    ? `Active task: ${taskSlug}\nTask inputs are at tasks/${taskSlug}/inputs/. You can read and update them.`
-    : ''
-
-  return _learningPrompt
-    .replaceAll('{{WORKSPACE_ROOT}}', HAPPYHQ_ROOT)
-    .replaceAll('{{Q_PATH}}', qAbsolutePath)
-    .replaceAll('{{STREAM_CONTEXT}}', manifest)
-    .replaceAll('{{TASK_CONTEXT}}', taskContext)
-}
-
 /**
- * Build the learning layer prompt for injection as a <system-reminder>.
+ * Build the learning prompt for injection as a <system-reminder>.
  * Pure instructions — no I/O. Context comes from separate reminders
  * (NewStream, StreamManifest, LearningTaskContext).
  */
-export function learningLayerPrompt(streamName: string): string {
-  if (!_learningLayerPrompt)
-    _learningLayerPrompt = loadPrompt('learning-layer.md')
+export function learningPrompt(streamName: string): string {
+  if (!_learningPrompt) _learningPrompt = loadPrompt('learning.md')
 
-  return _learningLayerPrompt
+  return _learningPrompt
     .replaceAll('{{WORKSPACE_ROOT}}', HAPPYHQ_ROOT)
     .replaceAll('{{STREAM_NAME}}', streamName)
     .replaceAll('{{STREAM_SLUG}}', streamName)

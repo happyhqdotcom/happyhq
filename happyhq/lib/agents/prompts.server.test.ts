@@ -66,48 +66,15 @@ describe('prompt loading', () => {
     vi.resetModules()
   })
 
-  it('returns the content of the prompt file', async () => {
-    mockReadFileSync.mockReturnValue('You are a learning agent.')
-    const { learningPrompt } = await import('./prompts.server')
-    expect(await learningPrompt('/some/path', 'stream', 'session')).toBe(
-      'You are a learning agent.',
-    )
-  })
-
-  it('caches the prompt after first read', async () => {
-    mockReadFileSync.mockReturnValue('cached content')
-    const { learningPrompt } = await import('./prompts.server')
-
-    const first = await learningPrompt('/some/path', 'stream', 'session')
-    const second = await learningPrompt('/some/path', 'stream', 'session')
-
-    expect(first).toBe(second)
-    // 1 readFileSync for learning.md only
-    expect(mockReadFileSync).toHaveBeenCalledTimes(1)
-  })
-
-  it('learning prompt substitutes {{Q_PATH}} with the provided path', async () => {
-    mockReadFileSync.mockReturnValue('Read from {{Q_PATH}}/playbook.md')
-    const { learningPrompt } = await import('./prompts.server')
-    expect(await learningPrompt('/home/user/.q', 'stream', 'session')).toBe(
-      'Read from /home/user/.q/playbook.md',
-    )
-  })
-
   it('each prompt function loads independently', async () => {
     mockReadFileSync
-      .mockReturnValueOnce('learning') // learning.md
       .mockReturnValueOnce('planning {{TASK_NAME}} {{READING_LIST}}') // planning.md
       .mockReturnValueOnce(
         'working {{STREAM_NAME}} {{TASK_NAME}} {{READING_LIST}}',
       ) // working.md
 
-    const { learningPrompt, planningPrompt, workingPrompt } =
-      await import('./prompts.server')
+    const { planningPrompt, workingPrompt } = await import('./prompts.server')
 
-    expect(await learningPrompt('/some/path', 'stream', 'session')).toBe(
-      'learning',
-    )
     const planning = await planningPrompt('stream', 'my-task')
     expect(planning).toContain('my-task')
     const working = await workingPrompt('stream', 'my-task')
@@ -334,7 +301,7 @@ describe('generalPrompt', () => {
   })
 })
 
-describe('learningLayerPrompt', () => {
+describe('learningPrompt', () => {
   beforeEach(() => {
     mockReadFileSync.mockReset()
     vi.resetModules()
@@ -344,8 +311,8 @@ describe('learningLayerPrompt', () => {
     mockReadFileSync.mockReturnValue(
       'Stream: {{STREAM_NAME}}, Slug: {{STREAM_SLUG}}, Q: {{Q_PATH}}',
     )
-    const { learningLayerPrompt } = await import('./prompts.server')
-    const result = learningLayerPrompt('client-reports')
+    const { learningPrompt } = await import('./prompts.server')
+    const result = learningPrompt('client-reports')
 
     expect(result).toContain('Stream: client-reports')
     expect(result).toContain('Slug: client-reports')
@@ -356,8 +323,8 @@ describe('learningLayerPrompt', () => {
     mockReadFileSync.mockReturnValue(
       'Name: {{STREAM_NAME}}, Slug: {{STREAM_SLUG}}, Q: {{Q_PATH}}',
     )
-    const { learningLayerPrompt } = await import('./prompts.server')
-    const result = learningLayerPrompt('client-reports')
+    const { learningPrompt } = await import('./prompts.server')
+    const result = learningPrompt('client-reports')
 
     // These template vars were removed — context comes from separate reminders now
     expect(result).not.toContain('{{STREAM_CONTEXT}}')

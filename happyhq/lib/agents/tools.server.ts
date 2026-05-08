@@ -17,10 +17,7 @@ import {
   chatPath,
   streamPath,
 } from '@/lib/fs/paths'
-import { listDirectory, readStreamContent } from '@/lib/fs/read.server'
 import { extractTextFromPdf } from '@/lib/pdf/extract-text.server'
-
-import { formatStreamContext } from './prompts.server'
 
 /** Short internal name for the MCP server. Appears in prefixed tool names as mcp__q__<tool>. */
 export const MCP_SERVER_NAME = 'q'
@@ -313,12 +310,6 @@ export function createQsMcpServer(
             }
           }
 
-          const [content, uploads] = await Promise.all([
-            readStreamContent(slug),
-            listDirectory(path.join(chatPath(sessionId), 'uploads')),
-          ])
-          const summary = formatStreamContext(content, uploads)
-
           setSessionMode(sessionId, 'learning', slug)
 
           if (opts?.chatDir) {
@@ -335,7 +326,7 @@ export function createQsMcpServer(
             content: [
               {
                 type: 'text' as const,
-                text: `Entered learning mode for ${slug}.\n${summary}`,
+                text: `Entered learning mode for ${slug}. Your job here is to learn how this work gets done — ask great questions, read what's there, and capture what you learn into the playbook, specs, and samples. Call ExitLearningMode when the teaching is complete.`,
               },
             ],
           }
