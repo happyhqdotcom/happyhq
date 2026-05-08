@@ -1,58 +1,62 @@
 0a. Read @qa-rubric.md — this is the spec. Apply it literally.
 0b. Read @CLAUDE.md and @CONTRIBUTING.md (repo root) for repo conventions referenced by the rubric.
 
-1. Get the queue: `gh pr list --state open --limit 100 --json number,title,author,headRefName,labels,createdAt,body --jq '[.[] | select(.labels | map(.name) | any(. == "ralphie:ready-to-merge" or . == "needs-qa")) | select(.labels | map(.name) | any(. == "ralphie:qa-pass" or . == "ralphie:qa-fail") | not)] | sort_by(.createdAt)'`. Empty → exit cleanly.
+1. **Get the queue.** PRs that are open, labeled `ralphie:ready-to-merge` OR `needs-qa`, and have neither `ralphie:qa-pass` nor `ralphie:qa-fail`:
 
-2. For each PR in the queue, in parallel where it makes sense (use Sonnet subagents for diff reads), gather context:
-   - Read the diff: `gh pr diff <#>`. Capture the full diff in working memory; you'll classify against the rubric's critical-path table.
-   - Read the body and comments: `gh pr view <#> --comments`. Note the **Exercise evidence** — embedded `![](...)` screenshot URLs, "Visual evidence" sections, log excerpts, the "what was exercised" sentence.
-   - Note the author. PRs from the bugs / tech-debt / dependency loops will have a different author signature in the body's AI-disclosure paragraph than human-authored PRs. Don't treat one source as more trustworthy — read the diff regardless.
+   ```
+   gh pr list --state open --limit 100 \
+     --json number,title,author,headRefName,labels,createdAt,body \
+     --jq '[.[]
+       | select(.labels | map(.name) | any(. == "ralphie:ready-to-merge" or . == "needs-qa"))
+       | select(.labels | map(.name) | any(. == "ralphie:qa-pass" or . == "ralphie:qa-fail") | not)
+       ] | sort_by(.createdAt)'
+   ```
 
-3. For each PR, classify against the rubric's **critical path** definition:
-   - **Critical-path** if the diff touches any path in the rubric's table (lib/agents, lib/run, lib/fs, lib/actions, app/api/run, app/api/fs, lib/file-types.ts, components/features/tasks, components/features/chat, etc.) OR is a dep bump in the elevated-scrutiny list.
-   - **Non-critical-path** if the diff is purely `*.md`/`*.mdx`, `*.css`, Tailwind, or string-literal copy changes in `.tsx` (no logic / prop / handler changes).
-   - **Straddle case** (a TSX file with both copy and a new conditional, etc.): treat as critical-path. When in doubt, smoke.
+   Empty queue → write a plan with `Queue: 0 PRs.` and exit cleanly. The wrapper handles the no-units case.
 
-4. **Decide cohort policy.** Apply the rubric's cohort heuristics (`Batch when` / `Isolate when`) to produce a list of **test units**. Each unit has:
-   - One or more PRs (by number).
-   - A strategy: `evidence-sufficient`, `smoke-isolated`, `smoke-bespoke`, or `smoke-batched`.
-   - A one-paragraph reasoning.
-   - For `smoke-bespoke` units: the specific surface or scenario the smoke wouldn't cover and that bespoke driving will exercise (e.g., "drive the chat composer's drag-and-drop with a docx").
-   - For `smoke-batched` units: a one-line note on why these PRs are integration-safe to test together.
+2. **For each PR in the queue, gather context** (parallel where it makes sense — Sonnet subagents for diff reads on larger PRs):
+   - `gh pr diff <#>` — the diff. Capture in working memory.
+   - `gh pr view <#> --comments` — body and review comments. Note the embedded Exercise evidence (screenshots, log excerpts, "what was exercised" sentence).
+   - Author signature in the body's AI-disclosure paragraph distinguishes loop-authored PRs from human ones. Don't treat one as more trustworthy — read the diff regardless.
 
-5. **Order the test units.** Riskier first — `smoke-isolated` and `smoke-bespoke` before `smoke-batched` and `evidence-sufficient`. Within a tier, follow the queue order (oldest createdAt first).
+3. **For each PR, walk the four steps from the rubric** and capture the answers:
+   - **What changed?** One sentence describing the diff.
+   - **What could break?** One or two sentences naming the surface, semantic, or data path at risk if the change is wrong.
+   - **How to verify?** Either:
+     - Author's evidence is sufficient (per the rubric's "What counts as sufficient author evidence"). Cite the specific evidence — quote it, link it, or describe it concretely. Triage's verdict for this PR is `trust`.
+     - Author's evidence is thin OR doesn't cover the changed surface. Write the verification: prose describing what execute should do (drive the UI, hit an API, read a changelog, run a targeted unit test, inspect logs — see the rubric's "What 'verify' looks like" for the menu).
+   - **Backstop?**
+     - Pure non-code PRs (docs only, CSS only, string-literal copy in `.tsx` with no logic change, dev-only deps): `skip — non-code, build can't break`.
+     - Otherwise: `smoke`.
 
-6. **Write the plan** to `~/.cache/qa/triage-$(date +%Y%m%dT%H%M%S).md`. Format:
+4. **Write the plan** to `~/.cache/qa/triage-$(date +%Y%m%dT%H%M%S).md`. One unit per PR, in queue order (oldest `createdAt` first). Format:
 
    ```markdown
    # QA triage — <UTC timestamp>
 
-   Queue: <N> PRs. Test units: <M>.
+   Queue: <N> PRs.
 
-   ## Unit 1 — <strategy>: PR #X (and #Y, #Z if batched)
+   ## Unit 1 — PR #<X>: <PR title>
 
-   **Reasoning:** <one paragraph — why this strategy fits, what surface to verify, what to look for>
+   **What changed:** <one sentence>
 
-   **Diff summary:** <one or two sentences — what changed>
+   **What could break:** <one or two sentences>
 
-   **Exercise evidence:** <link to or quote the embedded evidence; "none" if absent>
+   **How to verify:** <"Trust author's evidence: <citation>" OR prose verification steps>
 
-   **Bespoke scenario** (if smoke-bespoke): <one paragraph — the specific flow to drive, the assertion>
-
-   **Batch context** (if smoke-batched): <why these are integration-safe together>
+   **Backstop:** <smoke | skip — non-code>
 
    ---
 
-   ## Unit 2 — ...
+   ## Unit 2 — PR #<Y>: ...
    ```
 
-7. Print a one-line summary to stdout: `Triaged N PRs into M test units. Plan: ~/.cache/qa/triage-<timestamp>.md`. Exit.
+5. Print a one-line summary to stdout: `Triaged N PRs into N units. Plan: ~/.cache/qa/triage-<timestamp>.md`. Exit.
 
-8. ${DRY_RUN_NOTE}
+6. ${DRY_RUN_NOTE}
 
-**[1]** Triage is read-only on the repo and write-only on the local plan file (`~/.cache/qa/triage-*.md`). Never label, comment, branch, commit, push, or open a PR in this phase. The execute phase does all of that.
-**[2]** Apply the critical-path table literally. If the diff touches a path in the table, the PR is critical-path — don't talk yourself into "but it's a small change in `lib/run/`." The whole point of the table is to remove that judgment call.
-**[3]** When the rubric is ambiguous about a PR, lean toward smoking. The cost of a false-positive smoke run is ~90s; the cost of a false-negative pass is a regression in main.
-**[4]** If a PR's diff is empty or `gh pr diff` errors (e.g., the PR was just rebased mid-triage), skip it from this run — it'll be picked up on the next pass. Note in the plan: `Unit N — skipped: diff fetch failed, retry next run`.
-**[5]** Do not run smoke yet. Triage produces a plan; execute is what actually drives the dev server.
-**[6]** Do not write the plan to anywhere other than `~/.cache/qa/triage-<timestamp>.md`. The execute phase reads from there.
+**[1]** Triage is read-only on the repo and write-only on the local plan file. Never label, comment, branch, commit, push, or open a PR in this phase. Execute does all of that.
+**[2]** When in doubt about whether author evidence is sufficient, write the verification. False-positive verification time costs ~90s; a false-negative pass ships a regression.
+**[3]** If a PR's diff is empty or `gh pr diff` errors (e.g., a rebase mid-triage), skip it and note in the plan: `## Unit N — PR #X — skipped: diff fetch failed, retry next run`. The wrapper will count it as a unit but execute will see the skip directive and exit cleanly.
+**[4]** Do not run smoke or any verification yet — that's execute's job.
+**[5]** Do not write the plan to anywhere other than `~/.cache/qa/triage-<timestamp>.md`. The wrapper reads from there.

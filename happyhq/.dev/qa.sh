@@ -130,7 +130,7 @@ else
 fi
 
 if [ -n "$OVERRIDE" ]; then
-    export OVERRIDE_NOTE="**OVERRIDE MODE**: The maintainer invoked --override on this single-PR session. Treat the PR as critical-path even if the diff suggests otherwise (smoke runs unconditionally). Do not promote to evidence-sufficient regardless of how thin or thick the Exercise evidence is. Hard constraints (no auto-merge, no push to PR branch, only operate in qa worktree) remain non-negotiable. Note the override in the qa-pass / qa-fail comment: 'Maintainer invoked --override; evidence-sufficient promotion was bypassed.'"
+    export OVERRIDE_NOTE="**OVERRIDE MODE**: The maintainer invoked --override on this single-PR session. Don't trust author evidence regardless of how thick it looks — write an explicit verification at execute time and run it. Smoke runs unconditionally as backstop. Hard constraints (no auto-merge, no push to PR branch, only operate in qa worktree) remain non-negotiable. Note the override in the qa-pass / qa-fail comment: 'Maintainer invoked --override; explicit verification was performed regardless of author evidence.'"
 else
     export OVERRIDE_NOTE=""
 fi
@@ -159,27 +159,32 @@ run_session() {
     return ${PIPESTATUS[1]}
 }
 
-# ── Single-PR mode: write a one-unit plan, then run execute against it ──
+# ── Single-PR mode: synthesise a one-unit plan, then run execute against it ──
 if [ -n "$SINGLE_PR" ]; then
-    # Synthesise a minimal triage plan with this PR as a smoke-isolated unit.
     PLAN_FILE=~/.cache/qa/triage-$(date +%Y%m%dT%H%M%S).md
     cat > "$PLAN_FILE" <<EOF
 # QA triage — single-PR mode
 
-Queue: 1 PR (forced via --pr ${SINGLE_PR}). Test units: 1.
+Queue: 1 PR (forced via --pr ${SINGLE_PR}).
 
-## Unit 1 — smoke-isolated: PR #${SINGLE_PR}
+## Unit 1 — PR #${SINGLE_PR}: <single-PR mode>
 
-**Reasoning:** Single-PR mode invoked via --pr; treating as smoke-isolated regardless of diff classification. ${OVERRIDE:+Override mode active.}
+**What changed:** (single-PR mode — execute reads the diff fresh)
 
-**Diff summary:** (single-PR mode — diff not pre-classified by triage)
+**What could break:** (single-PR mode — execute reads the diff fresh)
 
-**Exercise evidence:** (read the PR body during execute and decide)
+**How to verify:** Read the diff at execute time and write a verification on the fly. Drive what the change actually touches. ${OVERRIDE:+Override mode active — don't trust author evidence regardless.}
 
+**Backstop:** smoke
 EOF
     echo -e "  ${DIM}Wrote single-PR plan to ${PLAN_FILE}${RESET}"
-    run_session "PROMPT_qa_execute.md" "Execute · PR #${SINGLE_PR}"
-    exit $?
+    export PLAN_FILE
+    export UNIT_INDEX=1
+    export UNIT_TOTAL=1
+    run_session "PROMPT_qa_execute.md" "Unit 1 of 1 · PR #${SINGLE_PR}"
+    EXECUTE_EXIT=$?
+    (cd "$REPO_ROOT/happyhq" && npx tsx scripts/dev-server.ts stop 2>/dev/null) || true
+    exit $EXECUTE_EXIT
 fi
 
 # ── Phase 1: Triage (skipped with --execute-only) ──
@@ -202,17 +207,46 @@ if [ $EXECUTE_ONLY -eq 0 ]; then
     fi
 fi
 
-# ── Phase 2: Execute ──
-run_session "PROMPT_qa_execute.md" "Phase 2 · Execute"
-EXECUTE_EXIT=$?
+# ── Phase 2: Execute (per-unit fanout) ──
+PLAN_FILE=$(ls -t ~/.cache/qa/triage-*.md 2>/dev/null | head -1)
+if [ -z "$PLAN_FILE" ]; then
+    echo -e "  ${RED}Error: no triage plan found at ~/.cache/qa/triage-*.md${RESET}" >&2
+    exit 1
+fi
+export PLAN_FILE
 
-# Belt-and-braces dev server cleanup in case execute exited unexpectedly.
+UNIT_TOTAL=$(grep -c '^## Unit ' "$PLAN_FILE" 2>/dev/null || echo 0)
+if [ "$UNIT_TOTAL" -eq 0 ]; then
+    echo -e "\n  ${GREEN}✓${RESET} Triage found 0 PRs in queue. Nothing to execute."
+    exit 0
+fi
+export UNIT_TOTAL
+
+echo -e "\n  ${DIM}Plan: ${PLAN_FILE}${RESET}"
+echo -e "  ${DIM}Fanning out ${UNIT_TOTAL} unit$([ "$UNIT_TOTAL" -ne 1 ] && echo s)…${RESET}"
+
+ERROR_COUNT=0
+for i in $(seq 1 "$UNIT_TOTAL"); do
+    # Snap to clean state before each unit (the previous unit may have left a PR branch checked out).
+    git -C "$REPO_ROOT" checkout "$BASE_BRANCH" >/dev/null 2>&1 || true
+    git -C "$REPO_ROOT" reset --hard origin/main >/dev/null 2>&1 || true
+    (cd "$REPO_ROOT" && (pnpm install --frozen-lockfile 2>/dev/null || pnpm install)) >/dev/null 2>&1 || true
+    (cd "$REPO_ROOT/happyhq" && npx tsx scripts/dev-server.ts stop 2>/dev/null) || true
+
+    export UNIT_INDEX=$i
+    run_session "PROMPT_qa_execute.md" "Unit $i of $UNIT_TOTAL"
+    UNIT_EXIT=$?
+    if [ $UNIT_EXIT -ne 0 ]; then
+        echo -e "  ${YELLOW}⚠ Unit $i exited with status $UNIT_EXIT — continuing to next unit${RESET}"
+        ((ERROR_COUNT++))
+    fi
+done
+
+# Final cleanup — return to base, kill any lingering dev server.
+git -C "$REPO_ROOT" checkout "$BASE_BRANCH" >/dev/null 2>&1 || true
+git -C "$REPO_ROOT" reset --hard origin/main >/dev/null 2>&1 || true
 (cd "$REPO_ROOT/happyhq" && npx tsx scripts/dev-server.ts stop 2>/dev/null) || true
 pkill -f "next dev" 2>/dev/null || true
 
-if [ $EXECUTE_EXIT -ne 0 ]; then
-    echo -e "  ${RED}Execute exited with status $EXECUTE_EXIT${RESET}"
-    exit $EXECUTE_EXIT
-fi
-
-echo -e "\n  ${GREEN}✓${RESET} QA pass complete."
+echo -e "\n  ${GREEN}✓${RESET} QA pass complete. Units: ${UNIT_TOTAL}$([ $ERROR_COUNT -gt 0 ] && echo " (${ERROR_COUNT} errors)")"
+echo -e "  ${DIM}Per-unit outcomes posted as labels on the PRs themselves.${RESET}"
