@@ -220,7 +220,54 @@ interface RunInfo {
 
 Each phase appends a `PhaseRecord` when it completes. The panel reads `phases.find(p => p.phase === 'discovery')?.durationMs` for "Reviewed 2m 10s" (the user-facing label for the discovery phase — see [Discovery](discovery.md)), `phases.find(p => p.phase === 'planning')?.durationMs` for "Planned 3m", and `phases.filter(p => p.phase === 'working')` for working iterations. No positional guessing. Session transcripts are opened via `phases[n].sessionId`.
 
-> **Migration:** This replaces the previous `planningCostUsd`, `planningSessionId`, `workingSessionIds`, and positional `iterations` fields. Existing `.run.json` files on users' filesystems have the old shape. The migration is **a read-time compat shim**, not a one-time rewrite or flag day. The `.run.json` reader detects the old fields (`planningCostUsd`, `planningSessionId`, `workingSessionIds`, `iterations`) and synthesizes a `phases: PhaseRecord[]` array on the way out — stale entries get the new shape transparently. Writers always emit the new shape. After a few releases, remove the shim. This ships in the same change as discovery (see [Discovery](discovery.md) — discovery's `PhaseRecord` write is the forcing function for the new shape).
+> **Migration:** This replaces the previous `planningCostUsd`, `planningSessionId`, `workingSessionIds`, and positional `iterations` fields. Existing `.run.json` files on users' filesystems have the old shape. The migration is **a read-time compat shim**, not a one-time rewrite or flag day.
+>
+> **Where the shim lives:** introduce `parseRunInfo(raw: unknown): RunInfo` in `happyhq/lib/fs/read.server.ts` (the file that already does `JSON.parse(runJson) as RunInfo` in two places). All callers replace the bare cast with `parseRunInfo(JSON.parse(runJson))`. One central translation point; one place to remove the shim a few releases later.
+>
+> **What the shim does:** detects old-shape input by the presence of any of `planningCostUsd`, `planningSessionId`, `workingSessionIds`, or `iterations`, and synthesizes a `phases: PhaseRecord[]` array. Writers always emit the new shape, so stored files re-saved by the new code drop the old fields naturally.
+>
+> **Concrete shape mapping (fixture for tests):**
+>
+> ```jsonc
+> // Old shape (input — pre-upgrade .run.json)
+> {
+>   "status": "completed",
+>   "iteration": 4,
+>   "planningCostUsd": 0.12,
+>   "planningSessionId": "sess_planning_abc",
+>   "workingSessionIds": ["sess_work_1", "sess_work_2", "sess_work_3", "sess_work_4"],
+>   "iterations": [
+>     { "costUsd": 0.45, "durationMs": 30000 },
+>     { "costUsd": 0.50, "durationMs": 35000 },
+>     { "costUsd": 0.40, "durationMs": 28000 },
+>     { "costUsd": 0.42, "durationMs": 30000 }
+>   ],
+>   "startedAt": "2026-01-15T10:00:00Z",
+>   "lastIterationAt": "2026-01-15T10:05:00Z",
+>   "error": null
+> }
+>
+> // New shape (output — what parseRunInfo returns)
+> {
+>   "status": "completed",
+>   "phases": [
+>     { "phase": "planning", "sessionId": "sess_planning_abc", "costUsd": 0.12, "durationMs": 0 },
+>     { "phase": "working", "iteration": 1, "sessionId": "sess_work_1", "costUsd": 0.45, "durationMs": 30000 },
+>     { "phase": "working", "iteration": 2, "sessionId": "sess_work_2", "costUsd": 0.50, "durationMs": 35000 },
+>     { "phase": "working", "iteration": 3, "sessionId": "sess_work_3", "costUsd": 0.40, "durationMs": 28000 },
+>     { "phase": "working", "iteration": 4, "sessionId": "sess_work_4", "costUsd": 0.42, "durationMs": 30000 }
+>   ],
+>   "costUsd": 1.89,
+>   "startedAt": "2026-01-15T10:00:00Z",
+>   "lastIterationAt": "2026-01-15T10:05:00Z"
+> }
+> ```
+>
+> Notes on synthesis: planning's `durationMs` is missing from the old shape — emit `0` (renders as "Planned 0s" rather than crashing). Working iterations are paired by index between `workingSessionIds[i]` and `iterations[i]`; if the lengths disagree, prefer `iterations.length` and fill missing sessionIds with empty strings. `error: null` collapses to `error?: undefined` in the new shape (no field).
+>
+> **Test against three fixtures**: planning-only, planning + N working iterations, and a never-run task (no old fields present — pass-through). All in `lib/fs/read.server.test.ts`.
+>
+> After a few releases (no remaining old-shape files in the wild), delete the synthesis branch from `parseRunInfo`. This ships in the same change as discovery (see [Discovery](discovery.md) — discovery's `PhaseRecord` write is the forcing function for the new shape).
 
 The loop writes `.run.json`:
 
