@@ -39,7 +39,11 @@ const SMOKE_ROOT = path.join(
   `happyhq-smoke-${crypto.randomUUID()}`,
 )
 const STREAM_SLUG = 'smoke'
-const TASK_SLUG = 'smoke-task'
+// generateTaskSlug appends `-<9-char Crockford Base32>` to the kebab title.
+// The browser-driven flow types "smoke task", so the created directory
+// matches `smoke-task-<suffix>` — discovered post-create rather than known
+// up front.
+const TASK_SLUG_PATTERN = /^smoke-task-[0-9a-z]+$/i
 
 // ---------------------------------------------------------------------------
 // Logging
@@ -130,7 +134,7 @@ function devServer(action: 'start' | 'wait-ready' | 'stop'): void {
 // Browser flow — task creation via the real UI
 // ---------------------------------------------------------------------------
 
-async function createTaskViaUI(): Promise<void> {
+async function createTaskViaUI(): Promise<string> {
   const browser = await chromium.launch({ headless: !HEADED })
   try {
     const ctx = await browser.newContext({
@@ -208,25 +212,44 @@ async function createTaskViaUI(): Promise<void> {
     // calls ingestTaskInput per file. Both are sequential awaits, so the
     // inputs directory is the right "task creation done" signal.
     log('waiting for task and inputs to land on disk')
-    const taskDir = path.join(SMOKE_ROOT, 'tasks', TASK_SLUG)
-    const inputsDir = path.join(taskDir, 'inputs')
+    const tasksRoot = path.join(SMOKE_ROOT, 'tasks')
     const deadline = Date.now() + 30_000
-    while (
-      !fs.existsSync(path.join(taskDir, 'task.md')) ||
-      !fs.existsSync(inputsDir) ||
-      fs.readdirSync(inputsDir).length === 0
-    ) {
-      if (Date.now() > deadline) {
-        const taskExists = fs.existsSync(path.join(taskDir, 'task.md'))
-        const inputs = fs.existsSync(inputsDir) ? fs.readdirSync(inputsDir) : []
-        fail(
-          'createTask',
-          `task=${taskExists} inputs=[${inputs.join(',')}]; never finished`,
-        )
+    let taskSlug: string | undefined
+    while (taskSlug === undefined) {
+      if (fs.existsSync(tasksRoot)) {
+        for (const entry of fs.readdirSync(tasksRoot)) {
+          if (!TASK_SLUG_PATTERN.test(entry)) continue
+          const taskDir = path.join(tasksRoot, entry)
+          const inputsDir = path.join(taskDir, 'inputs')
+          if (
+            fs.existsSync(path.join(taskDir, 'task.md')) &&
+            fs.existsSync(inputsDir) &&
+            fs.readdirSync(inputsDir).length > 0
+          ) {
+            taskSlug = entry
+            break
+          }
+        }
       }
-      await sleep(500)
+      if (taskSlug === undefined) {
+        if (Date.now() > deadline) {
+          const candidates = fs.existsSync(tasksRoot)
+            ? fs.readdirSync(tasksRoot)
+            : []
+          fail(
+            'createTask',
+            `no smoke-task-* directory with task.md + populated inputs/ landed; candidates=[${candidates.join(',')}]`,
+          )
+        }
+        await sleep(500)
+      }
     }
-    log('task created with inputs', fs.readdirSync(inputsDir).join(', '))
+    const inputsDir = path.join(tasksRoot, taskSlug, 'inputs')
+    log(
+      'task created with inputs',
+      `${taskSlug} → ${fs.readdirSync(inputsDir).join(', ')}`,
+    )
+    return taskSlug
   } finally {
     await browser.close()
   }
@@ -236,12 +259,15 @@ async function createTaskViaUI(): Promise<void> {
 // Run iterations via API
 // ---------------------------------------------------------------------------
 
-async function runIteration(mode: 'planning' | 'working'): Promise<void> {
+async function runIteration(
+  mode: 'planning' | 'working',
+  taskSlug: string,
+): Promise<void> {
   log(`POST /api/run/start ${mode}`)
   const startRes = await fetch(`${BASE_URL}/api/run/start`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ task: TASK_SLUG, stream: STREAM_SLUG, mode }),
+    body: JSON.stringify({ task: taskSlug, stream: STREAM_SLUG, mode }),
   })
   if (!startRes.ok) {
     fail(
@@ -275,8 +301,8 @@ async function runIteration(mode: 'planning' | 'working'): Promise<void> {
 // Assertions
 // ---------------------------------------------------------------------------
 
-function assertOutputs(): void {
-  const taskDir = path.join(SMOKE_ROOT, 'tasks', TASK_SLUG)
+function assertOutputs(taskSlug: string): void {
+  const taskDir = path.join(SMOKE_ROOT, 'tasks', taskSlug)
 
   const planMd = path.join(taskDir, 'plan.md')
   if (!fs.existsSync(planMd)) fail('assertions', 'plan.md missing')
@@ -384,10 +410,10 @@ async function main(): Promise<void> {
     seedFixtures()
     devServer('start')
     devServer('wait-ready')
-    await createTaskViaUI()
-    await runIteration('planning')
-    await runIteration('working')
-    assertOutputs()
+    const taskSlug = await createTaskViaUI()
+    await runIteration('planning', taskSlug)
+    await runIteration('working', taskSlug)
+    assertOutputs(taskSlug)
     assertNoErrors()
     log('PASS')
     success = true
