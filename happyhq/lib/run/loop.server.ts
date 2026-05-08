@@ -1051,6 +1051,7 @@ async function runWorkingLoop(
         costUsd: totalCost,
         phases,
       })
+      broadcast(encodeEvent({ type: 'task_content_changed' }))
       log('run.stopped', {
         task: taskName,
         stream: streamName,
@@ -1168,6 +1169,7 @@ async function runWorkingLoop(
           costUsd: totalCost,
           phases,
         })
+        broadcast(encodeEvent({ type: 'task_content_changed' }))
         log('run.stopped', {
           task: taskName,
           stream: streamName,
@@ -1195,6 +1197,7 @@ async function runWorkingLoop(
           costUsd: totalCost,
           phases,
         })
+        broadcast(encodeEvent({ type: 'task_content_changed' }))
         broadcastErrorEvent(error, stderrTail)
         log('run.error', {
           task: taskName,
@@ -1229,6 +1232,7 @@ async function runWorkingLoop(
         costUsd: totalCost,
         phases,
       })
+      broadcast(encodeEvent({ type: 'task_content_changed' }))
       log('run.iteration', {
         task: taskName,
         iteration,
@@ -1260,6 +1264,7 @@ async function runWorkingLoop(
             costUsd: totalCost,
             phases,
           })
+          broadcast(encodeEvent({ type: 'task_content_changed' }))
           log('run.stopped', {
             task: taskName,
             stream: streamName,
@@ -1311,6 +1316,7 @@ async function runWorkingLoop(
         costUsd: totalCost,
         phases,
       })
+      broadcast(encodeEvent({ type: 'task_content_changed' }))
       log('run.stopped', {
         task: taskName,
         stream: streamName,
@@ -1330,6 +1336,7 @@ async function runWorkingLoop(
       costUsd: totalCost,
       phases,
     })
+    broadcast(encodeEvent({ type: 'task_content_changed' }))
     log('run.iteration', {
       task: taskName,
       iteration,
@@ -1350,6 +1357,7 @@ async function runWorkingLoop(
         costUsd: totalCost,
         phases,
       })
+      broadcast(encodeEvent({ type: 'task_content_changed' }))
       log('run.completed', {
         task: taskName,
         stream: streamName,
@@ -1384,6 +1392,7 @@ async function runWorkingLoop(
           costUsd: totalCost,
           phases,
         })
+        broadcast(encodeEvent({ type: 'task_content_changed' }))
         log('run.stopped', {
           task: taskName,
           stream: streamName,
@@ -1408,6 +1417,7 @@ async function runWorkingLoop(
     costUsd: totalCost,
     phases,
   })
+  broadcast(encodeEvent({ type: 'task_content_changed' }))
   log('run.stopped', {
     task: taskName,
     stream: streamName,
