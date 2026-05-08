@@ -139,11 +139,12 @@ The run stream already broadcasts activity events via `notifyClient` in the run 
 | { type: 'question'; sessionId: string; questions: AskUserQuestionInput['questions'] }
 ```
 
-When the discovery agent calls AskUserQuestion, the `canUseTool` callback:
+When the discovery agent calls AskUserQuestion, the `canUseTool` callback runs the setup sequence (see [canUseTool Callback](#canusetool-callback) for the canonical ordering — disk write first, then task.md pending, then broadcast, then block). The summary:
 
-1. Broadcasts `{ type: 'question', sessionId, questions }` through the existing `notifyClient` callback
-2. Sets `pending: clarification` on `task.md`
-3. Calls `waitForAnswer(sessionId)` to block until the user answers
+1. Write `pendingQuestions` to `.run.json`.
+2. Set `pending: 'clarification'` on `task.md`.
+3. Broadcast `{ type: 'question', sessionId, questions }` through `notifyClient`.
+4. Block on `Promise.race([waitForAnswer(sessionId), abortPromise])`.
 
 The client receives the question event via `GET /api/run/stream` (same SSE connection it's already using for activity steps) and renders the question UI. This uses the same `notifyClient` callback pattern that PostToolUse hooks already use to emit activity step events — it does not go through `filterMessage` (which converts SDK messages into events, a separate path).
 
@@ -151,7 +152,7 @@ The client receives the question event via `GET /api/run/stream` (same SSE conne
 
 If the client disconnects and reconnects while discovery is waiting for answers, it needs to recover the pending questions. The `pendingQuestions` field on `RunInfo` stores the current AskUserQuestion input when discovery is blocking. The task content API (`GET /api/fs/task`) returns this as part of `.run.json`, so on reconnect the client sees `status: 'discovering'` + `pendingQuestions` and re-renders the question UI. This also serves the multi-channel case — a Slack adapter reads `pendingQuestions` from `.run.json` to know what to relay.
 
-The `canUseTool` callback writes `pendingQuestions` to `.run.json` before blocking and clears it after the user answers (same write that sets/clears `pending: clarification`).
+The `canUseTool` callback writes `pendingQuestions` to `.run.json` before blocking and clears it after the user answers. `pendingQuestions` (on `.run.json`) and `pending: 'clarification'` (on `task.md`) are two separate writes that the callback keeps in sync — see [canUseTool Callback](#canusetool-callback) for the exact setup and cleanup ordering.
 
 ### Event vs. disk precedence (rule)
 
@@ -181,7 +182,7 @@ New endpoint: `POST /api/run/answer` — thin wrapper that calls `submitAnswer(s
 
 **Race with Stop:** the user could submit answers while a Stop request is in flight (or vice versa). The Promise.race in `canUseTool` already handles the SDK side — abort wins, the answer is dropped harmlessly. The endpoint side: if `submitAnswer` returns false because the session was just aborted, surface 404 — the client renders the run as stopped on its next state read.
 
-When the promise resolves, `canUseTool` clears `pending: clarification` on `task.md` and returns the answers to the SDK. Q continues within the same `query()` call — more activity events stream through the existing connection.
+When the promise resolves, `canUseTool` clears `pending: 'clarification'` on `task.md` and returns the answers to the SDK. Q continues within the same `query()` call — more activity events stream through the existing connection.
 
 ### Why Not a Chat Session
 
@@ -231,11 +232,16 @@ allowedTools: [
 ```typescript
 canUseTool: async (toolName, input, { signal }) => {
   if (toolName === 'AskUserQuestion') {
-    // Broadcast question to client via run stream
+    // Setup ordering: disk first (most critical for reconnect), then
+    // task.md pending, then broadcast, then block.
+    try {
+      await updateRunInfoPendingQuestions(taskName, input.questions)
+      await updateTaskMdPending(taskPath(taskName), 'clarification')
+    } catch (err) {
+      // Setup-write failure: deny rather than block on input we can't surface.
+      return { result: 'deny', message: 'Discovery state write failed' }
+    }
     notifyClient({ type: 'question', sessionId, questions: input.questions })
-    // Set pending + store questions in .run.json for reconnect/multi-channel
-    await updateTaskMdPending(taskPath(taskName), 'clarification')
-    await updateRunInfoPendingQuestions(taskName, input.questions)
     try {
       const answers = await Promise.race([
         waitForAnswer(sessionId),
@@ -247,9 +253,10 @@ canUseTool: async (toolName, input, { signal }) => {
       ])
       return { result: 'allow', updatedInput: { ...input, answers } }
     } finally {
-      // Clear pending + questions whether answered or aborted
-      await updateTaskMdPending(taskPath(taskName), undefined).catch(() => {})
+      // Clear pendingQuestions + pending whether answered or aborted.
+      // Fire-and-forget — the loop's next status write reconciles disk state.
       await updateRunInfoPendingQuestions(taskName, undefined).catch(() => {})
+      await updateTaskMdPending(taskPath(taskName), undefined).catch(() => {})
     }
   }
   return {
@@ -328,20 +335,21 @@ startRun(stream, task, 'discovery')
   │     │
   │     ├── has questions → AskUserQuestion
   │     │     ├── canUseTool broadcasts question event to run stream
-  │     │     ├── canUseTool sets pending: clarification
+  │     │     ├── canUseTool sets pending: 'clarification'
   │     │     ├── user answers via POST /api/run/answer → canUseTool clears pending → Q continues
   │     │     └── user stops run → abort signal → session ends
   │     │
   │     ├── Q synthesizes → appends ## Discovery to task.md
   │     └── session ends
   │
-  ├── commits: [stream/task] Discovery complete
+  ├── commits: [stream/task] Discovery complete (no-op if Q wrote nothing)
   │
-  └── transitions to planning (server-driven, no client round-trip)
-      ├── appends PhaseRecord { phase: 'discovery', sessionId, costUsd, durationMs, ... }
-      │   to phases array on .run.json
-      ├── writes .run.json { status: 'planning' }
-      └── runs planning agent (same as today)
+  ├── appends PhaseRecord { phase: 'discovery', sessionId, costUsd, durationMs, ... }
+  │   to phases array on .run.json
+  │
+  ├── flips .run.json { status: 'planning' }   (single write where possible)
+  │
+  └── runs planning agent (same as today)
 ```
 
 The auto-transition from discovery to planning happens inside the server process. There is no conditional — planning always follows discovery. The only branching is if discovery errors or is stopped, in which case planning doesn't run. The user can close the tab after answering Q's last question and come back to find planning done (or `plan_ready`).
@@ -364,10 +372,13 @@ In `loop.server.ts`, the `runLoop` function dispatches based on mode:
 if (mode === 'discovery') {
   // Run discovery, then planning sequentially
   const discoveryStatus = await runDiscoveryIteration(...)
-  if (discoveryStatus === 'stopped') {
-    finalStatus = 'stopped'
+  if (discoveryStatus !== 'completed') {
+    // 'stopped' (user/error) or 'budget' — don't continue to planning
+    finalStatus = discoveryStatus
   } else {
-    // Discovery succeeded — commit and continue to planning
+    // Discovery succeeded — commit and continue to planning.
+    // commitGitState is a no-op on a clean tree, so this only creates a
+    // commit if Q wrote a ## Discovery section to task.md.
     commitGitState(`[${streamName}/${taskName}] Discovery complete`)
     finalStatus = await runPlanningIteration(...)
   }
@@ -378,7 +389,7 @@ if (mode === 'discovery') {
 }
 ```
 
-`runDiscoveryIteration` follows the same structure as `runPlanningIteration`: create a session, run `query()`, handle abort/budget/error, return status. The key difference: discovery uses `canUseTool` with AskUserQuestion blocking and question broadcasting, while planning uses `createAutomatedCanUseTool()` (fully automated).
+`runDiscoveryIteration` follows the same structure as `runPlanningIteration`: create a session, run `query()`, handle abort/budget/error, return `'completed' | 'stopped' | 'budget'`. The key difference: discovery uses `canUseTool` with AskUserQuestion blocking and question broadcasting, while planning uses `createAutomatedCanUseTool()` (fully automated). Only `'completed'` continues to the planning iteration; both `'stopped'` and `'budget'` halt the run.
 
 **Type changes required.** Add `'discovery'` to every `mode` union and `'discovering'` to every `RunInfo.status` union. The concrete sites:
 
@@ -536,11 +547,11 @@ This lives in the playbook because it's the right granularity — "I trust Q to 
 
 There is no dedicated "skip discovery" button during the live Q&A. The Stop button (already present during every run phase) serves this purpose. When the user stops during discovery:
 
-- The session is aborted, `status: 'stopped'`, `stoppedDuring: 'discovery'` is written
-- The island clears (questions dismissed)
-- The task panel shows restart options including "Restart from plan" which skips discovery and goes straight to planning with the current task.md
+- The session is aborted; `status: 'stopped'`, `stoppedDuring: 'discovery'` is written.
+- The `canUseTool` `finally` clears `pendingQuestions` and `pending: 'clarification'`. The island clears.
+- The task panel shows the standard stopped affordances: **Continue** (resumes discovery — sends `mode: 'discovery'`, picks up where it stopped) and **Restart from plan** (sends `mode: 'planning'`, runs planning against the current `task.md`).
 
-This keeps the UI simple (one Stop button, not Stop + Skip) and gives the user clear choices after stopping.
+This keeps the UI simple (one Stop button, not Stop + Skip) and gives the user a clear choice between "let Q keep triaging" (Continue) and "I'm done with triage, just plan it" (Restart from plan).
 
 ## Multi-Channel Awareness
 
@@ -548,14 +559,14 @@ This spec covers the in-app experience only. The design is channel-agnostic by c
 
 - **Q writes task.md, not the channel.** A Slack adapter's job is I/O: relay the user's message to create the task, relay Q's questions to a Slack thread, relay the user's answers back to Q. Q does all the thinking and writing. The adapter never needs to understand markdown or frontmatter.
 - **AskUserQuestion is the abstraction.** In-app, it renders in the island. In Slack, an adapter translates it to message actions. In email, it becomes a reply template. The agent code is identical — it calls AskUserQuestion regardless of channel.
-- **`pending: clarification` is the notification trigger.** When the multi-channel layer exists, it watches for `pending` changes on tasks and notifies the appropriate channel (tracked in a future `notify` field on `task.md` — see [Task List](task-list.md) multi-channel section).
+- **`pending: 'clarification'` is the notification trigger.** When the multi-channel layer exists, it watches for `pending` changes on tasks and notifies the appropriate channel (tracked in a future `notify` field on `task.md` — see [Task List](task-list.md) multi-channel section).
 - **task.md is the single truth.** After discovery, the task description is complete regardless of which channel the user answered from. Anyone reading the task sees the full picture.
 
 A separate spec will cover the channel routing layer, adapters, and the `source`/`notify` fields. The key architectural insight: channels are dumb pipes, Q is the only writer, and task.md is the canonical object.
 
 ### Future: Stream Selection During Discovery
 
-Today, Start requires a stream assignment. A natural extension: tasks created with just a title could enter discovery without a stream, and Q could suggest which stream to assign based on the task description — "This looks like an Acme Client task — should I assign it there?" This would make quick-add even faster (title → Start → Q figures out the rest). Not v1 scope, but the architecture supports it.
+Today, Start requires a stream assignment. A natural extension: tasks created with just a title could enter discovery without a stream, and Q could suggest which stream to assign based on the task description — "This looks like an Acme Client task — should I assign it there?" This would make quick-add even faster (title → Start → Q figures out the rest). Deferred from v0 (see [v0 vs. v1 scope](#v0-vs-v1-scope)); the architecture supports it.
 
 ## Design Decisions
 
@@ -614,7 +625,7 @@ The unit tests in [Testing](#testing) prove the plumbing is wired. The smoke har
 
 **Scenario 3 — Restart from plan preserves `## Discovery`.** After Scenario 2 reaches `plan_ready`, click "Restart from plan." Assert: `task.md` still contains the `## Discovery` section from Scenario 2; `plan.md` is regenerated; planning runs.
 
-**Where the scenarios live.** Scenario 1 extends `scripts/smoke-e2e.ts` (the golden path). Scenarios 2–5 can live in the same script as additional test functions or split into `scripts/smoke-discovery.ts` with a sibling `smoke:discovery` package.json script — implementer's call. The harness pattern (boot a fresh dev server pointed at a per-run `/tmp/happyhq-smoke-<uuid>`, pre-seed the fixture stream, drive Chromium, assert filesystem + DOM state) is established; reuse it.
+**Where the scenarios live.** Scenario 1 extends `scripts/smoke-e2e.ts` (the golden path). Scenarios 2 and 3 can live in the same script as additional test functions or split into `scripts/smoke-discovery.ts` with a sibling `smoke:discovery` package.json script — implementer's call. The harness pattern (boot a fresh dev server pointed at a per-run `/tmp/happyhq-smoke-<uuid>`, pre-seed the fixture stream, drive Chromium, assert filesystem + DOM state) is established; reuse it.
 
 **Why this is worth the cost.** Smoke runs against real Opus calls, so each run is several dollars. Worth it because: (a) discovery's value is "did Q ask sensible questions or proceed sensibly?" — a judgment-driven UX that unit tests can't verify; (b) the calibration anchor lives in the prompt, and the only way to prove the prompt holds up under real model behavior is to run against the real model; (c) regression baseline for prompt drift on future model upgrades. Run discovery scenarios in CI on PRs that touch `prompts/discovery.md`, `lib/agents/config.server.ts` (discovery factory), or `lib/run/loop.server.ts` (discovery iteration / canUseTool). Don't run them on every unrelated PR.
 
@@ -672,6 +683,7 @@ The unit tests in [Testing](#testing) prove the plumbing is wired. The smoke har
 
 - [ ] Discovery errors write `status: 'stopped'` with `stoppedDuring: 'discovery'`
 - [ ] Budget stop during discovery writes `stopReason: 'budget'` with Continue option
+- [ ] Stopped or budget discovery does **not** trigger planning — only `runDiscoveryIteration` returning `'completed'` proceeds to `runPlanningIteration` (verified by absence of `phase: 'planning'` PhaseRecord in `.run.json`)
 
 **Billing and gating:**
 
@@ -707,7 +719,7 @@ Run loop — discovery mode (`lib/run/loop.server.test.ts`):
 
 - [ ] `startRun` with `mode: 'discovery'` writes `.run.json` with `status: 'discovering'`
 - [ ] Discovery that completes without questions auto-transitions to planning (status becomes `'planning'`)
-- [ ] Discovery that uses AskUserQuestion sets `pending: clarification` on task.md via canUseTool
+- [ ] Discovery that uses AskUserQuestion sets `pending: 'clarification'` on task.md via canUseTool
 - [ ] canUseTool clears `pending` after user answers
 - [ ] canUseTool broadcasts `question` event through `notifyClient` before blocking
 - [ ] canUseTool writes `pendingQuestions` to `.run.json` before blocking, clears after answer
@@ -731,7 +743,7 @@ Agent config (`lib/agents/config.server.test.ts`):
 - [ ] `discoveryAgentOptions` does NOT configure `mcpServers` or `agents` (no custom MCP, no custom subagents)
 - [ ] AskUserQuestion triggers the documented setup ordering: `pendingQuestions` write → `pending: 'clarification'` set → `question` event broadcast → block on `Promise.race`
 - [ ] Setup write failure (mock `updateRunInfoPendingQuestions` to throw) returns `{ result: 'deny' }` without blocking
-- [ ] AskUserQuestion triggers `pending: clarification` set/clear cycle
+- [ ] AskUserQuestion triggers `pending: 'clarification'` set/clear cycle
 - [ ] AskUserQuestion triggers `question` event broadcast via notifyClient
 
 Compat shim (`lib/fs/read.server.test.ts`):
@@ -757,6 +769,7 @@ Client (`components/features/tasks/`):
 - [ ] "Reviewed Ns" completed-state row renders with duration from discovery `PhaseRecord` (compute time)
 - [ ] Clicking "Reviewed Ns" opens the discovery session in the chat-session viewer via discovery phase record's `sessionId`
 
-Not tested:
+Not unit-tested (covered by smoke):
 
-- Discovery-to-planning auto-transition as end-to-end flow (requires real SDK session)
+- Discovery-to-planning auto-transition as end-to-end flow with a real SDK session — exercised by smoke Scenario 1.
+- The actual prompt's ask-vs-proceed judgment under real model behavior — exercised by smoke Scenarios 1 and 2.
