@@ -279,6 +279,21 @@ If step 1 or 2 throws, the callback returns `{ result: 'deny', message: 'Discove
 
 **Cleanup on resolution or abort** (in `finally`): clear `pendingQuestions` and `pending` in the same order as setup, both with `.catch(() => {})` since the callback is exiting and the disk state will be reconciled by the loop's next status write.
 
+**Implementation note: `updateRunInfoPendingQuestions` is a new helper.** The existing `writeRunInfo` (private in `lib/run/loop.server.ts`) takes a full `RunInfo`, not a partial. The simplest implementation is a thin read-merge-write wrapper:
+
+```typescript
+async function updateRunInfoPendingQuestions(
+  taskName: string,
+  questions: AskUserQuestionInput['questions'] | undefined,
+): Promise<void> {
+  const info = await readRunInfo(taskName)
+  if (!info) return
+  await writeRunInfo(taskName, { ...info, pendingQuestions: questions })
+}
+```
+
+Live alongside `writeRunInfo` in `lib/run/loop.server.ts` (private), or hoist both to `lib/fs/run-json.server.ts` if `parseRunInfo` lands there too. The spec doesn't prescribe — implementer's call. `updateTaskMdPending` is the parallel pattern, already in `lib/fs/task-md.server.ts`.
+
 ### System Prompt
 
 New file: `prompts/discovery.md`. The prompt tells Q:
@@ -389,7 +404,7 @@ if (mode === 'discovery') {
 }
 ```
 
-`runDiscoveryIteration` follows the same structure as `runPlanningIteration`: create a session, run `query()`, handle abort/budget/error, return `'completed' | 'stopped' | 'budget'`. The key difference: discovery uses `canUseTool` with AskUserQuestion blocking and question broadcasting, while planning uses `createAutomatedCanUseTool()` (fully automated). Only `'completed'` continues to the planning iteration; both `'stopped'` and `'budget'` halt the run.
+`runDiscoveryIteration` follows the same structure as `runPlanningIteration`: create a session, run `query()`, handle abort/budget/error, return `Promise<RunInfo['status']>`. The key difference: discovery uses `canUseTool` with AskUserQuestion blocking and question broadcasting, while planning uses `createAutomatedCanUseTool()` (fully automated). In practice, discovery returns `'completed'` on success and `'stopped'` for any abort/error/budget case (with the corresponding `stopReason` and `stoppedDuring` written to `.run.json` before returning). The dispatcher only continues to planning on `=== 'completed'`.
 
 **Type changes required.** Add `'discovery'` to every `mode` union and `'discovering'` to every `RunInfo.status` union. The concrete sites:
 
@@ -405,6 +420,62 @@ After updating the unions, run `pnpm check-types` from `happyhq/`. TypeScript wi
 Discovery cost is tracked within the same billing task run record that spans the full run lifecycle. The `runLoop` function starts a billing record at the top (`startTaskRun`) and finalizes at the bottom (`finalizeTaskRun`). When `mode: 'discovery'`, the loop runs discovery then planning sequentially — the billing record naturally spans both.
 
 After discovery completes, a `PhaseRecord` with `phase: 'discovery'` is appended to the `phases` array on `.run.json`, recording cost and duration. The `costUsd` field on RunInfo tracks the cumulative total (discovery + planning + working). `updateUsage` calls happen after each phase.
+
+### Config schema additions
+
+The `discoveryAgentOptions()` factory needs `config.models.discovery` and `config.limits.discoveryBudgetUsd` to exist. These fields don't exist today — the schemas at `happyhq/lib/config/types.ts` only list learning/planning/working. Add:
+
+- `AppConfig.models.discovery?: ModelConfig` (optional — user override).
+- `AppConfig.limits.discoveryBudgetUsd?: number` (optional — user override).
+- `ResolvedConfig.models.discovery: Required<ModelConfig>` (required in resolved form).
+- `ResolvedConfig.limits.discoveryBudgetUsd: number` (required in resolved form).
+
+Add corresponding defaults in `happyhq/lib/config/defaults.ts`. Mirror the existing `models.planning` / `limits.planningBudgetUsd` defaults — Opus model with adaptive thinking, conservative budget.
+
+The factory then reads them the same way the other factories do today:
+
+```typescript
+// happyhq/lib/agents/config.server.ts — discoveryAgentOptions
+model: MODEL_IDS[config.models.discovery.model],
+maxBudgetUsd: config.limits.discoveryBudgetUsd,
+```
+
+### PostToolUse hook for Write
+
+Discovery's factory needs a `PostToolUse` hook that fires after `Write` to emit `task_content_changed` — same pattern as planning/working at [`happyhq/lib/agents/config.server.ts:507-515`](happyhq/lib/agents/config.server.ts#L507-L515). Without this, the user won't see the `## Discovery` section appear in the panel until they manually refresh.
+
+```typescript
+hooks: {
+  PostToolUse: [
+    {
+      hooks: [
+        async (input) => {
+          if (input.hook_event_name !== 'PostToolUse') return { continue: true }
+          if (input.tool_name === 'Write' || input.tool_name === 'Edit') {
+            opts?.notifyClient?.({ type: 'task_content_changed' })
+          }
+          return { continue: true }
+        },
+      ],
+    },
+  ],
+}
+```
+
+Same shape as planning's hook; only the agent factory it's wired to differs.
+
+### Logging
+
+Discovery emits the existing `run.*` structured-log events ([`happyhq/lib/log.server.ts`](happyhq/lib/log.server.ts)). No new event namespace.
+
+- `run.started` already includes a `mode` field — when `mode: 'discovery'`, that's discovery starting.
+- `run.stopped` with `stoppedDuring: 'discovery'` for user/error/budget aborts.
+- `run.error` for fatal errors during discovery (e.g., setup-write failure in `canUseTool`).
+- `run.completed` for the run as a whole (after planning + working finish).
+
+PhaseRecord on `.run.json` captures success metrics (cost, duration, sessionId) — no separate per-phase log event needed. The mode and stoppedDuring fields are sufficient to grep discovery activity.
+
+**`canUseTool` setup-write failure** specifically should emit `run.error` with an explanatory message before returning `{ result: 'deny', message: 'Discovery state write failed' }` — silent denials are bad ops.
 
 ## Git Commits and Restart
 
@@ -636,7 +707,8 @@ The unit tests in [Testing](#testing) prove the plumbing is wired. The smoke har
 - [ ] Start button triggers discovery (not planning directly) — v0 always runs discovery on Start
 - [ ] `discoveryAgentOptions()` factory exists in `lib/agents/config.server.ts`: Opus (resolved via `config.models.discovery` against `MODEL_IDS`), adaptive thinking, no `mcpServers`, no `agents`, `persistSession: true`, `settingSources: []`, `disallowedTools: ['EnterPlanMode', 'ExitPlanMode']`
 - [ ] Discovery agent reads task inputs, stream playbook, specs, and samples (read-first rule from prompt)
-- [ ] `runDiscoveryIteration()` exists in `lib/run/loop.server.ts`, mirroring `runPlanningIteration` shape; returns `'completed' | 'stopped' | 'budget'`
+- [ ] `runDiscoveryIteration()` exists in `lib/run/loop.server.ts`, mirroring `runPlanningIteration` shape; signature returns `Promise<RunInfo['status']>`. In practice returns `'completed'` on success and `'stopped'` for any abort/error/budget case (with `stoppedDuring: 'discovery'` and any `stopReason` written to `.run.json` before returning)
+- [ ] Loop dispatcher's `if (mode === 'discovery')` branch only proceeds to `runPlanningIteration` when `runDiscoveryIteration` returns `'completed'`; any other return value is propagated as the final status without running planning
 - [ ] When Q has enough context, discovery auto-transitions to planning without user action
 - [ ] Loop commits `[stream/task] Discovery complete` after successful discovery, before planning
 - [ ] Discovery appends a `PhaseRecord` with `phase: 'discovery'` to `phases` on `.run.json`, then flips status to `'planning'` (single write where possible)
@@ -659,6 +731,19 @@ The unit tests in [Testing](#testing) prove the plumbing is wired. The smoke har
 - [ ] `parseRunInfo(raw): RunInfo` introduced in `lib/fs/read.server.ts`; both existing `JSON.parse(runJson) as RunInfo` sites switch to `parseRunInfo(JSON.parse(runJson))`; shim handles old shape (see [Working](working.md) migration)
 - [ ] `clearStaleRun` clears `pendingQuestions` along with flipping `'discovering'` status to `'stopped'`
 - [ ] Q synthesizes what it learned and appends a `## Discovery` section to task.md (or writes nothing when there's nothing useful to add)
+
+**Config schema:**
+
+- [ ] `AppConfig.models.discovery?: ModelConfig` and `ResolvedConfig.models.discovery: Required<ModelConfig>` added to `happyhq/lib/config/types.ts`
+- [ ] `AppConfig.limits.discoveryBudgetUsd?: number` and `ResolvedConfig.limits.discoveryBudgetUsd: number` added to `happyhq/lib/config/types.ts`
+- [ ] Defaults added to `happyhq/lib/config/defaults.ts` — Opus + adaptive thinking, conservative budget (mirror the planning defaults pattern)
+- [ ] `discoveryAgentOptions()` reads `config.models.discovery.model` (mapped via `MODEL_IDS`) and `config.limits.discoveryBudgetUsd` — same pattern as planning/working factories
+
+**Hooks and logging:**
+
+- [ ] `discoveryAgentOptions()` configures a `PostToolUse` hook that emits `notifyClient({ type: 'task_content_changed' })` after `Write` / `Edit` calls — mirrors the planning/working hook in `lib/agents/config.server.ts`
+- [ ] Discovery emits the existing `run.*` log events (`run.started`, `run.stopped`, `run.error`, `run.completed`) with `mode: 'discovery'` and `stoppedDuring: 'discovery'` discriminating the phase — no new event namespace
+- [ ] `canUseTool` setup-write failure emits `run.error` with an explanatory message before returning `{ result: 'deny' }` (no silent failures)
 
 **Restart:**
 
@@ -739,12 +824,19 @@ Restart (`lib/run/loop.server.test.ts`):
 
 Agent config (`lib/agents/config.server.test.ts`):
 
-- [ ] `discoveryAgentOptions` returns Opus model (via `MODEL_IDS`) with AskUserQuestion blocking via canUseTool
+- [ ] `discoveryAgentOptions` returns Opus model (resolved via `config.models.discovery` + `MODEL_IDS`) with AskUserQuestion blocking via canUseTool
+- [ ] `discoveryAgentOptions` reads `maxBudgetUsd` from `config.limits.discoveryBudgetUsd`
 - [ ] `discoveryAgentOptions` does NOT configure `mcpServers` or `agents` (no custom MCP, no custom subagents)
+- [ ] `discoveryAgentOptions` configures a `PostToolUse` hook for `Write` / `Edit` that calls `notifyClient({ type: 'task_content_changed' })`
 - [ ] AskUserQuestion triggers the documented setup ordering: `pendingQuestions` write → `pending: 'clarification'` set → `question` event broadcast → block on `Promise.race`
-- [ ] Setup write failure (mock `updateRunInfoPendingQuestions` to throw) returns `{ result: 'deny' }` without blocking
+- [ ] Setup write failure (mock `updateRunInfoPendingQuestions` to throw) returns `{ result: 'deny' }` and emits a `run.error` log event (no silent failure)
 - [ ] AskUserQuestion triggers `pending: 'clarification'` set/clear cycle
 - [ ] AskUserQuestion triggers `question` event broadcast via notifyClient
+
+Config defaults (`lib/config/defaults.test.ts`):
+
+- [ ] `models.discovery` resolves to a default `Required<ModelConfig>` (Opus + adaptive)
+- [ ] `limits.discoveryBudgetUsd` resolves to a default number
 
 Compat shim (`lib/fs/read.server.test.ts`):
 
