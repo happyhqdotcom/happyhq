@@ -34,11 +34,24 @@ function EditableDescription() {
   const descTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   )
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Flush pending save on unmount
   useEffect(() => {
     return () => clearTimeout(descTimerRef.current)
   }, [])
+
+  // Place caret at end on the transition into edit mode only.
+  // Doing this in the ref callback re-ran on every render and snapped the
+  // caret to the end on every keystroke (#265).
+  useEffect(() => {
+    if (!isEditing) return
+    const el = textareaRef.current
+    if (!el) return
+    el.focus()
+    const end = el.value.length
+    el.setSelectionRange(end, end)
+  }, [isEditing])
 
   const handleChange = (value: string) => {
     setDescription(value)
@@ -68,12 +81,7 @@ function EditableDescription() {
   return (
     <div className="mt-[0.5px] px-4 py-2">
       <textarea
-        ref={(el) => {
-          if (el && isEditing) {
-            el.focus()
-            el.selectionStart = el.selectionEnd = el.value.length
-          }
-        }}
+        ref={textareaRef}
         value={description}
         onChange={(e) => {
           if (!isEditing) setIsEditing(true)

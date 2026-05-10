@@ -225,6 +225,18 @@ export function TaskPanel({
     setFocusTarget(null)
   }, [focusTarget, setFocusTarget, onSidebarOpenChange])
 
+  // Place caret at end on the transition into edit mode only.
+  // Doing this in the ref callback re-ran on every render and snapped the
+  // caret to the end on every keystroke (#265).
+  useEffect(() => {
+    if (!isEditingDescription) return
+    const el = descriptionRef.current
+    if (!el) return
+    el.focus()
+    const end = el.value.length
+    el.setSelectionRange(end, end)
+  }, [isEditingDescription])
+
   // ── Auto-resize textarea ────────────────────────────────────────────
   const autoResize = (el: HTMLTextAreaElement) => {
     el.style.height = ''
@@ -379,13 +391,7 @@ export function TaskPanel({
                 <textarea
                   ref={(el) => {
                     descriptionRef.current = el
-                    if (el) {
-                      autoResize(el)
-                      if (isEditingDescription) {
-                        el.focus()
-                        el.selectionStart = el.selectionEnd = el.value.length
-                      }
-                    }
+                    if (el) autoResize(el)
                   }}
                   value={description}
                   onChange={(e) => {
