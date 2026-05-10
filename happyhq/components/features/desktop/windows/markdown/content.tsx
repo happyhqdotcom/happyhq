@@ -7,9 +7,14 @@ import rehypeRaw from 'rehype-raw'
 import rehypeSanitize from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
 
+import { FrontmatterBlockCurrent } from './frontmatter/current'
+import type { FrontmatterRenderer } from './frontmatter/types'
+
 interface MarkdownWindowContentProps {
   markdown: string
   loading?: boolean
+  /** Override the frontmatter renderer (used by the playground for variation previews). */
+  frontmatterRenderer?: FrontmatterRenderer
 }
 
 /** Parse YAML frontmatter into key-value pairs. Returns null if no frontmatter. */
@@ -33,66 +38,10 @@ function parseFrontmatter(
   return { fields, body }
 }
 
-/** Format an ISO timestamp to a short readable date. */
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString('en-GB', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  } catch {
-    return iso
-  }
-}
-
-/** Render frontmatter fields as a styled metadata block. */
-function FrontmatterBlock({ fields }: { fields: Record<string, string> }) {
-  const url = fields.url
-  const fetched = fields.fetched
-
-  // Skip rendering if no meaningful fields
-  const otherFields = Object.entries(fields).filter(
-    ([k]) => k !== 'url' && k !== 'fetched',
-  )
-  if (!url && !fetched && otherFields.length === 0) return null
-
-  return (
-    <div className="not-prose border-zinc-150 mb-3 grid grid-cols-[4rem_1fr] gap-x-2 gap-y-1 rounded-lg border bg-zinc-50/80 px-3 py-2.5 text-xs text-zinc-500">
-      {url && (
-        <>
-          <span className="font-medium text-zinc-400">Source</span>
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="min-w-0 truncate text-blue-600 hover:underline"
-          >
-            {url}
-          </a>
-        </>
-      )}
-      {fetched && (
-        <>
-          <span className="font-medium text-zinc-400">Fetched</span>
-          <span>{formatDate(fetched)}</span>
-        </>
-      )}
-      {otherFields.map(([key, value]) => (
-        <React.Fragment key={key}>
-          <span className="font-medium text-zinc-400">{key}</span>
-          <span className="min-w-0 truncate">{value}</span>
-        </React.Fragment>
-      ))}
-    </div>
-  )
-}
-
 export const MarkdownWindowContent = memo(function MarkdownWindowContent({
   markdown,
   loading,
+  frontmatterRenderer: FrontmatterRendererImpl = FrontmatterBlockCurrent,
 }: MarkdownWindowContentProps) {
   if (loading) {
     return (
@@ -121,7 +70,7 @@ export const MarkdownWindowContent = memo(function MarkdownWindowContent({
           className="prose prose-slate prose-q py-8"
           style={{ '--pq-px': '28px' } as React.CSSProperties}
         >
-          {parsed && <FrontmatterBlock fields={parsed.fields} />}
+          {parsed && <FrontmatterRendererImpl fields={parsed.fields} />}
           <Markdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeRaw, rehypeSanitize]}

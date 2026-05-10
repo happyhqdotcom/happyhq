@@ -9,6 +9,7 @@ import { subagentComponents } from './subagent'
 import { thinkingComponents } from './thinking'
 import { toolComponents } from './tools'
 import type { PlaygroundComponent } from './types'
+import { windowComponents } from './windows'
 
 export const PLAYGROUND_COMPONENTS: PlaygroundComponent[] = [
   ...messageComponents,
@@ -21,6 +22,7 @@ export const PLAYGROUND_COMPONENTS: PlaygroundComponent[] = [
   ...primitivesComponents,
   ...markdownComponents,
   ...conversationComponents,
+  ...windowComponents,
 ]
 
 export function findComponent(id: string): PlaygroundComponent | undefined {
