@@ -73,4 +73,30 @@ describe('DescriptionSection — cursor stability while typing', () => {
 
     expect(textarea.value).toBe('loaded from server')
   })
+
+  it('does not snap caret to end when an unrelated rerender happens mid-edit', () => {
+    // hasRun=true so we render the readonly view first, then click into edit.
+    mockState.content = {
+      ...baseContent,
+      description: 'hello world',
+      run: { status: 'completed' },
+    } as unknown as TaskContent
+    const { rerender } = render(<DescriptionSection />)
+
+    // Enter edit mode by clicking the readonly view.
+    fireEvent.click(screen.getByText('hello world'))
+    const textarea = screen.getByPlaceholderText(
+      'Add context...',
+    ) as HTMLTextAreaElement
+
+    // Simulate the user clicking mid-text to fix a typo.
+    textarea.setSelectionRange(5, 5)
+    expect(textarea.selectionStart).toBe(5)
+
+    // An unrelated rerender (e.g. an SWR refresh) must not move the caret.
+    rerender(<DescriptionSection />)
+
+    expect(textarea.selectionStart).toBe(5)
+    expect(textarea.selectionEnd).toBe(5)
+  })
 })
