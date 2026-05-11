@@ -211,33 +211,33 @@ function UrlPreviewView({
   const config = SOURCE_CONFIGS[source] || SOURCE_CONFIGS['save-link']
   const Icon = config.icon
 
-  // Fetch unfurl data
-  const fetchPreview = () => {
-    if (isValid && !hasPreviewed) {
-      const url = search.trim()
-      setHasPreviewed(true)
-
-      startTransition(async () => {
-        const result = await unfurlUrl(url)
-        if (result.success) {
-          setUnfurlData(result)
-        } else {
-          setUnfurlError(true)
-        }
-      })
-    }
-  }
-
-  // Submit the current value with unfurl data
-  const handleSubmit = () => {
-    if (isValid) {
-      onSubmit(search, unfurlData)
-    }
-  }
-
-  // Notify parent of action state changes
+  // Notify parent of action state changes. `fetchPreview` and `handleSubmit`
+  // are inlined here so the effect's deps cleanly describe the state
+  // transitions that matter (validity, fetch progress, current input).
   useEffect(() => {
     if (!onActionChange) return
+
+    const fetchPreview = () => {
+      if (isValid && !hasPreviewed) {
+        const url = search.trim()
+        setHasPreviewed(true)
+
+        startTransition(async () => {
+          const result = await unfurlUrl(url)
+          if (result.success) {
+            setUnfurlData(result)
+          } else {
+            setUnfurlError(true)
+          }
+        })
+      }
+    }
+
+    const handleSubmit = () => {
+      if (isValid) {
+        onSubmit(search, unfurlData)
+      }
+    }
 
     if (!isValid) {
       onActionChange({ type: 'disabled' })
@@ -248,7 +248,16 @@ function UrlPreviewView({
     } else {
       onActionChange({ type: 'submit', onAction: handleSubmit })
     }
-  }, [isValid, hasPreviewed, isPending, search])
+  }, [
+    isValid,
+    hasPreviewed,
+    isPending,
+    search,
+    unfurlData,
+    onActionChange,
+    onSubmit,
+    startTransition,
+  ])
 
   // Determine card state
   const isEmpty = !hasInput

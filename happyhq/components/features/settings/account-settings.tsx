@@ -132,7 +132,7 @@ export function AccountSettings() {
       setDeleteError('Failed to delete account. Please try again.')
       setDeleting(false)
     }
-  }, [router])
+  }, [router, token])
 
   if (isLoading) {
     return <p className="text-sm text-zinc-500">Loading...</p>
