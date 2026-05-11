@@ -7,7 +7,7 @@ import { useTaskStore } from '@/stores/taskStore'
 import { useOptimisticUploads } from '../hooks/use-optimistic-uploads'
 import { useTaskData } from '../hooks/use-task-data'
 import { useTaskContentData, useTaskMutate } from '../hooks/use-task-swr'
-import { idleTaskBlockedHint, idleTaskBlockedReason } from '../start-gate'
+import { canStartIdleTask } from '../start-gate'
 import { AttachmentsSection } from './attachments-section'
 import { DescriptionSection } from './description-section'
 import { OutputsSection } from './outputs-section'
@@ -25,7 +25,15 @@ import { PlanSection } from './plan-section'
  * Activity headers and section headers occupy the same slot — the activity
  * transforms into the duration label when each phase completes.
  */
-export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
+export function TaskCard({
+  taskItem,
+  onAttemptStart,
+}: {
+  taskItem: TaskItem
+  // Fires when the user clicks the Start Task button while it's not yet
+  // satisfied. Lets the parent nudge attention to the hint below the card.
+  onAttemptStart?: () => void
+}) {
   // Identity flows from the taskItem prop (which itself comes from the
   // taskItemsKey() SWR cache up in TaskListHome). No store mirror — that's
   // what produced the staleness in #256.
@@ -75,15 +83,13 @@ export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
     enabled: isIdle,
   })
 
-  const blockedReason = idleTaskBlockedReason({
+  const canStart = canStartIdleTask({
     streamSlug,
     title: taskTitle,
     isUploading: uploads.isUploading,
     runActionsLoading,
     runActionsUpgradeNeeded,
   })
-  const canStart = blockedReason == null
-  const blockedHint = idleTaskBlockedHint(blockedReason)
 
   // ── Sections ──────────────────────────────────────────────────────
   const sections: React.ReactNode[] = []
@@ -182,18 +188,26 @@ export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
               <UpgradePrompt variant="inline-small" title="Upgrade" />
             </div>
           )}
-          <div className="flex items-center justify-center gap-3 px-4 py-2.5">
+          <div className="flex items-center justify-center px-4 py-2.5">
             <button
               type="button"
-              onClick={() => runStart?.()}
-              disabled={!canStart}
-              className="flex h-6 shrink-0 items-center justify-center rounded-full bg-zinc-900 px-3 font-mono text-[10px] font-semibold tracking-wider text-white uppercase transition-colors hover:bg-zinc-800 disabled:opacity-30"
+              // aria-disabled (rather than HTML disabled) so the button still
+              // receives the click event when prerequisites aren't met — we
+              // route it to the parent's nudge handler instead of dropping it
+              // silently, which would leave the user wondering why nothing
+              // happened.
+              aria-disabled={!canStart}
+              onClick={() => {
+                if (!canStart) {
+                  onAttemptStart?.()
+                  return
+                }
+                runStart?.()
+              }}
+              className="flex h-6 shrink-0 items-center justify-center rounded-full bg-zinc-900 px-3 font-mono text-[10px] font-semibold tracking-wider text-white uppercase transition-colors hover:bg-zinc-800 aria-disabled:cursor-not-allowed aria-disabled:opacity-30 aria-disabled:hover:bg-zinc-900"
             >
               Start Task
             </button>
-            {blockedHint && (
-              <span className="text-sm text-zinc-500">{blockedHint}</span>
-            )}
           </div>
         </div>
       )}
