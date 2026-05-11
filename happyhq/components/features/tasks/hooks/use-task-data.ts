@@ -34,15 +34,22 @@ export function useTaskData(task: TaskIdentity | null) {
 
   // ── Reset store when task identity changes ──────────────────────────
   // useLayoutEffect fires before paint so TaskCard never sees stale data.
-  // Deps on task.taskSlug so the effect re-fires on task switches (not just mount).
+  // Re-firing on streamSlug/taskTitle changes is safe: reset() preserves
+  // run state when taskSlug is unchanged, so this just updates the identity
+  // fields if the task gets a stream assigned or is renamed mid-session.
+  // (Destructured to scalars because the caller passes a fresh object literal
+  // each render — depending on `task` directly would re-fire every render.)
+  const taskSlug = task?.taskSlug
+  const taskStreamSlug = task?.streamSlug ?? null
+  const taskTitle = task?.taskTitle
   useLayoutEffect(() => {
-    if (!task) return
+    if (!taskSlug || taskTitle === undefined) return
     useTaskStore.getState().reset({
-      taskSlug: task.taskSlug,
-      streamSlug: task.streamSlug,
-      taskTitle: task.taskTitle,
+      taskSlug,
+      streamSlug: taskStreamSlug,
+      taskTitle,
     })
-  }, [task?.taskSlug])
+  }, [taskSlug, taskStreamSlug, taskTitle])
 
   // ── SWR fetch for task content ──────────────────────────────────────
   // This is the "owner" that triggers the fetch. Card components read the
