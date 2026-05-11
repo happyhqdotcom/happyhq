@@ -3,6 +3,7 @@
 import {
   Calendar,
   CheckSquare,
+  ExternalLink,
   Flag,
   GitBranch,
   Globe,
@@ -81,27 +82,21 @@ const NUMBER_KEYS = new Set(['attachments', 'sourceCount'])
 const PERSON_KEYS = new Set(['owner', 'assignee'])
 const TAG_KEYS = new Set(['status', 'pending', 'mode', 'priority'])
 
-interface TagStyle {
-  pill: string
-  dot: string
+// Catalyst-style tag colours: tinted bg at /15 opacity + 700-weight text.
+// Mirrors the archive's Badge palette so frontmatter pills feel native to HQ.
+const TAG_STYLES: Record<string, string> = {
+  completed: 'bg-emerald-500/15 text-emerald-700',
+  working: 'bg-amber-500/15 text-amber-700',
+  planning: 'bg-sky-500/15 text-sky-700',
+  plan_ready: 'bg-violet-500/15 text-violet-700',
+  stopped: 'bg-zinc-500/15 text-zinc-700',
+  pending: 'bg-amber-500/15 text-amber-700',
+  high: 'bg-rose-500/15 text-rose-700',
+  medium: 'bg-amber-500/15 text-amber-700',
+  low: 'bg-zinc-500/15 text-zinc-700',
 }
 
-const TAG_STYLES: Record<string, TagStyle> = {
-  completed: { pill: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
-  working: { pill: 'bg-amber-50 text-amber-700', dot: 'bg-amber-500' },
-  planning: { pill: 'bg-sky-50 text-sky-700', dot: 'bg-sky-500' },
-  plan_ready: { pill: 'bg-violet-50 text-violet-700', dot: 'bg-violet-500' },
-  stopped: { pill: 'bg-zinc-100 text-zinc-600', dot: 'bg-zinc-400' },
-  pending: { pill: 'bg-amber-50 text-amber-700', dot: 'bg-amber-500' },
-  high: { pill: 'bg-rose-50 text-rose-700', dot: 'bg-rose-500' },
-  medium: { pill: 'bg-amber-50 text-amber-700', dot: 'bg-amber-500' },
-  low: { pill: 'bg-zinc-100 text-zinc-600', dot: 'bg-zinc-400' },
-}
-
-const DEFAULT_TAG_STYLE: TagStyle = {
-  pill: 'bg-zinc-100 text-zinc-700',
-  dot: 'bg-zinc-400',
-}
+const DEFAULT_TAG_STYLE = 'bg-zinc-500/15 text-zinc-700'
 
 const PERSON_PALETTES = [
   'bg-emerald-100 text-emerald-700',
@@ -159,6 +154,10 @@ function initials(name: string): string {
   return (first + second).toUpperCase() || name.charAt(0).toUpperCase()
 }
 
+function slugHref(keyName: string, value: string): string {
+  return SLUG_KIND[keyName] === 'stream' ? `/${value}` : `/task/${value}`
+}
+
 function ValueOf({ keyName, value }: { keyName: string; value: string }) {
   if (keyName === 'url' || keyName === 'source') {
     return (
@@ -166,20 +165,40 @@ function ValueOf({ keyName, value }: { keyName: string; value: string }) {
         href={value}
         target="_blank"
         rel="noopener noreferrer"
-        className="truncate text-blue-700 hover:underline"
+        className="inline-flex min-w-0 items-center gap-1 text-blue-600 hover:underline"
       >
-        {value.replace(/^https?:\/\/(www\.)?/, '')}
+        <span className="truncate">
+          {value.replace(/^https?:\/\/(www\.)?/, '')}
+        </span>
+        <ExternalLink
+          className="size-3 shrink-0 text-blue-400"
+          strokeWidth={1.75}
+        />
       </a>
     )
   }
   if (keyName in SLUG_KIND) {
-    return <span className="truncate font-mono text-[12.5px]">{value}</span>
+    return (
+      <a
+        href={slugHref(keyName, value)}
+        className="-mx-1 truncate rounded px-1 transition-colors hover:bg-zinc-100"
+      >
+        {value}
+      </a>
+    )
   }
   if (ISO_DATE_RE.test(value)) {
     return (
-      <span className="truncate" title={formatAbsoluteDate(value)}>
-        {formatAbsoluteDate(value)}
-        <span className="ml-2 text-zinc-400">· {relativeOrIso(value)}</span>
+      <span
+        className="inline-flex min-w-0 items-center gap-1.5"
+        title={formatAbsoluteDate(value)}
+      >
+        <span className="shrink-0">{formatAbsoluteDate(value)}</span>
+        <span
+          className="size-[3px] shrink-0 rounded-full bg-zinc-300"
+          aria-hidden="true"
+        />
+        <span className="truncate text-zinc-400">{relativeOrIso(value)}</span>
       </span>
     )
   }
@@ -188,11 +207,10 @@ function ValueOf({ keyName, value }: { keyName: string; value: string }) {
     return (
       <span
         className={cn(
-          'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] leading-none font-medium',
-          style.pill,
+          'inline-flex items-center rounded-md px-1.5 py-0.5 text-[12px] leading-5 font-medium',
+          style,
         )}
       >
-        <span className={cn('size-1.5 rounded-full', style.dot)} />
         {value.replace(/_/g, ' ')}
       </span>
     )
@@ -264,8 +282,10 @@ export function FrontmatterBlock({ fields }: FrontmatterBlockProps) {
             style={{ gridTemplateColumns: '180px minmax(0, 1fr)' }}
           >
             <LabelCell Icon={Icon} label={label} />
-            <div className="flex min-w-0 items-center truncate px-3 py-2 text-zinc-900">
-              <ValueOf keyName={key} value={value} />
+            <div className="flex min-w-0 items-center px-3 py-2 leading-none text-zinc-900">
+              <div className="min-w-0 translate-y-px truncate">
+                <ValueOf keyName={key} value={value} />
+              </div>
             </div>
           </div>
         )
