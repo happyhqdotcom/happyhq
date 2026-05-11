@@ -1,6 +1,7 @@
 'use client'
 
 import {
+  AlignLeft,
   Calendar,
   CheckSquare,
   ExternalLink,
@@ -68,6 +69,7 @@ const ICON_FOR_KEY: Record<string, LucideIcon> = {
   assignee: User,
   assignees: Users,
   progress: ListChecks,
+  description: AlignLeft,
   stream: GitBranch,
   streamSlug: GitBranch,
   task: CheckSquare,
