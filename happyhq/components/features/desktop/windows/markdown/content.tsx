@@ -67,10 +67,19 @@ export const MarkdownWindowContent = memo(function MarkdownWindowContent({
       <div className="absolute top-0 bottom-0 left-4 z-10 w-px bg-zinc-200/60" />
       <div className="h-full overflow-y-auto" style={{ contain: 'paint' }}>
         <div
-          className="prose prose-slate prose-q py-8"
+          className="prose prose-slate prose-q py-5"
           style={{ '--pq-px': '28px' } as React.CSSProperties}
         >
           {parsed && <FrontmatterRendererImpl fields={parsed.fields} />}
+          {parsed && (
+            <div
+              className="not-prose mt-5 mb-6 border-t border-zinc-200/70"
+              style={{
+                marginLeft: 'calc(1rem - var(--pq-px))',
+                marginRight: 'calc(-1 * var(--pq-px))',
+              }}
+            />
+          )}
           <Markdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeRaw, rehypeSanitize]}

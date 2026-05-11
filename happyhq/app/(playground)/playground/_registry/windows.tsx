@@ -9,8 +9,7 @@ import {
 
 import { MarkdownWindowContent } from '@/components/features/desktop/windows/markdown/content'
 import { FrontmatterBlockCurrent } from '@/components/features/desktop/windows/markdown/frontmatter/current'
-import { FrontmatterBlockMinimal } from '@/components/features/desktop/windows/markdown/frontmatter/minimal'
-import { FrontmatterBlockRegistry } from '@/components/features/desktop/windows/markdown/frontmatter/registry'
+import { FrontmatterBlockNotion } from '@/components/features/desktop/windows/markdown/frontmatter/notion'
 import type { FrontmatterRendererProps } from '@/components/features/desktop/windows/markdown/frontmatter/types'
 import { WindowFrame } from '@/components/features/desktop/windows/window-frame'
 
@@ -95,11 +94,10 @@ fallback rendering and label tidying.
 
 const RENDERERS: Record<string, ComponentType<FrontmatterRendererProps>> = {
   current: FrontmatterBlockCurrent,
-  registry: FrontmatterBlockRegistry,
-  minimal: FrontmatterBlockMinimal,
+  notion: FrontmatterBlockNotion,
 }
 
-const DEFAULT_RENDERER_KEY = 'registry'
+const DEFAULT_RENDERER_KEY = 'notion'
 
 function buildMarkdown(spec: FrontmatterSpec, now: number): string {
   const lines: string[] = ['---']
@@ -204,9 +202,8 @@ const markdownWindowEntry: PlaygroundComponent = {
       label: 'Frontmatter style',
       default: DEFAULT_RENDERER_KEY,
       options: [
-        { label: 'Current', value: 'current' },
-        { label: 'Registry + Chips', value: 'registry' },
-        { label: 'Minimal', value: 'minimal' },
+        { label: 'Notion (new)', value: 'notion' },
+        { label: 'Current (before)', value: 'current' },
       ],
     },
   },
