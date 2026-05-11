@@ -161,8 +161,10 @@ interface WindowStoreState {
   nextZIndex: number
   /** Last-known canvas width — set by the shell, read by useDesktopWindows. */
   canvasWidth: number | null
+  /** Last-known canvas height — set by the shell, read by WindowFrame for drag bounds. */
+  canvasHeight: number | null
 
-  setCanvasWidth: (width: number) => void
+  setCanvasSize: (size: { width: number; height: number }) => void
   openWindow: (config: WindowConfig, canvasWidth?: number) => void
   closeWindow: (id: string) => void
   focusWindow: (id: string) => void
@@ -195,8 +197,19 @@ export const useWindowStore = create<WindowStoreState>((set, get) => ({
   windows: [],
   nextZIndex: 31,
   canvasWidth: null,
+  canvasHeight: null,
 
-  setCanvasWidth: (width: number) => set({ canvasWidth: width }),
+  setCanvasSize: ({ width, height }) =>
+    set((s) => ({
+      canvasWidth: width,
+      canvasHeight: height,
+      // Keep maximized windows full-bleed when the canvas resizes (previously
+      // handled implicitly by CSS width:100%/inset:0; now the maximized size
+      // lives in the store, so we update it explicitly here).
+      windows: s.windows.map((w) =>
+        w.isMaximized ? { ...w, size: { width, height } } : w,
+      ),
+    })),
   openWindow: (config, canvasWidth) => {
     const { windows, nextZIndex } = get()
     const existing = windows.find((w) => w.id === config.id)

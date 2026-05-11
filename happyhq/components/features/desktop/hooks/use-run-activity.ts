@@ -132,6 +132,18 @@ export function useRunActivity(
   // events, since subagent_event payloads don't carry elapsed time.
   const subagentStartedAtRef = useRef<Map<string, number>>(new Map())
 
+  // Latest-ref pattern for values that must be read with current identity
+  // inside the long-lived SSE effect, without tearing down and rebuilding the
+  // connection when only their identity changes. `runStartedAt` doesn't change
+  // mid-run; `onStreamNotFound` is a stable SWR `mutate` in practice — but
+  // routing through refs keeps the effect's deps a clean `[isActive]`.
+  const runStartedAtRef = useRef(runStartedAt)
+  const onStreamNotFoundRef = useRef(onStreamNotFound)
+  useEffect(() => {
+    runStartedAtRef.current = runStartedAt
+    onStreamNotFoundRef.current = onStreamNotFound
+  })
+
   useEffect(() => {
     if (!isActive) {
       // Clean up and clear status when not active. The synchronous setStates
@@ -191,7 +203,7 @@ export function useRunActivity(
           // surfaces status='stopped'+error and useTerminalErrorToast picks
           // it up — closes #227.
           setIsConnected(false)
-          onStreamNotFound?.()
+          onStreamNotFoundRef.current?.()
           if (mounted) {
             reconnectTimeout = setTimeout(connect, RECONNECT_DELAY_MS)
           }
@@ -538,7 +550,9 @@ export function useRunActivity(
             // use the run.startedAt-keyed id so Sonner dedupes.
             toastError(
               event.message,
-              runStartedAt ? { id: `run-error:${runStartedAt}` } : undefined,
+              runStartedAtRef.current
+                ? { id: `run-error:${runStartedAtRef.current}` }
+                : undefined,
             )
           } else if (event.type === 'result') {
             setLastResultAt(Date.now())

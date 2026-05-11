@@ -338,6 +338,31 @@ describe('windowStore', () => {
     })
   })
 
+  describe('setCanvasSize', () => {
+    it('keeps maximized windows full-bleed when the canvas resizes', () => {
+      useWindowStore.getState().openWindow(markdownConfig)
+      useWindowStore
+        .getState()
+        .toggleMaximize('plan', { width: 1200, height: 800 })
+
+      useWindowStore.getState().setCanvasSize({ width: 900, height: 600 })
+
+      const win = useWindowStore.getState().windows[0]
+      expect(win.isMaximized).toBe(true)
+      expect(win.size).toEqual({ width: 900, height: 600 })
+    })
+
+    it('leaves non-maximized windows untouched', () => {
+      useWindowStore.getState().openWindow(markdownConfig)
+      const originalSize = { ...useWindowStore.getState().windows[0].size }
+
+      useWindowStore.getState().setCanvasSize({ width: 900, height: 600 })
+
+      const win = useWindowStore.getState().windows[0]
+      expect(win.size).toEqual(originalSize)
+    })
+  })
+
   describe('openWindow preserves layout for already-open windows', () => {
     it('preserves position and size when called for an already-open window', () => {
       useWindowStore.getState().openWindow(markdownConfig)

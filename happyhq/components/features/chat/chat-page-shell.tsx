@@ -31,6 +31,10 @@ export function ChatPageShell({
   chats: ChatEntry[]
   initialHistory: ChatHistoryData
 }) {
+  // Why mount-only: the parent page sets key={sessionId}, so this component
+  // remounts whenever the session changes. Adding `streamSlug`/`chats` to
+  // deps would re-run reset() on incidental prop updates (e.g., upstream
+  // SWR chat refreshes) and wipe desktopStore window state mid-session.
   useLayoutEffect(() => {
     useDesktopStore.getState().reset()
     if (streamSlug) {
@@ -40,6 +44,7 @@ export function ChatPageShell({
       globalMutate(desktopDataKey(streamSlug), { chats } as any, false)
       useStreamsStore.getState().setActiveStreamSlug(streamSlug)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (

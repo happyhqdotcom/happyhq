@@ -33,11 +33,14 @@ export function useTaskData(task: TaskIdentity | null) {
 
   // ── Reset client-only state when the active task changes ─────────────
   // useLayoutEffect fires before paint so sections never see leaked SSE
-  // activity from the previous task.
+  // activity from the previous task. Destructured to the scalar so the
+  // exhaustive-deps rule doesn't ask for the whole `task` object (which
+  // would re-fire on every render — the caller passes a fresh object).
+  const activeTaskSlug = task?.taskSlug
   useLayoutEffect(() => {
-    if (!task) return
+    if (!activeTaskSlug) return
     useTaskStore.getState().resetForTaskSwitch()
-  }, [task?.taskSlug])
+  }, [activeTaskSlug])
 
   // ── SWR fetch for task content ──────────────────────────────────────
   // This is the "owner" that triggers the fetch. Card components read the

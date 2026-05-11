@@ -89,17 +89,21 @@ export function DesktopShell({ children }: { children: ReactNode }) {
   const { openOrFocusWindow, openFileWindow, openDirectoryWindow } =
     useDesktopWindows(canvasRef)
 
-  // Keep stored canvas width in sync so useDesktopWindows() works without a ref
-  const setCanvasWidth = useWindowStore((s) => s.setCanvasWidth)
+  // Keep stored canvas size in sync so useDesktopWindows() and WindowFrame's
+  // drag bounds work without each consumer needing its own ResizeObserver.
+  const setCanvasSize = useWindowStore((s) => s.setCanvasSize)
   useEffect(() => {
     const el = canvasRef.current
     if (!el) return
     const observer = new ResizeObserver(([entry]) => {
-      setCanvasWidth(entry.contentRect.width)
+      setCanvasSize({
+        width: entry.contentRect.width,
+        height: entry.contentRect.height,
+      })
     })
     observer.observe(el)
     return () => observer.disconnect()
-  }, [setCanvasWidth])
+  }, [setCanvasSize])
 
   // ── Derived layout ────────────────────────────────────────────────
   const showPanel = openPanel.type !== 'empty'

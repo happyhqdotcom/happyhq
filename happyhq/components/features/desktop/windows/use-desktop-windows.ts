@@ -18,13 +18,18 @@ export function useDesktopWindows(
   // Read canvasWidth from the store at call time (getState), not as a
   // subscription. Subscribing would re-render on every ResizeObserver
   // frame during CSS transitions, causing jank in heavy components.
-  const openWindow: typeof openWindowRaw = (config) =>
-    openWindowRaw(
-      config,
-      canvasRef?.current?.getBoundingClientRect().width ??
-        useWindowStore.getState().canvasWidth ??
-        undefined,
-    )
+  // Memoised so the downstream useCallbacks below have a stable
+  // dependency and don't churn on every render.
+  const openWindow = useCallback<typeof openWindowRaw>(
+    (config) =>
+      openWindowRaw(
+        config,
+        canvasRef?.current?.getBoundingClientRect().width ??
+          useWindowStore.getState().canvasWidth ??
+          undefined,
+      ),
+    [openWindowRaw, canvasRef],
+  )
   const closeWindow = useWindowStore((s) => s.closeWindow)
   const focusWindow = useWindowStore((s) => s.focusWindow)
   const moveWindow = useWindowStore((s) => s.moveWindow)

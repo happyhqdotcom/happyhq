@@ -49,7 +49,7 @@ export function TaskPanelView() {
   // Auto-open settings sidebar for streamless tasks
   useEffect(() => {
     if (!streamSlug) setSidebarOpen(true)
-  }, [streamSlug])
+  }, [streamSlug, setSidebarOpen])
 
   // Auto-open file from sessionStorage handoff (click in (app) task card)
   useEffect(() => {
