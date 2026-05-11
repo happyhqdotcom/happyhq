@@ -338,7 +338,7 @@ function LabelCell({ Icon, label }: { Icon: LucideIcon; label: string }) {
 }
 
 export function FrontmatterBlock({ fields }: FrontmatterBlockProps) {
-  const entries = Object.entries(fields).filter(([k]) => k !== 'title')
+  const entries = Object.entries(fields)
   if (entries.length === 0) return null
 
   return (
