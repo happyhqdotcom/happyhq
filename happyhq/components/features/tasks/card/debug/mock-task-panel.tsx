@@ -1,5 +1,6 @@
 'use client'
 
+import { useActiveTaskSlug } from '@/components/features/tasks/hooks/use-task-swr'
 import {
   MOCK_BUDGET_STOPPED_CONTENT,
   MOCK_DISCOVERING_STEPS,
@@ -26,7 +27,7 @@ import { mutate } from 'swr'
  * Only rendered in development when a task is expanded.
  */
 export function MockTaskPanel() {
-  const taskSlug = useTaskStore((s) => s.taskSlug)
+  const taskSlug = useActiveTaskSlug()
   const mockMode = useTaskStore((s) => s.mockMode)
   const [activePhase, setActivePhase] = useState<MockPhase | null>(null)
   const [budgetStoppedDuring, setBudgetStoppedDuring] =

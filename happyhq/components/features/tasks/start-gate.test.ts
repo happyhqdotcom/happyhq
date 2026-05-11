@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { canStartIdleTask } from './start-gate'
+import {
+  canStartIdleTask,
+  idleTaskBlockedHint,
+  idleTaskBlockedReason,
+} from './start-gate'
 
 const READY = {
   streamSlug: 'stream',
@@ -43,5 +47,62 @@ describe('canStartIdleTask', () => {
     expect(canStartIdleTask({ ...READY, runActionsUpgradeNeeded: true })).toBe(
       false,
     )
+  })
+})
+
+describe('idleTaskBlockedReason', () => {
+  it('returns null when startable', () => {
+    expect(idleTaskBlockedReason(READY)).toBeNull()
+  })
+
+  it('reports no-title before no-stream when both are missing', () => {
+    // Title is the most actionable knob: the user is staring at it as they
+    // type. Surface it first.
+    expect(
+      idleTaskBlockedReason({ ...READY, title: '', streamSlug: null }),
+    ).toBe('no-title')
+  })
+
+  it('reports no-stream when title is set but stream is missing', () => {
+    expect(idleTaskBlockedReason({ ...READY, streamSlug: null })).toBe(
+      'no-stream',
+    )
+  })
+
+  it('reports uploading after content prerequisites are met', () => {
+    expect(idleTaskBlockedReason({ ...READY, isUploading: true })).toBe(
+      'uploading',
+    )
+  })
+
+  it('reports loading for in-flight start requests', () => {
+    expect(idleTaskBlockedReason({ ...READY, runActionsLoading: true })).toBe(
+      'loading',
+    )
+  })
+
+  it('reports upgrade-needed when out of quota', () => {
+    expect(
+      idleTaskBlockedReason({ ...READY, runActionsUpgradeNeeded: true }),
+    ).toBe('upgrade-needed')
+  })
+})
+
+describe('idleTaskBlockedHint', () => {
+  it('returns null when nothing is blocking', () => {
+    expect(idleTaskBlockedHint(null)).toBeNull()
+  })
+
+  it('returns user-actionable hints for content reasons', () => {
+    expect(idleTaskBlockedHint('no-title')).toBe('Add a title to start')
+    expect(idleTaskBlockedHint('no-stream')).toBe('Assign a stream to start')
+    expect(idleTaskBlockedHint('uploading')).toBe('Waiting for upload…')
+  })
+
+  it('returns null for reasons surfaced elsewhere', () => {
+    // `loading` is sub-second; `upgrade-needed` already has its own banner
+    // directly above the button.
+    expect(idleTaskBlockedHint('loading')).toBeNull()
+    expect(idleTaskBlockedHint('upgrade-needed')).toBeNull()
   })
 })

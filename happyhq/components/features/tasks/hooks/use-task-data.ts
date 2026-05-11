@@ -15,7 +15,6 @@ import { useTerminalErrorToast } from './use-terminal-error-toast'
 interface TaskIdentity {
   taskSlug: string
   streamSlug: string | null
-  taskTitle: string
 }
 
 /**
@@ -23,33 +22,25 @@ interface TaskIdentity {
  * SWR fetch, real-time SSE activity, run actions, debounced refresh,
  * and run-end detection.
  *
- * Lives inside the TaskCard (within the SWRConfig boundary from the
- * route page). Server data is read by section components via
- * useTaskContentData() — SWRConfig fallback ensures data on frame 1.
+ * Identity (taskSlug, streamSlug, title) is read directly from props/SWR by
+ * the card and its sections — see useActiveTaskItem in use-task-swr.ts.
+ * This hook only owns client-only state: run activity + run action handles.
  */
 export function useTaskData(task: TaskIdentity | null) {
   const { token } = useCurrentUser()
   const hasStream = task?.streamSlug != null
   const mockMode = useTaskStore((s) => s.mockMode)
 
-  // ── Reset store when task identity changes ──────────────────────────
-  // useLayoutEffect fires before paint so TaskCard never sees stale data.
-  // Re-firing on streamSlug/taskTitle changes is safe: reset() preserves
-  // run state when taskSlug is unchanged, so this just updates the identity
-  // fields if the task gets a stream assigned or is renamed mid-session.
-  // (Destructured to scalars because the caller passes a fresh object literal
-  // each render — depending on `task` directly would re-fire every render.)
-  const taskSlug = task?.taskSlug
-  const taskStreamSlug = task?.streamSlug ?? null
-  const taskTitle = task?.taskTitle
+  // ── Reset client-only state when the active task changes ─────────────
+  // useLayoutEffect fires before paint so sections never see leaked SSE
+  // activity from the previous task. Destructured to the scalar so the
+  // exhaustive-deps rule doesn't ask for the whole `task` object (which
+  // would re-fire on every render — the caller passes a fresh object).
+  const activeTaskSlug = task?.taskSlug
   useLayoutEffect(() => {
-    if (!taskSlug || taskTitle === undefined) return
-    useTaskStore.getState().reset({
-      taskSlug,
-      streamSlug: taskStreamSlug,
-      taskTitle,
-    })
-  }, [taskSlug, taskStreamSlug, taskTitle])
+    if (!activeTaskSlug) return
+    useTaskStore.getState().resetForTaskSwitch()
+  }, [activeTaskSlug])
 
   // ── SWR fetch for task content ──────────────────────────────────────
   // This is the "owner" that triggers the fetch. Card components read the

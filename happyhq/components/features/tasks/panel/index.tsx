@@ -789,7 +789,11 @@ export function TaskPanel({
               </div>
             )}
 
-          {/* Start (idle only) — sticky footer outside scroll area */}
+          {/* Start (idle only) — sticky footer outside scroll area.
+              Read the assigned stream from frontmatter — SWR updates this
+              immediately on assignment. useStreamSlug() (URL-derived) lags
+              behind router.push and would leave the button disabled until
+              the route navigation settles (#256 stale-button report). */}
           {!hasRun && (
             <div className="shrink-0 border-t border-zinc-200 bg-zinc-50">
               {runActions.upgradeNeeded && (
@@ -815,7 +819,7 @@ export function TaskPanel({
                   onClick={() => runActions.start?.()}
                   disabled={
                     !canStartIdleTask({
-                      streamSlug,
+                      streamSlug: activeTask?.frontmatter.stream ?? null,
                       title,
                       isUploading,
                       runActionsLoading: runActions.isLoading,

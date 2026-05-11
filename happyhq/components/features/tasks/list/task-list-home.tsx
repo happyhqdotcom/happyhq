@@ -5,6 +5,10 @@ import { TaskQuickAdd } from '@/components/features/tasks/create/quick-add'
 import { TaskListItemActions } from '@/components/features/tasks/list/actions'
 import { TaskDetail } from '@/components/features/tasks/list/expanded'
 import { TaskListItem } from '@/components/features/tasks/list/item'
+import {
+  idleTaskBlockedHint,
+  idleTaskBlockedReason,
+} from '@/components/features/tasks/start-gate'
 import { useTrackRecentTask } from '@/hooks/use-track-recent'
 import type { TaskItem } from '@/lib/fs/types'
 import { fetcher } from '@/lib/swr'
@@ -12,7 +16,7 @@ import { taskContentKey, taskItemsKey } from '@/lib/swr-keys'
 import { ListChecks } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import useSWR, { preload } from 'swr'
 
 const MockTaskPanel =
@@ -71,6 +75,15 @@ export function TaskListHome({ selectedTask }: { selectedTask?: string } = {}) {
     router.push('/tasks', { scroll: false })
   }
 
+  // Nudge counter — incremented each time a user clicks the disabled Start
+  // Task button. TaskCardHint keys its animated wrapper on this so the CSS
+  // animation auto-fires on the remount. Only one card is expanded at a
+  // time, so a single counter suffices.
+  const [nudgeCounter, setNudgeCounter] = useState(0)
+  const handleAttemptStart = useCallback(() => {
+    setNudgeCounter((c) => c + 1)
+  }, [])
+
   return (
     <div className="flex h-svh flex-col overflow-y-auto">
       <div className="mx-auto flex w-full max-w-3xl flex-col px-6 pt-16 pb-24">
@@ -106,8 +119,16 @@ export function TaskListHome({ selectedTask }: { selectedTask?: string } = {}) {
                         selected={isSelected}
                         onSelect={() => handleSelectTask(task)}
                       />
-                      {isSelected && <TaskDetail taskItem={task} />}
+                      {isSelected && (
+                        <TaskDetail
+                          taskItem={task}
+                          onAttemptStart={handleAttemptStart}
+                        />
+                      )}
                     </div>
+                    {isSelected && (
+                      <TaskCardHint task={task} nudgeCounter={nudgeCounter} />
+                    )}
                   </div>
                 )
               })
@@ -117,6 +138,56 @@ export function TaskListHome({ selectedTask }: { selectedTask?: string } = {}) {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// Persistent-prerequisite hint shown beneath an expanded idle card. Surfaces
+// only the user-actionable cases that don't resolve on their own (no-title,
+// no-stream). Transient cases (uploading, loading) are left to the disabled
+// button to communicate — they clear in seconds and the attachments area
+// already shows upload progress.
+//
+// The row always renders (with a non-breaking space when there's no hint) so
+// that filling in the missing prerequisite doesn't cause the tasks below to
+// jump up — no layout shift mid-interaction.
+function TaskCardHint({
+  task,
+  nudgeCounter,
+}: {
+  task: TaskItem
+  nudgeCounter: number
+}) {
+  const hasRun = task.run?.status != null
+  const reason = hasRun
+    ? null
+    : idleTaskBlockedReason({
+        streamSlug: task.frontmatter.stream ?? null,
+        title: task.frontmatter.title,
+        isUploading: false,
+        runActionsLoading: false,
+        runActionsUpgradeNeeded: false,
+      })
+  const hint =
+    reason === 'no-title' || reason === 'no-stream'
+      ? idleTaskBlockedHint(reason)
+      : null
+  return (
+    <div className="mt-2 text-center text-xs">
+      {hint ? (
+        // Re-key on nudgeCounter so a click on the disabled Start Task
+        // button remounts this node and the CSS animation auto-fires.
+        // Counter starts at 0 so the first paint doesn't shake.
+        <span
+          key={nudgeCounter}
+          className={nudgeCounter > 0 ? 'animate-nudge inline-block' : ''}
+        >
+          <span className="font-medium text-zinc-600">Hint:</span>{' '}
+          <span className="text-zinc-500">{hint}</span>
+        </span>
+      ) : (
+        ' '
+      )}
     </div>
   )
 }

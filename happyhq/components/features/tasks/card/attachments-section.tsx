@@ -4,11 +4,10 @@ import type { PendingFile } from '@/components/features/tasks/hooks/use-optimist
 import { deleteTaskInput } from '@/lib/actions'
 import { ALLOWED_INPUT_ACCEPT } from '@/lib/file-types'
 import type { FileItem } from '@/lib/fs/types'
-import { useTaskStore } from '@/stores/taskStore'
 import type { RefObject } from 'react'
 import { useCallback } from 'react'
 import { AttachmentList } from '../atoms/attachment-list'
-import { useTaskMutate } from '../hooks/use-task-swr'
+import { useActiveTaskSlug, useTaskMutate } from '../hooks/use-task-swr'
 
 interface AttachmentsSectionProps {
   visibleInputs: FileItem[]
@@ -23,12 +22,13 @@ export function AttachmentsSection({
   handleFiles,
   fileInputRef,
 }: AttachmentsSectionProps) {
-  const taskSlug = useTaskStore((s) => s.taskSlug)
+  const taskSlug = useActiveTaskSlug()
   const refresh = useTaskMutate()
 
   const handleDeleteInput = useCallback(
     async (inputName: string) => {
-      await deleteTaskInput(taskSlug!, inputName)
+      if (!taskSlug) return
+      await deleteTaskInput(taskSlug, inputName)
       refresh?.()
     },
     [taskSlug, refresh],

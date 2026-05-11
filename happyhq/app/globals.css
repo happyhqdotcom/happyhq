@@ -170,6 +170,29 @@
   animation: fade-in 200ms ease-out forwards;
 }
 
+@keyframes nudge {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-3px);
+  }
+  40% {
+    transform: translateX(3px);
+  }
+  60% {
+    transform: translateX(-2px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
+}
+
+.animate-nudge {
+  animation: nudge 0.35s ease-out;
+}
+
 @keyframes bounce-subtle {
   0%,
   100% {

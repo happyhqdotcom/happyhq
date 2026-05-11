@@ -25,14 +25,25 @@ import { PlanSection } from './plan-section'
  * Activity headers and section headers occupy the same slot — the activity
  * transforms into the duration label when each phase completes.
  */
-export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
+export function TaskCard({
+  taskItem,
+  onAttemptStart,
+}: {
+  taskItem: TaskItem
+  // Fires when the user clicks the Start Task button while it's not yet
+  // satisfied. Lets the parent nudge attention to the hint below the card.
+  onAttemptStart?: () => void
+}) {
+  // Identity flows from the taskItem prop (which itself comes from the
+  // taskItemsKey() SWR cache up in TaskListHome). No store mirror — that's
+  // what produced the staleness in #256.
+  const taskSlug = taskItem.slug
+  const streamSlug = taskItem.frontmatter.stream ?? null
+  const taskTitle = taskItem.frontmatter.title
+
   // Data lifecycle — SSE activity, run actions, debounced refresh, run-end detection.
   // Lives here (inside SWRConfig boundary) so all useTaskSWR() hooks see data on frame 1.
-  useTaskData({
-    taskSlug: taskItem.slug,
-    streamSlug: taskItem.frontmatter.stream ?? null,
-    taskTitle: taskItem.frontmatter.title,
-  })
+  useTaskData({ taskSlug, streamSlug })
 
   const content = useTaskContentData()
   const refresh = useTaskMutate()
@@ -40,9 +51,6 @@ export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
   const runActionsLoading = useTaskStore((s) => s.runActionsLoading)
   const runActionsUpgradeNeeded = useTaskStore((s) => s.runActionsUpgradeNeeded)
   const billingWarning = useTaskStore((s) => s.runActionsBillingWarning)
-  const taskTitle = useTaskStore((s) => s.taskTitle)
-  const taskSlug = useTaskStore((s) => s.taskSlug)
-  const streamSlug = useTaskStore((s) => s.streamSlug)
 
   // Derive status from TaskItem first (instant), SWR content second (may be delayed).
   const runStatus = content?.run?.status ?? taskItem.run?.status ?? null
@@ -110,7 +118,7 @@ export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
           isDiscovering || isPlanning || isWorking ? 'animate-fade-in-fast' : ''
         }
       >
-        <PlanSection isPlanning={isPlanning} />
+        <PlanSection isPlanning={isPlanning} streamSlug={streamSlug} />
       </div>,
     )
   }
@@ -124,7 +132,7 @@ export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
           isDiscovering || isPlanning || isWorking ? 'animate-fade-in-fast' : ''
         }
       >
-        <OutputsSection isWorking={isWorking} />
+        <OutputsSection isWorking={isWorking} streamSlug={streamSlug} />
       </div>,
     )
   }
@@ -183,14 +191,20 @@ export function TaskCard({ taskItem }: { taskItem: TaskItem }) {
           <div className="flex items-center justify-center px-4 py-2.5">
             <button
               type="button"
-              onClick={() => runStart?.()}
-              disabled={!canStart}
-              title={
-                streamSlug == null
-                  ? 'Assign a stream to run this task'
-                  : undefined
-              }
-              className="flex h-6 shrink-0 items-center justify-center rounded-full bg-zinc-900 px-3 font-mono text-[10px] font-semibold tracking-wider text-white uppercase transition-colors hover:bg-zinc-800 disabled:opacity-30"
+              // aria-disabled (rather than HTML disabled) so the button still
+              // receives the click event when prerequisites aren't met — we
+              // route it to the parent's nudge handler instead of dropping it
+              // silently, which would leave the user wondering why nothing
+              // happened.
+              aria-disabled={!canStart}
+              onClick={() => {
+                if (!canStart) {
+                  onAttemptStart?.()
+                  return
+                }
+                runStart?.()
+              }}
+              className="flex h-6 shrink-0 items-center justify-center rounded-full bg-zinc-900 px-3 font-mono text-[10px] font-semibold tracking-wider text-white uppercase transition-colors hover:bg-zinc-800 aria-disabled:cursor-not-allowed aria-disabled:opacity-30 aria-disabled:hover:bg-zinc-900"
             >
               Start Task
             </button>
