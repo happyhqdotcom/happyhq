@@ -82,14 +82,28 @@ export async function writeTaskDescription(
   log('task.updated', { task: taskSlug, field: 'description' })
 }
 
-/** Delete a file from a root task's inputs directory. */
+/**
+ * Delete an input from a root task's inputs directory.
+ *
+ * Web inputs surface to the UI as two-segment names (`web/<domain>`) — the
+ * `listFileItems` reader collapses each domain folder into one row. File
+ * inputs are single-segment (`<name>`). Validate each segment independently
+ * so `/` survives the safety check but traversal still doesn't.
+ */
 export async function deleteTaskInput(
   taskSlug: string,
   inputName: string,
 ): Promise<void> {
   assertSafeTaskSlug(taskSlug)
-  assertSafePathSegment(inputName, 'input name')
-  const inputDir = safePath(path.join(taskPath(taskSlug), 'inputs', inputName))
+  const parts = inputName.split('/')
+  if (parts.length === 2 && parts[0] === 'web') {
+    assertSafePathSegment(parts[1], 'input name')
+  } else if (parts.length === 1) {
+    assertSafePathSegment(parts[0], 'input name')
+  } else {
+    throw new Error('Invalid input name')
+  }
+  const inputDir = safePath(path.join(taskPath(taskSlug), 'inputs', ...parts))
   await deleteFileItem(
     inputDir,
     `[tasks/${taskSlug}] Remove input ${inputName}`,
