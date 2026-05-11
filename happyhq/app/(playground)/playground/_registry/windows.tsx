@@ -1,16 +1,8 @@
 'use client'
 
-import {
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type ComponentType,
-} from 'react'
+import { useRef, useState, useSyncExternalStore } from 'react'
 
 import { MarkdownWindowContent } from '@/components/features/desktop/windows/markdown/content'
-import { FrontmatterBlockCurrent } from '@/components/features/desktop/windows/markdown/frontmatter/current'
-import { FrontmatterBlockNotion } from '@/components/features/desktop/windows/markdown/frontmatter/notion'
-import type { FrontmatterRendererProps } from '@/components/features/desktop/windows/markdown/frontmatter/types'
 import { WindowFrame } from '@/components/features/desktop/windows/window-frame'
 
 import type { PlaygroundComponent } from './types'
@@ -92,13 +84,6 @@ fallback rendering and label tidying.
 `,
 }
 
-const RENDERERS: Record<string, ComponentType<FrontmatterRendererProps>> = {
-  current: FrontmatterBlockCurrent,
-  notion: FrontmatterBlockNotion,
-}
-
-const DEFAULT_RENDERER_KEY = 'notion'
-
 function buildMarkdown(spec: FrontmatterSpec, now: number): string {
   const lines: string[] = ['---']
   for (const [key, value] of spec.fields) lines.push(`${key}: ${value}`)
@@ -128,13 +113,7 @@ function useClientNow(): number | null {
   return useSyncExternalStore(subscribeNoop, readClientNow, readServerNow)
 }
 
-function PreviewWindow({
-  spec,
-  renderer,
-}: {
-  spec: FrontmatterSpec
-  renderer: ComponentType<FrontmatterRendererProps>
-}) {
+function PreviewWindow({ spec }: { spec: FrontmatterSpec }) {
   const constraintsRef = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: 640, height: 520 })
@@ -175,11 +154,7 @@ function PreviewWindow({
         onToggleMaximize={() => setIsMaximized((m) => !m)}
         onRestoreFromMaximize={() => setIsMaximized(false)}
       >
-        <MarkdownWindowContent
-          markdown={markdown}
-          loading={now === null}
-          frontmatterRenderer={renderer}
-        />
+        <MarkdownWindowContent markdown={markdown} loading={now === null} />
       </WindowFrame>
     </div>
   )
@@ -196,22 +171,7 @@ const markdownWindowEntry: PlaygroundComponent = {
     'pending-run': { name: 'Pending run', data: PENDING_RUN_SPEC },
     long: { name: 'Long / unknown keys', data: LONG_SPEC },
   },
-  controls: {
-    frontmatter: {
-      type: 'select',
-      label: 'Frontmatter style',
-      default: DEFAULT_RENDERER_KEY,
-      options: [
-        { label: 'Notion (new)', value: 'notion' },
-        { label: 'Current (before)', value: 'current' },
-      ],
-    },
-  },
-  render: ({ data, controls }) => {
-    const key = (controls.frontmatter as string) ?? DEFAULT_RENDERER_KEY
-    const renderer = RENDERERS[key] ?? RENDERERS[DEFAULT_RENDERER_KEY]
-    return <PreviewWindow spec={data as FrontmatterSpec} renderer={renderer} />
-  },
+  render: ({ data }) => <PreviewWindow spec={data as FrontmatterSpec} />,
 }
 
 export const windowComponents: PlaygroundComponent[] = [markdownWindowEntry]
