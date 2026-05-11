@@ -2,7 +2,7 @@
 
 import { useCurrentUser } from '@/lib/accounts/hooks'
 import type { ChatMessage } from '@/lib/chat/types'
-import type { DesktopData } from '@/lib/fs/types'
+import type { DesktopData, TaskItem } from '@/lib/fs/types'
 import { FetchError, fetcher } from '@/lib/swr'
 import { desktopDataKey, taskItemsKey } from '@/lib/swr-keys'
 import { useDesktopStore } from '@/stores/desktopStore'
@@ -241,8 +241,21 @@ export function DesktopInitializer() {
   }, [isRunActive, activitySteps, statusLine, mockMode])
 
   // ── Run actions ───────────────────────────────────────────────────
+  // Prefer the task's assigned stream (from the task list cache) over the URL
+  // stream. After the user assigns a stream from inside the panel, the task
+  // cache updates immediately via mutate(taskItemsKey()); the URL only catches
+  // up after router.push completes. Without this preference, start() would
+  // POST `stream: ''` during the window before navigation lands (#256).
+  const { data: allTasks } = useSWR<TaskItem[]>(
+    taskSlug ? taskItemsKey() : null,
+    fetcher,
+  )
+  const taskAssignedStream =
+    (taskSlug && Array.isArray(allTasks)
+      ? (allTasks.find((t) => t.slug === taskSlug)?.frontmatter.stream ?? '')
+      : '') || streamSlug
   const runActions = useRunActions(
-    streamSlug,
+    taskAssignedStream,
     taskSlug ?? '',
     isRunActive,
     token,

@@ -16,7 +16,11 @@ import { useTaskStore } from '@/stores/taskStore'
 import { useWindowStore } from '@/stores/windowStore'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { useTaskContentData, useTaskMutate } from '../hooks/use-task-swr'
+import {
+  useActiveTaskSlug,
+  useTaskContentData,
+  useTaskMutate,
+} from '../hooks/use-task-swr'
 
 /**
  * Plan section — mirrors the panel's plan section behavior.
@@ -27,7 +31,13 @@ import { useTaskContentData, useTaskMutate } from '../hooks/use-task-swr'
  * The activity header and section header occupy the same slot — the activity
  * transforms into the duration label when the phase completes.
  */
-export function PlanSection({ isPlanning }: { isPlanning?: boolean }) {
+export function PlanSection({
+  isPlanning,
+  streamSlug,
+}: {
+  isPlanning?: boolean
+  streamSlug: string | null
+}) {
   const content = useTaskContentData()
   const runStatus = content?.run?.status ?? null
   const runStart = useTaskStore((s) => s.runStart)
@@ -36,8 +46,7 @@ export function PlanSection({ isPlanning }: { isPlanning?: boolean }) {
   const runActionsLoading = useTaskStore((s) => s.runActionsLoading)
   const isRunActive = useTaskStore((s) => s.isRunActive)
   const activitySteps = useTaskStore((s) => s.activitySteps)
-  const streamSlug = useTaskStore((s) => s.streamSlug)
-  const taskSlug = useTaskStore((s) => s.taskSlug)
+  const taskSlug = useActiveTaskSlug()
   const isStopping = useTaskStore((s) => s.runActionsStopping)
   const refresh = useTaskMutate()
   const router = useRouter()

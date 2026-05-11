@@ -9,11 +9,7 @@ const mockState = vi.hoisted(() => ({
 vi.mock('../hooks/use-task-swr', () => ({
   useTaskContentData: () => mockState.content,
   useTaskMutate: () => vi.fn(),
-}))
-
-vi.mock('@/stores/taskStore', () => ({
-  useTaskStore: (selector: (s: { taskSlug: string }) => unknown) =>
-    selector({ taskSlug: 'task-1' }),
+  useActiveTaskSlug: () => 'task-1',
 }))
 
 vi.mock('@/lib/actions', () => ({

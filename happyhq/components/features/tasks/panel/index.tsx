@@ -39,7 +39,10 @@ import {
 import { WorkingRow } from '@/components/features/tasks/atoms/working-row'
 import { useOptimisticUploads } from '@/components/features/tasks/hooks/use-optimistic-uploads'
 import { shouldShowWorkSection } from '@/components/features/tasks/panel/work-gate'
-import { canStartIdleTask } from '@/components/features/tasks/start-gate'
+import {
+  idleTaskBlockedHint,
+  idleTaskBlockedReason,
+} from '@/components/features/tasks/start-gate'
 import {
   deleteFile,
   deleteTaskByLocation,
@@ -790,45 +793,58 @@ export function TaskPanel({
             )}
 
           {/* Start (idle only) — sticky footer outside scroll area */}
-          {!hasRun && (
-            <div className="shrink-0 border-t border-zinc-200 bg-zinc-50">
-              {runActions.upgradeNeeded && (
-                <div className="flex items-center justify-between gap-3 border-b border-violet-300/40 bg-violet-100/60 px-4 py-2">
-                  <span className="text-sm text-violet-800">
-                    Upgrade for more usage
-                  </span>
-                  <UpgradePrompt variant="inline-small" title="Upgrade" />
-                </div>
-              )}
-              {!runActions.upgradeNeeded &&
-                runActions.billingWarning === 'low_balance' && (
-                  <div className="flex items-center justify-between gap-3 border-b border-violet-300/40 bg-violet-100/60 px-4 py-2">
-                    <span className="text-sm text-violet-800">
-                      Less than 5 minutes of usage left
-                    </span>
-                    <UpgradePrompt variant="inline-small" title="Upgrade" />
+          {!hasRun &&
+            (() => {
+              // Read the assigned stream from frontmatter — SWR updates this
+              // immediately on assignment. useStreamSlug() (URL-derived) lags
+              // behind router.push and would leave the button disabled until
+              // the route navigation settles (#256 stale-button report).
+              const assignedStream = activeTask?.frontmatter.stream ?? null
+              const blockedReason = idleTaskBlockedReason({
+                streamSlug: assignedStream,
+                title,
+                isUploading,
+                runActionsLoading: runActions.isLoading,
+                runActionsUpgradeNeeded: runActions.upgradeNeeded,
+              })
+              const blockedHint = idleTaskBlockedHint(blockedReason)
+              return (
+                <div className="shrink-0 border-t border-zinc-200 bg-zinc-50">
+                  {runActions.upgradeNeeded && (
+                    <div className="flex items-center justify-between gap-3 border-b border-violet-300/40 bg-violet-100/60 px-4 py-2">
+                      <span className="text-sm text-violet-800">
+                        Upgrade for more usage
+                      </span>
+                      <UpgradePrompt variant="inline-small" title="Upgrade" />
+                    </div>
+                  )}
+                  {!runActions.upgradeNeeded &&
+                    runActions.billingWarning === 'low_balance' && (
+                      <div className="flex items-center justify-between gap-3 border-b border-violet-300/40 bg-violet-100/60 px-4 py-2">
+                        <span className="text-sm text-violet-800">
+                          Less than 5 minutes of usage left
+                        </span>
+                        <UpgradePrompt variant="inline-small" title="Upgrade" />
+                      </div>
+                    )}
+                  <div className="flex items-center justify-center gap-3 px-4 py-2.5">
+                    <button
+                      type="button"
+                      onClick={() => runActions.start?.()}
+                      disabled={blockedReason != null}
+                      className="flex h-6 shrink-0 items-center justify-center rounded-full bg-zinc-900 px-3 font-mono text-[10px] font-semibold tracking-wider text-white uppercase transition-colors hover:bg-zinc-800 disabled:opacity-30"
+                    >
+                      Start Task
+                    </button>
+                    {blockedHint && (
+                      <span className="text-sm text-zinc-500">
+                        {blockedHint}
+                      </span>
+                    )}
                   </div>
-                )}
-              <div className="flex items-center justify-center px-4 py-2.5">
-                <button
-                  type="button"
-                  onClick={() => runActions.start?.()}
-                  disabled={
-                    !canStartIdleTask({
-                      streamSlug,
-                      title,
-                      isUploading,
-                      runActionsLoading: runActions.isLoading,
-                      runActionsUpgradeNeeded: runActions.upgradeNeeded,
-                    })
-                  }
-                  className="flex h-6 shrink-0 items-center justify-center rounded-full bg-zinc-900 px-3 font-mono text-[10px] font-semibold tracking-wider text-white uppercase transition-colors hover:bg-zinc-800 disabled:opacity-30"
-                >
-                  Start Task
-                </button>
-              </div>
-            </div>
-          )}
+                </div>
+              )
+            })()}
         </div>
 
         {/* Right — metadata sidebar */}

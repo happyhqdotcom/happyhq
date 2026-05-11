@@ -7,14 +7,11 @@ import { create } from 'zustand'
 const EMPTY_STEPS: ActivityStep[] = []
 
 // ── State shape ─────────────────────────────────────────────────────────
-// Client-only state — server data (TaskContent) lives in SWR (see use-task-swr.ts).
+// Client-only state — server data (TaskContent, TaskItem) lives in SWR
+// (see use-task-swr.ts → useActiveTaskItem / useTaskContentData).
+// Per CLAUDE.md, the store holds no server-derived fields.
 
 export interface TaskState {
-  // Task identity
-  taskSlug: string | null
-  streamSlug: string | null
-  taskTitle: string
-
   // Run state (hydrated by useTaskData from useRunActivity — SSE, not server data)
   isRunActive: boolean
   activitySteps: ActivityStep[]
@@ -56,22 +53,15 @@ export interface TaskState {
   }) => void
   setMockMode: (enabled: boolean) => void
 
-  // Reset for task transitions
-  reset: (props: {
-    taskSlug: string
-    streamSlug: string | null
-    taskTitle: string
-  }) => void
+  // Reset client-only state on task transitions (called by useTaskData when
+  // the active task slug changes). Identity is no longer in the store, so
+  // this clears only SSE-derived run state and action handles.
+  resetForTaskSwitch: () => void
 }
 
 // ── Global singleton store ──────────────────────────────────────────────
 
 export const useTaskStore = create<TaskState>()((set) => ({
-  // Task identity
-  taskSlug: null,
-  streamSlug: null,
-  taskTitle: '',
-
   // Run state
   isRunActive: false,
   activitySteps: EMPTY_STEPS,
@@ -120,30 +110,20 @@ export const useTaskStore = create<TaskState>()((set) => ({
 
   setMockMode: (enabled) => set({ mockMode: enabled }),
 
-  reset: ({ taskSlug, streamSlug, taskTitle }) =>
-    set((prev) => {
-      const sameTask = prev.taskSlug === taskSlug
-      return {
-        taskSlug,
-        streamSlug,
-        taskTitle,
-        isRunActive: sameTask ? prev.isRunActive : false,
-        activitySteps: sameTask ? prev.activitySteps : EMPTY_STEPS,
-        statusLine: sameTask ? prev.statusLine : null,
-        mockMode: false,
-        runStart: sameTask ? prev.runStart : null,
-        runStop: sameTask ? prev.runStop : null,
-        runApprove: sameTask ? prev.runApprove : null,
-        runContinue: sameTask ? prev.runContinue : null,
-        runAnswerQuestion: sameTask ? prev.runAnswerQuestion : null,
-        runActionsLoading: sameTask ? prev.runActionsLoading : false,
-        runActionsStopping: sameTask ? prev.runActionsStopping : false,
-        runActionsUpgradeNeeded: sameTask
-          ? prev.runActionsUpgradeNeeded
-          : false,
-        runActionsBillingWarning: sameTask
-          ? prev.runActionsBillingWarning
-          : null,
-      }
+  resetForTaskSwitch: () =>
+    set({
+      isRunActive: false,
+      activitySteps: EMPTY_STEPS,
+      statusLine: null,
+      mockMode: false,
+      runStart: null,
+      runStop: null,
+      runApprove: null,
+      runContinue: null,
+      runAnswerQuestion: null,
+      runActionsLoading: false,
+      runActionsStopping: false,
+      runActionsUpgradeNeeded: false,
+      runActionsBillingWarning: null,
     }),
 }))

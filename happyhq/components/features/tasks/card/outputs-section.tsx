@@ -16,7 +16,11 @@ import { useTaskStore } from '@/stores/taskStore'
 import { useWindowStore } from '@/stores/windowStore'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { useTaskContentData, useTaskMutate } from '../hooks/use-task-swr'
+import {
+  useActiveTaskSlug,
+  useTaskContentData,
+  useTaskMutate,
+} from '../hooks/use-task-swr'
 
 /**
  * Outputs/work section — mirrors the panel's work section behavior.
@@ -26,7 +30,13 @@ import { useTaskContentData, useTaskMutate } from '../hooks/use-task-swr'
  *
  * The activity header and section header occupy the same slot.
  */
-export function OutputsSection({ isWorking }: { isWorking?: boolean }) {
+export function OutputsSection({
+  isWorking,
+  streamSlug,
+}: {
+  isWorking?: boolean
+  streamSlug: string | null
+}) {
   const content = useTaskContentData()
   const runApprove = useTaskStore((s) => s.runApprove)
   const runContinue = useTaskStore((s) => s.runContinue)
@@ -35,8 +45,7 @@ export function OutputsSection({ isWorking }: { isWorking?: boolean }) {
   const upgradeNeeded = useTaskStore((s) => s.runActionsUpgradeNeeded)
   const isRunActive = useTaskStore((s) => s.isRunActive)
   const activitySteps = useTaskStore((s) => s.activitySteps)
-  const streamSlug = useTaskStore((s) => s.streamSlug)
-  const taskSlug = useTaskStore((s) => s.taskSlug)
+  const taskSlug = useActiveTaskSlug()
   const isStopping = useTaskStore((s) => s.runActionsStopping)
   const refresh = useTaskMutate()
   const router = useRouter()

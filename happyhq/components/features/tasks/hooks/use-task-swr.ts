@@ -4,17 +4,24 @@ import type { TaskContent } from '@/lib/fs/types'
 import { fetcher } from '@/lib/swr'
 import { taskContentKey } from '@/lib/swr-keys'
 import { useTaskStore } from '@/stores/taskStore'
+import { useParams } from 'next/navigation'
 import useSWR from 'swr'
+
+// Task identity for the home page card surface comes from the URL
+// (`/tasks/inbox/[task]`) — never from a duplicated copy in zustand, never
+// via re-subscribing to the items-list SWR cache (which churns every SSE
+// tick during a run). The URL is the only source that's both authoritative
+// and stable across cache refetches.
+export function useActiveTaskSlug(): string | null {
+  return useParams<{ task?: string }>().task ?? null
+}
 
 /**
  * SWR-backed hook for task card server data.
- * Reads task identity from taskStore (client-only state)
- * and returns the cached content from SWR's global cache.
- *
  * Same pattern as useDesktopData() for the desktop side.
  */
 export function useTaskSWR() {
-  const taskSlug = useTaskStore((s) => s.taskSlug)
+  const taskSlug = useActiveTaskSlug()
 
   const swrKey = taskSlug ? taskContentKey(taskSlug) : null
 

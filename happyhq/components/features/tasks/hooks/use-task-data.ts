@@ -15,7 +15,6 @@ import { useTerminalErrorToast } from './use-terminal-error-toast'
 interface TaskIdentity {
   taskSlug: string
   streamSlug: string | null
-  taskTitle: string
 }
 
 /**
@@ -23,25 +22,21 @@ interface TaskIdentity {
  * SWR fetch, real-time SSE activity, run actions, debounced refresh,
  * and run-end detection.
  *
- * Lives inside the TaskCard (within the SWRConfig boundary from the
- * route page). Server data is read by section components via
- * useTaskContentData() — SWRConfig fallback ensures data on frame 1.
+ * Identity (taskSlug, streamSlug, title) is read directly from props/SWR by
+ * the card and its sections — see useActiveTaskItem in use-task-swr.ts.
+ * This hook only owns client-only state: run activity + run action handles.
  */
 export function useTaskData(task: TaskIdentity | null) {
   const { token } = useCurrentUser()
   const hasStream = task?.streamSlug != null
   const mockMode = useTaskStore((s) => s.mockMode)
 
-  // ── Reset store when task identity changes ──────────────────────────
-  // useLayoutEffect fires before paint so TaskCard never sees stale data.
-  // Deps on task.taskSlug so the effect re-fires on task switches (not just mount).
+  // ── Reset client-only state when the active task changes ─────────────
+  // useLayoutEffect fires before paint so sections never see leaked SSE
+  // activity from the previous task.
   useLayoutEffect(() => {
     if (!task) return
-    useTaskStore.getState().reset({
-      taskSlug: task.taskSlug,
-      streamSlug: task.streamSlug,
-      taskTitle: task.taskTitle,
-    })
+    useTaskStore.getState().resetForTaskSwitch()
   }, [task?.taskSlug])
 
   // ── SWR fetch for task content ──────────────────────────────────────

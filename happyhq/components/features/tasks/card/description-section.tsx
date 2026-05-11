@@ -2,19 +2,25 @@
 
 import { ReadOnlyDescription } from '@/components/features/tasks/atoms/readonly-description'
 import { writeTaskDescription } from '@/lib/actions'
-import { useTaskStore } from '@/stores/taskStore'
 import { useEffect, useRef, useState } from 'react'
-import { useTaskContentData, useTaskMutate } from '../hooks/use-task-swr'
+import {
+  useActiveTaskSlug,
+  useTaskContentData,
+  useTaskMutate,
+} from '../hooks/use-task-swr'
 
 export function DescriptionSection() {
-  const taskSlug = useTaskStore((s) => s.taskSlug)
-  return <EditableDescription key={taskSlug} />
+  const taskSlug = useActiveTaskSlug()
+  // Section only renders inside a route that guarantees [task] is in the URL,
+  // so taskSlug is never null in practice. Early-return narrows the type
+  // instead of forcing `taskSlug!` assertions in the editor below.
+  if (!taskSlug) return null
+  return <EditableDescription key={taskSlug} taskSlug={taskSlug} />
 }
 
-function EditableDescription() {
+function EditableDescription({ taskSlug }: { taskSlug: string }) {
   const content = useTaskContentData()
   const hasRun = !!content?.run?.status
-  const taskSlug = useTaskStore((s) => s.taskSlug)
   const refresh = useTaskMutate()
   const [isEditing, setIsEditing] = useState(false)
 
@@ -57,7 +63,7 @@ function EditableDescription() {
     setDescription(value)
     clearTimeout(descTimerRef.current)
     descTimerRef.current = setTimeout(async () => {
-      await writeTaskDescription(taskSlug!, value)
+      await writeTaskDescription(taskSlug, value)
       refresh?.()
     }, 500)
   }
