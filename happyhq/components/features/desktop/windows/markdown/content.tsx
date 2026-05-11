@@ -1,23 +1,25 @@
 'use client'
 
 import { Loader2 } from 'lucide-react'
-import React, { memo } from 'react'
+import React, { memo, useCallback, useState } from 'react'
 import Markdown from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
 import rehypeSanitize from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
 
+import { PanelToggleIcon } from '@/components/common/icons/panel-toggle-icon'
+
 import { FrontmatterBlock } from './frontmatter/block'
 
-interface MarkdownWindowContentProps {
-  markdown: string
-  loading?: boolean
+const FRONTMATTER_COLLAPSE_THRESHOLD = 4
+
+interface ParsedFrontmatter {
+  fields: Record<string, string>
+  body: string
 }
 
 /** Parse YAML frontmatter into key-value pairs. Returns null if no frontmatter. */
-function parseFrontmatter(
-  markdown: string,
-): { fields: Record<string, string>; body: string } | null {
+export function parseFrontmatter(markdown: string): ParsedFrontmatter | null {
   if (!markdown.startsWith('---\n')) return null
   const endIdx = markdown.indexOf('\n---', 4)
   if (endIdx === -1) return null
@@ -35,10 +37,82 @@ function parseFrontmatter(
   return { fields, body }
 }
 
+export interface FrontmatterState {
+  fields: Record<string, string> | null
+  body: string
+  collapsed: boolean
+  collapsible: boolean
+  toggle: () => void
+}
+
+/** Owns frontmatter parsing + collapse state. Called by window parents so the
+ *  collapse toggle can live in WindowFrame's actions slot (chrome) while the
+ *  block renders in the content slot (children). */
+export function useFrontmatter(markdown: string): FrontmatterState {
+  const parsed = parseFrontmatter(markdown)
+  const [collapsed, setCollapsed] = useState(false)
+  const toggle = useCallback(() => setCollapsed((c) => !c), [])
+  const fields = parsed?.fields ?? null
+  const body = parsed?.body ?? markdown
+  const collapsible =
+    !!fields && Object.keys(fields).length >= FRONTMATTER_COLLAPSE_THRESHOLD
+  return { fields, body, collapsed, collapsible, toggle }
+}
+
+/** Icon button for the window header chrome that toggles frontmatter
+ *  visibility. Render conditionally on `collapsible`. */
+/** Reuses the playground's `PanelToggleIcon` (bounding rect + animated inner
+ *  panel rect) rotated 90° clockwise so the inner panel reads as a top strip
+ *  rather than a left rail — mirroring where the frontmatter sits in the
+ *  document. Slides in/out when toggled. */
+export function FrontmatterToggleAction({
+  collapsed,
+  onClick,
+}: {
+  collapsed: boolean
+  onClick: () => void
+}) {
+  const [isHovered, setIsHovered] = useState(false)
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      aria-label={collapsed ? 'Show properties' : 'Hide properties'}
+      className="flex h-5 w-5 items-center justify-center rounded text-zinc-400 transition-colors hover:bg-zinc-200 hover:text-zinc-600"
+    >
+      <span className="inline-flex rotate-90">
+        <PanelToggleIcon
+          isLocked={!collapsed}
+          isHovered={isHovered}
+          side="left"
+        />
+      </span>
+    </button>
+  )
+}
+
+interface MarkdownWindowContentProps {
+  markdown: string
+  loading?: boolean
+  /** Optional frontmatter state from useFrontmatter. When omitted, the
+   *  component parses + manages collapse internally (back-compat for callers
+   *  that don't render a chrome toggle). */
+  frontmatter?: FrontmatterState
+}
+
 export const MarkdownWindowContent = memo(function MarkdownWindowContent({
   markdown,
   loading,
+  frontmatter,
 }: MarkdownWindowContentProps) {
+  // Always call the hook so React's hook count stays stable. The hook is
+  // cheap (parse + useState) and only its result is used when `frontmatter`
+  // isn't supplied externally.
+  const internal = useFrontmatter(markdown)
+  const fm = frontmatter ?? internal
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -55,8 +129,7 @@ export const MarkdownWindowContent = memo(function MarkdownWindowContent({
     )
   }
 
-  const parsed = parseFrontmatter(markdown)
-  const body = parsed ? parsed.body : markdown
+  const showFrontmatter = fm.fields && !fm.collapsed
 
   return (
     <div className="relative h-full">
@@ -67,14 +140,16 @@ export const MarkdownWindowContent = memo(function MarkdownWindowContent({
       >
         <div
           className={
-            parsed
+            showFrontmatter
               ? 'prose prose-slate prose-q pb-5'
               : 'prose prose-slate prose-q py-5'
           }
           style={{ '--pq-px': '28px' } as React.CSSProperties}
         >
-          {parsed && <FrontmatterBlock fields={parsed.fields} />}
-          {parsed && (
+          {showFrontmatter && fm.fields && (
+            <FrontmatterBlock fields={fm.fields} />
+          )}
+          {showFrontmatter && (
             <div
               className="not-prose mt-0 mb-5 border-t border-zinc-200/70"
               style={{
@@ -87,7 +162,7 @@ export const MarkdownWindowContent = memo(function MarkdownWindowContent({
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeRaw, rehypeSanitize]}
           >
-            {body}
+            {fm.body}
           </Markdown>
         </div>
       </div>

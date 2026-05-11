@@ -3,25 +3,22 @@
 import {
   Calendar,
   CheckSquare,
-  ChevronDown,
-  ChevronUp,
   ExternalLink,
   Flag,
   GitBranch,
   Globe,
   Hash,
+  ListChecks,
   Paperclip,
   Tag,
   User,
+  Users,
   Workflow,
   type LucideIcon,
 } from 'lucide-react'
-import { useState } from 'react'
 
 import { formatRelativeTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
-
-const COLLAPSE_THRESHOLD = 4
 
 export interface FrontmatterBlockProps {
   fields: Record<string, string>
@@ -51,6 +48,8 @@ const KNOWN_LABELS: Record<string, string> = {
   attachments: 'Attachments',
   sourceCount: 'Sources',
   language: 'Language',
+  assignees: 'Assignees',
+  progress: 'Progress',
 }
 
 const SLUG_KIND: Record<string, 'stream' | 'task'> = {
@@ -67,6 +66,8 @@ const ICON_FOR_KEY: Record<string, LucideIcon> = {
   mode: Workflow,
   owner: User,
   assignee: User,
+  assignees: Users,
+  progress: ListChecks,
   stream: GitBranch,
   streamSlug: GitBranch,
   task: CheckSquare,
@@ -87,21 +88,37 @@ const NUMBER_KEYS = new Set(['attachments', 'sourceCount'])
 const PERSON_KEYS = new Set(['owner', 'assignee'])
 const TAG_KEYS = new Set(['status', 'pending', 'mode', 'priority'])
 
+// ISO 639-1 → display name. Falls back to the raw value if not listed.
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: 'English',
+  fr: 'French',
+  es: 'Spanish',
+  de: 'German',
+  it: 'Italian',
+  pt: 'Portuguese',
+  ja: 'Japanese',
+  zh: 'Chinese',
+  ko: 'Korean',
+  ru: 'Russian',
+  nl: 'Dutch',
+  ar: 'Arabic',
+}
+
 // Catalyst-style tag colours: tinted bg at /15 opacity + 700-weight text.
 // Mirrors the archive's Badge palette so frontmatter pills feel native to HQ.
 const TAG_STYLES: Record<string, string> = {
-  completed: 'bg-emerald-500/15 text-emerald-700',
-  working: 'bg-amber-500/15 text-amber-700',
-  planning: 'bg-sky-500/15 text-sky-700',
-  plan_ready: 'bg-violet-500/15 text-violet-700',
-  stopped: 'bg-zinc-500/15 text-zinc-700',
-  pending: 'bg-amber-500/15 text-amber-700',
-  high: 'bg-rose-500/15 text-rose-700',
-  medium: 'bg-amber-500/15 text-amber-700',
-  low: 'bg-zinc-500/15 text-zinc-700',
+  completed: 'bg-emerald-500/15 text-emerald-700 inset-ring-emerald-700/10',
+  working: 'bg-amber-500/15 text-amber-700 inset-ring-amber-700/10',
+  planning: 'bg-sky-500/15 text-sky-700 inset-ring-sky-700/10',
+  plan_ready: 'bg-violet-500/15 text-violet-700 inset-ring-violet-700/10',
+  stopped: 'bg-zinc-500/15 text-zinc-700 inset-ring-zinc-700/10',
+  pending: 'bg-amber-500/15 text-amber-700 inset-ring-amber-700/10',
+  high: 'bg-rose-500/15 text-rose-700 inset-ring-rose-700/10',
+  medium: 'bg-amber-500/15 text-amber-700 inset-ring-amber-700/10',
+  low: 'bg-zinc-500/15 text-zinc-700 inset-ring-zinc-700/10',
 }
 
-const DEFAULT_TAG_STYLE = 'bg-zinc-500/15 text-zinc-700'
+const DEFAULT_TAG_STYLE = 'bg-zinc-500/15 text-zinc-700 inset-ring-zinc-700/10'
 
 const PERSON_PALETTES = [
   'bg-emerald-100 text-emerald-700',
@@ -186,9 +203,9 @@ function ValueOf({ keyName, value }: { keyName: string; value: string }) {
     return (
       <a
         href={slugHref(keyName, value)}
-        className="-mx-1 truncate rounded px-1 transition-colors hover:bg-zinc-100"
+        className="inline-flex max-w-full items-center rounded-md bg-indigo-50 px-1.5 py-0.5 font-medium text-indigo-700 shadow-xs inset-ring-1 inset-ring-indigo-700/15 transition-all hover:bg-indigo-100 hover:text-indigo-800 hover:inset-ring-indigo-700/25"
       >
-        {value}
+        <span className="truncate">{value}</span>
       </a>
     )
   }
@@ -212,7 +229,7 @@ function ValueOf({ keyName, value }: { keyName: string; value: string }) {
     return (
       <span
         className={cn(
-          'inline-flex items-center rounded-md px-1.5 py-0.5 text-[12px] leading-5 font-medium',
+          'inline-flex items-center rounded-md px-1.5 py-0.5 text-[12px] leading-5 font-medium inset-ring-1',
           style,
         )}
       >
@@ -221,8 +238,11 @@ function ValueOf({ keyName, value }: { keyName: string; value: string }) {
     )
   }
   if (PERSON_KEYS.has(keyName)) {
+    // Avatar flush inside the pill (archive's scheduled-digest recipient
+    // pattern): the circle sits at the pill's rounded-full left edge with
+    // just 2px of inner padding, reading as one unified chip.
     return (
-      <span className="inline-flex items-center gap-2">
+      <span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-white py-0.5 pr-2 pl-0.5 font-medium text-zinc-800 shadow-xs inset-ring-1 inset-ring-zinc-950/10">
         <span
           className={cn(
             'flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold',
@@ -235,8 +255,62 @@ function ValueOf({ keyName, value }: { keyName: string; value: string }) {
       </span>
     )
   }
+  if (keyName === 'language') {
+    const label = LANGUAGE_NAMES[value.toLowerCase()] ?? value
+    return (
+      <span className="inline-flex items-center rounded-md bg-zinc-100 px-1.5 py-0.5 text-[12px] leading-5 font-medium text-zinc-700 inset-ring-1 inset-ring-zinc-950/6">
+        {label}
+      </span>
+    )
+  }
+  if (keyName === 'assignees') {
+    const names = value
+      .split(',')
+      .map((n) => n.trim())
+      .filter(Boolean)
+    return (
+      <span className="inline-flex min-w-0 items-center">
+        <span className="flex">
+          {names.map((name, idx) => (
+            <span
+              key={name}
+              className={cn(
+                'flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ring-2 ring-white',
+                paletteFor(name),
+                idx > 0 && '-ml-1.5',
+              )}
+            >
+              {initials(name)}
+            </span>
+          ))}
+        </span>
+        <span className="ml-2 truncate text-zinc-500">{names.join(', ')}</span>
+      </span>
+    )
+  }
+  if (keyName === 'progress') {
+    const m = value.match(/^(\d+)\s*\/\s*(\d+)$/)
+    if (m) {
+      const done = parseInt(m[1], 10)
+      const total = parseInt(m[2], 10)
+      const pct = total > 0 ? Math.min(100, (done / total) * 100) : 0
+      return (
+        <span className="inline-flex items-center gap-2.5">
+          <span className="relative h-1.5 w-24 overflow-hidden rounded-full bg-zinc-200/70 inset-ring-1 inset-ring-zinc-950/5">
+            <span
+              className="absolute inset-y-0 left-0 rounded-full bg-emerald-500"
+              style={{ width: `${pct}%` }}
+            />
+          </span>
+          <span className="text-[12px] text-zinc-500 tabular-nums">
+            {done}/{total}
+          </span>
+        </span>
+      )
+    }
+  }
   if (NUMBER_KEYS.has(keyName)) {
-    return <span className="font-medium tabular-nums">{value}</span>
+    return <span className="tabular-nums">{value}</span>
   }
   return <span className="truncate">{value}</span>
 }
@@ -248,7 +322,7 @@ function LabelCell({ Icon, label }: { Icon: LucideIcon; label: string }) {
   // as slightly higher than what `vertical-align: middle` computes.
   return (
     <div className="flex h-full items-center border-r border-zinc-100 bg-zinc-50 px-3 py-2 font-medium text-zinc-500">
-      <div className="truncate leading-none">
+      <div className="algin-middle flex items-center truncate leading-5">
         <Icon
           className="mr-2 inline-block size-3.5 align-middle"
           strokeWidth={1.5}
@@ -263,12 +337,7 @@ function LabelCell({ Icon, label }: { Icon: LucideIcon; label: string }) {
 
 export function FrontmatterBlock({ fields }: FrontmatterBlockProps) {
   const entries = Object.entries(fields).filter(([k]) => k !== 'title')
-  const [collapsed, setCollapsed] = useState(false)
   if (entries.length === 0) return null
-
-  // Only offer the hide/show affordance once there's enough to be worth
-  // reclaiming — a 2- or 3-row block doesn't need a control.
-  const collapsible = entries.length >= COLLAPSE_THRESHOLD
 
   return (
     <div
@@ -278,53 +347,28 @@ export function FrontmatterBlock({ fields }: FrontmatterBlockProps) {
         marginRight: 'calc(-1 * var(--pq-px))',
       }}
     >
-      {collapsible && (
-        <button
-          type="button"
-          onClick={() => setCollapsed((c) => !c)}
-          className={cn(
-            'flex w-full items-center gap-2 bg-zinc-50 px-3 py-1.5 text-[12.5px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100',
-            !collapsed && 'border-b border-zinc-100',
-          )}
-        >
-          {collapsed ? (
-            <>
-              <ChevronDown className="size-3.5 shrink-0" strokeWidth={1.5} />
-              <span className="inline-block translate-y-px">
-                Show {entries.length} properties
-              </span>
-            </>
-          ) : (
-            <>
-              <ChevronUp className="size-3.5 shrink-0" strokeWidth={1.5} />
-              <span className="inline-block translate-y-px">Hide</span>
-            </>
-          )}
-        </button>
-      )}
-      {!collapsed &&
-        entries.map(([key, value], i) => {
-          const Icon =
-            ICON_FOR_KEY[key] ?? (ISO_DATE_RE.test(value) ? Calendar : Tag)
-          const label = KNOWN_LABELS[key] ?? camelToTitle(key)
-          return (
-            <div
-              key={key}
-              className={cn(
-                'group grid min-h-[36px] items-stretch text-[13px] transition-colors hover:bg-zinc-50/50',
-                i > 0 && 'border-t border-zinc-100',
-              )}
-              style={{ gridTemplateColumns: '180px minmax(0, 1fr)' }}
-            >
-              <LabelCell Icon={Icon} label={label} />
-              <div className="flex min-w-0 items-center px-3 py-2 leading-none text-zinc-900">
-                <div className="min-w-0 translate-y-px truncate">
-                  <ValueOf keyName={key} value={value} />
-                </div>
+      {entries.map(([key, value], i) => {
+        const Icon =
+          ICON_FOR_KEY[key] ?? (ISO_DATE_RE.test(value) ? Calendar : Tag)
+        const label = KNOWN_LABELS[key] ?? camelToTitle(key)
+        return (
+          <div
+            key={key}
+            className={cn(
+              'group grid min-h-[36px] items-stretch text-[13px] transition-colors hover:bg-zinc-50/50',
+              i > 0 && 'border-t border-zinc-100',
+            )}
+            style={{ gridTemplateColumns: '180px minmax(0, 1fr)' }}
+          >
+            <LabelCell Icon={Icon} label={label} />
+            <div className="flex min-w-0 items-center px-3 py-2 leading-5 text-zinc-900">
+              <div className="min-w-0 translate-y-px truncate">
+                <ValueOf keyName={key} value={value} />
               </div>
             </div>
-          )
-        })}
+          </div>
+        )
+      })}
     </div>
   )
 }

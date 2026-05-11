@@ -2,7 +2,11 @@
 
 import { useRef, useState, useSyncExternalStore } from 'react'
 
-import { MarkdownWindowContent } from '@/components/features/desktop/windows/markdown/content'
+import {
+  FrontmatterToggleAction,
+  MarkdownWindowContent,
+  useFrontmatter,
+} from '@/components/features/desktop/windows/markdown/content'
 import { WindowFrame } from '@/components/features/desktop/windows/window-frame'
 
 import type { PlaygroundComponent } from './types'
@@ -66,6 +70,8 @@ const LONG_SPEC: FrontmatterSpec = {
     ['mode', 'working'],
     ['priority', 'high'],
     ['owner', 'alex'],
+    ['assignees', 'Alex Johnson, Sam Miller, Jamie Lee'],
+    ['progress', '14/23'],
     ['attachments', '3'],
     ['sourceCount', '17'],
     ['language', 'en'],
@@ -121,6 +127,7 @@ function PreviewWindow({ spec }: { spec: FrontmatterSpec }) {
   const [isOpen, setIsOpen] = useState(true)
   const now = useClientNow()
   const markdown = now === null ? '' : buildMarkdown(spec, now)
+  const fm = useFrontmatter(markdown)
 
   if (!isOpen) {
     return (
@@ -153,8 +160,20 @@ function PreviewWindow({ spec }: { spec: FrontmatterSpec }) {
         isMaximized={isMaximized}
         onToggleMaximize={() => setIsMaximized((m) => !m)}
         onRestoreFromMaximize={() => setIsMaximized(false)}
+        actions={
+          fm.collapsible && (
+            <FrontmatterToggleAction
+              collapsed={fm.collapsed}
+              onClick={fm.toggle}
+            />
+          )
+        }
       >
-        <MarkdownWindowContent markdown={markdown} loading={now === null} />
+        <MarkdownWindowContent
+          markdown={markdown}
+          loading={now === null}
+          frontmatter={fm}
+        />
       </WindowFrame>
     </div>
   )
