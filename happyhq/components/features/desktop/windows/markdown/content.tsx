@@ -135,29 +135,17 @@ export const MarkdownWindowContent = memo(function MarkdownWindowContent({
     <div className="relative h-full">
       <div className="absolute top-0 bottom-0 left-4 z-10 w-px bg-zinc-200/60" />
       <div
-        className="h-full overflow-y-auto overscroll-none"
+        className="h-full overflow-y-auto overscroll-none pl-4"
         style={{ contain: 'paint' }}
       >
+        {showFrontmatter && fm.fields && (
+          <FrontmatterBlock fields={fm.fields} />
+        )}
+        {showFrontmatter && <div className="border-t border-zinc-200/70" />}
         <div
-          className={
-            showFrontmatter
-              ? 'prose prose-slate prose-q pb-5'
-              : 'prose prose-slate prose-q py-5'
-          }
+          className="prose prose-slate prose-q py-5"
           style={{ '--pq-px': '28px' } as React.CSSProperties}
         >
-          {showFrontmatter && fm.fields && (
-            <FrontmatterBlock fields={fm.fields} />
-          )}
-          {showFrontmatter && (
-            <div
-              className="not-prose mt-0 mb-5 border-t border-zinc-200/70"
-              style={{
-                marginLeft: 'calc(1rem - var(--pq-px))',
-                marginRight: 'calc(-1 * var(--pq-px))',
-              }}
-            />
-          )}
           <Markdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeRaw, rehypeSanitize]}

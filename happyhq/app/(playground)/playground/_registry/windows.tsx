@@ -145,7 +145,11 @@ function PreviewWindow({ spec }: { spec: FrontmatterSpec }) {
     <div
       ref={constraintsRef}
       className="relative mx-auto"
-      style={{ width: size.width, height: size.height }}
+      style={
+        isMaximized
+          ? { width: '100%', height: '80vh' }
+          : { width: size.width, height: size.height }
+      }
     >
       <WindowFrame
         title="welcome-email.md"

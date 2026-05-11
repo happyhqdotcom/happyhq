@@ -321,7 +321,7 @@ function LabelCell({ Icon, label }: { Icon: LucideIcon; label: string }) {
   // text span gets a 1px translateY because the eye reads x-height midline
   // as slightly higher than what `vertical-align: middle` computes.
   return (
-    <div className="flex h-full items-center border-r border-zinc-100 bg-zinc-50 px-3 py-2 font-medium text-zinc-500">
+    <div className="flex h-full items-center border-x border-zinc-100 bg-zinc-50 px-3 py-2 font-medium text-zinc-500">
       <div className="algin-middle flex items-center truncate leading-5">
         <Icon
           className="mr-2 inline-block size-3.5 align-middle"
@@ -340,13 +340,7 @@ export function FrontmatterBlock({ fields }: FrontmatterBlockProps) {
   if (entries.length === 0) return null
 
   return (
-    <div
-      className="not-prose"
-      style={{
-        marginLeft: 'calc(1rem - var(--pq-px))',
-        marginRight: 'calc(-1 * var(--pq-px))',
-      }}
-    >
+    <div className="not-prose">
       {entries.map(([key, value], i) => {
         const Icon =
           ICON_FOR_KEY[key] ?? (ISO_DATE_RE.test(value) ? Calendar : Tag)
@@ -361,7 +355,7 @@ export function FrontmatterBlock({ fields }: FrontmatterBlockProps) {
             style={{ gridTemplateColumns: '180px minmax(0, 1fr)' }}
           >
             <LabelCell Icon={Icon} label={label} />
-            <div className="flex min-w-0 items-center px-3 py-2 leading-5 text-zinc-900">
+            <div className="flex min-w-0 items-center border-r border-zinc-100 px-3 py-2 leading-5 text-zinc-900">
               <div className="min-w-0 translate-y-px truncate">
                 <ValueOf keyName={key} value={value} />
               </div>
