@@ -228,6 +228,8 @@ export function WindowFrame({
       onRestoreFromMaximize,
       width,
       height,
+      x,
+      y,
       handleResizeMove,
       handleResizeEnd,
     ],
