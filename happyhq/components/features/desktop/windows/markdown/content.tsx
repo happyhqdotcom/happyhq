@@ -61,7 +61,10 @@ export const MarkdownWindowContent = memo(function MarkdownWindowContent({
   return (
     <div className="relative h-full">
       <div className="absolute top-0 bottom-0 left-4 z-10 w-px bg-zinc-200/60" />
-      <div className="h-full overflow-y-auto" style={{ contain: 'paint' }}>
+      <div
+        className="h-full overflow-y-auto overscroll-none"
+        style={{ contain: 'paint' }}
+      >
         <div
           className={
             parsed
