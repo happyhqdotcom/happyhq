@@ -3,6 +3,8 @@
 import {
   Calendar,
   CheckSquare,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
   Flag,
   GitBranch,
@@ -14,9 +16,12 @@ import {
   Workflow,
   type LucideIcon,
 } from 'lucide-react'
+import { useState } from 'react'
 
 import { formatRelativeTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
+
+const COLLAPSE_THRESHOLD = 4
 
 export interface FrontmatterBlockProps {
   fields: Record<string, string>
@@ -258,7 +263,12 @@ function LabelCell({ Icon, label }: { Icon: LucideIcon; label: string }) {
 
 export function FrontmatterBlock({ fields }: FrontmatterBlockProps) {
   const entries = Object.entries(fields).filter(([k]) => k !== 'title')
+  const [collapsed, setCollapsed] = useState(false)
   if (entries.length === 0) return null
+
+  // Only offer the hide/show affordance once there's enough to be worth
+  // reclaiming — a 2- or 3-row block doesn't need a control.
+  const collapsible = entries.length >= COLLAPSE_THRESHOLD
 
   return (
     <div
@@ -268,28 +278,53 @@ export function FrontmatterBlock({ fields }: FrontmatterBlockProps) {
         marginRight: 'calc(-1 * var(--pq-px))',
       }}
     >
-      {entries.map(([key, value], i) => {
-        const Icon =
-          ICON_FOR_KEY[key] ?? (ISO_DATE_RE.test(value) ? Calendar : Tag)
-        const label = KNOWN_LABELS[key] ?? camelToTitle(key)
-        return (
-          <div
-            key={key}
-            className={cn(
-              'group grid min-h-[36px] items-stretch text-[13px] transition-colors hover:bg-zinc-50/50',
-              i > 0 && 'border-t border-zinc-100',
-            )}
-            style={{ gridTemplateColumns: '180px minmax(0, 1fr)' }}
-          >
-            <LabelCell Icon={Icon} label={label} />
-            <div className="flex min-w-0 items-center px-3 py-2 leading-none text-zinc-900">
-              <div className="min-w-0 translate-y-px truncate">
-                <ValueOf keyName={key} value={value} />
+      {collapsible && (
+        <button
+          type="button"
+          onClick={() => setCollapsed((c) => !c)}
+          className={cn(
+            'flex w-full items-center gap-2 bg-zinc-50 px-3 py-1.5 text-[12.5px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100',
+            !collapsed && 'border-b border-zinc-100',
+          )}
+        >
+          {collapsed ? (
+            <>
+              <ChevronDown className="size-3.5 shrink-0" strokeWidth={1.5} />
+              <span className="inline-block translate-y-px">
+                Show {entries.length} properties
+              </span>
+            </>
+          ) : (
+            <>
+              <ChevronUp className="size-3.5 shrink-0" strokeWidth={1.5} />
+              <span className="inline-block translate-y-px">Hide</span>
+            </>
+          )}
+        </button>
+      )}
+      {!collapsed &&
+        entries.map(([key, value], i) => {
+          const Icon =
+            ICON_FOR_KEY[key] ?? (ISO_DATE_RE.test(value) ? Calendar : Tag)
+          const label = KNOWN_LABELS[key] ?? camelToTitle(key)
+          return (
+            <div
+              key={key}
+              className={cn(
+                'group grid min-h-[36px] items-stretch text-[13px] transition-colors hover:bg-zinc-50/50',
+                i > 0 && 'border-t border-zinc-100',
+              )}
+              style={{ gridTemplateColumns: '180px minmax(0, 1fr)' }}
+            >
+              <LabelCell Icon={Icon} label={label} />
+              <div className="flex min-w-0 items-center px-3 py-2 leading-none text-zinc-900">
+                <div className="min-w-0 translate-y-px truncate">
+                  <ValueOf keyName={key} value={value} />
+                </div>
               </div>
             </div>
-          </div>
-        )
-      })}
+          )
+        })}
     </div>
   )
 }
