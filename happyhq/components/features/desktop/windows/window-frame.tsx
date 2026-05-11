@@ -74,6 +74,22 @@ export function WindowFrame({
   const y = useMotionValue(position.y)
   const width = useMotionValue(size.width)
   const height = useMotionValue(size.height)
+  // Read canvas size from the store and derive a STATIC drag-constraints
+  // object. We deliberately avoid passing dragConstraints as a ref —
+  // framer-motion would otherwise observe the element's resize and call
+  // scalePositionWithinConstraints(), which re-anchors the restored window
+  // to the maximized bottom/right edges. Static bounds skip that path.
+  const canvasWidth = useWindowStore((s) => s.canvasWidth)
+  const canvasHeight = useWindowStore((s) => s.canvasHeight)
+  const dragConstraints =
+    canvasWidth != null && canvasHeight != null
+      ? {
+          left: 0,
+          top: 0,
+          right: Math.max(0, canvasWidth - size.width),
+          bottom: Math.max(0, canvasHeight - size.height),
+        }
+      : undefined
   const windowRef = useRef<HTMLDivElement>(null)
   const resizeStateRef = useRef<ResizeState | null>(null)
   const resizeAbortRef = useRef<AbortController | null>(null)
@@ -224,12 +240,8 @@ export function WindowFrame({
       dragMomentum={false}
       dragListener={false}
       dragControls={controls}
-      dragConstraints={dragConstraintsRef}
-      style={
-        isMaximized
-          ? { zIndex, inset: 0, width: '100%', height: '100%' }
-          : { x, y, zIndex, width, height }
-      }
+      dragConstraints={dragConstraints}
+      style={{ x, y, zIndex, width, height }}
       onDragEnd={() => {
         document.body.style.userSelect = ''
         onDragEnd({ x: x.get(), y: y.get() })
