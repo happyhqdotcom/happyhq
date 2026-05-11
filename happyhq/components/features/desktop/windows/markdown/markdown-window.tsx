@@ -10,7 +10,11 @@ import { useUpdatePulse } from '../use-update-pulse'
 import { WindowFileActions } from '../window-file-actions'
 import { WindowFrame } from '../window-frame'
 import { WindowHistoryDropdown } from '../window-history-dropdown'
-import { MarkdownWindowContent } from './content'
+import {
+  FrontmatterToggleAction,
+  MarkdownWindowContent,
+  useFrontmatter,
+} from './content'
 
 export function MarkdownWindow({
   id,
@@ -25,6 +29,14 @@ export function MarkdownWindow({
       ? result.window.meta.lastUpdatedAt
       : undefined,
   )
+  // Pull the markdown text safely whether or not this is a markdown window
+  // so useFrontmatter always sees a stable hook position above the early
+  // returns below.
+  const markdownText =
+    result?.window.contentType === 'markdown'
+      ? (result.window.meta.markdown ?? '')
+      : ''
+  const fm = useFrontmatter(markdownText)
 
   if (!result) return null
 
@@ -73,14 +85,22 @@ export function MarkdownWindow({
         />
       }
       actions={
-        <WindowFileActions
-          filePath={w.meta.filePath}
-          content={w.meta.markdown}
-          rawPath={w.meta.rawPath}
-          onViewRaw={(rawPath) =>
-            openFileWindow({ name: 'raw.txt', path: rawPath })
-          }
-        />
+        <>
+          {fm.collapsible && (
+            <FrontmatterToggleAction
+              collapsed={fm.collapsed}
+              onClick={fm.toggle}
+            />
+          )}
+          <WindowFileActions
+            filePath={w.meta.filePath}
+            content={w.meta.markdown}
+            rawPath={w.meta.rawPath}
+            onViewRaw={(rawPath) =>
+              openFileWindow({ name: 'raw.txt', path: rawPath })
+            }
+          />
+        </>
       }
       footer={
         showApprovalFooter ? (
@@ -114,6 +134,7 @@ export function MarkdownWindow({
       <MarkdownWindowContent
         markdown={w.meta.markdown}
         loading={w.meta.loading}
+        frontmatter={fm}
       />
     </WindowFrame>
   )

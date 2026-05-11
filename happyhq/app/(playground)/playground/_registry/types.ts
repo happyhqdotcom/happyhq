@@ -10,6 +10,7 @@ export type Category =
   | 'Primitives'
   | 'Markdown'
   | 'Conversation'
+  | 'Windows'
 
 export interface PlaygroundVariant {
   name: string

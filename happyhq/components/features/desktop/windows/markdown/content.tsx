@@ -1,21 +1,25 @@
 'use client'
 
 import { Loader2 } from 'lucide-react'
-import React, { memo } from 'react'
+import React, { memo, useCallback, useState } from 'react'
 import Markdown from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
 import rehypeSanitize from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
 
-interface MarkdownWindowContentProps {
-  markdown: string
-  loading?: boolean
+import { PanelToggleIcon } from '@/components/common/icons/panel-toggle-icon'
+
+import { FrontmatterBlock } from './frontmatter/block'
+
+const FRONTMATTER_COLLAPSE_THRESHOLD = 4
+
+interface ParsedFrontmatter {
+  fields: Record<string, string>
+  body: string
 }
 
 /** Parse YAML frontmatter into key-value pairs. Returns null if no frontmatter. */
-function parseFrontmatter(
-  markdown: string,
-): { fields: Record<string, string>; body: string } | null {
+export function parseFrontmatter(markdown: string): ParsedFrontmatter | null {
   if (!markdown.startsWith('---\n')) return null
   const endIdx = markdown.indexOf('\n---', 4)
   if (endIdx === -1) return null
@@ -33,67 +37,82 @@ function parseFrontmatter(
   return { fields, body }
 }
 
-/** Format an ISO timestamp to a short readable date. */
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString('en-GB', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  } catch {
-    return iso
-  }
+export interface FrontmatterState {
+  fields: Record<string, string> | null
+  body: string
+  collapsed: boolean
+  collapsible: boolean
+  toggle: () => void
 }
 
-/** Render frontmatter fields as a styled metadata block. */
-function FrontmatterBlock({ fields }: { fields: Record<string, string> }) {
-  const url = fields.url
-  const fetched = fields.fetched
+/** Owns frontmatter parsing + collapse state. Called by window parents so the
+ *  collapse toggle can live in WindowFrame's actions slot (chrome) while the
+ *  block renders in the content slot (children). */
+export function useFrontmatter(markdown: string): FrontmatterState {
+  const parsed = parseFrontmatter(markdown)
+  const [collapsed, setCollapsed] = useState(false)
+  const toggle = useCallback(() => setCollapsed((c) => !c), [])
+  const fields = parsed?.fields ?? null
+  const body = parsed?.body ?? markdown
+  const collapsible =
+    !!fields && Object.keys(fields).length >= FRONTMATTER_COLLAPSE_THRESHOLD
+  return { fields, body, collapsed, collapsible, toggle }
+}
 
-  // Skip rendering if no meaningful fields
-  const otherFields = Object.entries(fields).filter(
-    ([k]) => k !== 'url' && k !== 'fetched',
-  )
-  if (!url && !fetched && otherFields.length === 0) return null
-
+/** Icon button for the window header chrome that toggles frontmatter
+ *  visibility. Render conditionally on `collapsible`. */
+/** Reuses the playground's `PanelToggleIcon` (bounding rect + animated inner
+ *  panel rect) rotated 90° clockwise so the inner panel reads as a top strip
+ *  rather than a left rail — mirroring where the frontmatter sits in the
+ *  document. Slides in/out when toggled. */
+export function FrontmatterToggleAction({
+  collapsed,
+  onClick,
+}: {
+  collapsed: boolean
+  onClick: () => void
+}) {
+  const [isHovered, setIsHovered] = useState(false)
   return (
-    <div className="not-prose border-zinc-150 mb-3 grid grid-cols-[4rem_1fr] gap-x-2 gap-y-1 rounded-lg border bg-zinc-50/80 px-3 py-2.5 text-xs text-zinc-500">
-      {url && (
-        <>
-          <span className="font-medium text-zinc-400">Source</span>
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="min-w-0 truncate text-blue-600 hover:underline"
-          >
-            {url}
-          </a>
-        </>
-      )}
-      {fetched && (
-        <>
-          <span className="font-medium text-zinc-400">Fetched</span>
-          <span>{formatDate(fetched)}</span>
-        </>
-      )}
-      {otherFields.map(([key, value]) => (
-        <React.Fragment key={key}>
-          <span className="font-medium text-zinc-400">{key}</span>
-          <span className="min-w-0 truncate">{value}</span>
-        </React.Fragment>
-      ))}
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      aria-label={collapsed ? 'Show properties' : 'Hide properties'}
+      className="flex h-5 w-5 items-center justify-center rounded text-zinc-400 transition-colors hover:bg-zinc-200 hover:text-zinc-600"
+    >
+      <span className="inline-flex rotate-90">
+        <PanelToggleIcon
+          isLocked={!collapsed}
+          isHovered={isHovered}
+          side="left"
+        />
+      </span>
+    </button>
   )
+}
+
+interface MarkdownWindowContentProps {
+  markdown: string
+  loading?: boolean
+  /** Optional frontmatter state from useFrontmatter. When omitted, the
+   *  component parses + manages collapse internally (back-compat for callers
+   *  that don't render a chrome toggle). */
+  frontmatter?: FrontmatterState
 }
 
 export const MarkdownWindowContent = memo(function MarkdownWindowContent({
   markdown,
   loading,
+  frontmatter,
 }: MarkdownWindowContentProps) {
+  // Always call the hook so React's hook count stays stable. The hook is
+  // cheap (parse + useState) and only its result is used when `frontmatter`
+  // isn't supplied externally.
+  const internal = useFrontmatter(markdown)
+  const fm = frontmatter ?? internal
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -110,23 +129,28 @@ export const MarkdownWindowContent = memo(function MarkdownWindowContent({
     )
   }
 
-  const parsed = parseFrontmatter(markdown)
-  const body = parsed ? parsed.body : markdown
+  const showFrontmatter = fm.fields && !fm.collapsed
 
   return (
     <div className="relative h-full">
       <div className="absolute top-0 bottom-0 left-4 z-10 w-px bg-zinc-200/60" />
-      <div className="h-full overflow-y-auto" style={{ contain: 'paint' }}>
+      <div
+        className="h-full overflow-y-auto overscroll-none pl-4"
+        style={{ contain: 'paint' }}
+      >
+        {showFrontmatter && fm.fields && (
+          <FrontmatterBlock fields={fm.fields} />
+        )}
+        {showFrontmatter && <div className="border-t border-zinc-200/70" />}
         <div
-          className="prose prose-slate prose-q py-8"
+          className="prose prose-slate prose-q py-5"
           style={{ '--pq-px': '28px' } as React.CSSProperties}
         >
-          {parsed && <FrontmatterBlock fields={parsed.fields} />}
           <Markdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeRaw, rehypeSanitize]}
           >
-            {body}
+            {fm.body}
           </Markdown>
         </div>
       </div>
