@@ -102,18 +102,21 @@ export const Composer = memo(function Composer({
   // Track whether the latest value change came from local typing (handleInput already resized)
   const localChangeRef = useRef(false)
 
-  const handleFiles = useCallback((files: FileList) => {
-    // Filter to supported types — the <input> has accept but drag-and-drop bypasses it
-    const allowed = Array.from(files).filter((f) =>
-      isAllowedInputFilename(f.name),
-    )
-    for (const file of allowed) {
-      setStagedFiles((prev) => [
-        ...prev,
-        { id: crypto.randomUUID(), name: file.name, file },
-      ])
-    }
-  }, [])
+  const handleFiles = useCallback(
+    (files: FileList) => {
+      // Filter to supported types — the <input> has accept but drag-and-drop bypasses it
+      const allowed = Array.from(files).filter((f) =>
+        isAllowedInputFilename(f.name),
+      )
+      for (const file of allowed) {
+        setStagedFiles((prev) => [
+          ...prev,
+          { id: crypto.randomUUID(), name: file.name, file },
+        ])
+      }
+    },
+    [setStagedFiles],
+  )
 
   const handleSubmit = useCallback(() => {
     const trimmed = value.trim()
@@ -134,7 +137,15 @@ export const Composer = memo(function Composer({
       }
       setHeightExpanded(false)
     }
-  }, [value, disabled, onSubmit, stagedFiles, clearOnSubmit])
+  }, [
+    value,
+    disabled,
+    onSubmit,
+    stagedFiles,
+    clearOnSubmit,
+    setValue,
+    setStagedFiles,
+  ])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
