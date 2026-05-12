@@ -21,7 +21,7 @@
 4. **Check out the PR's branch.** `gh pr checkout ${PR_NUMBER}` from the qa worktree. If `pnpm-lock.yaml` changed in the diff (`gh pr diff ${PR_NUMBER} --name-only | grep pnpm-lock.yaml`): `pnpm install` from the repo root. Else skip.
 
 5. **Run the verification from the plan's "How to verify" section.** Two cases:
-   - **Litmus test passes — author's testing covers it.** Re-read the cited testing in the PR body / artifacts (`gh pr view ${PR_NUMBER} --comments`). Confirm it actually covers what the plan claimed and that the kind of verification matches the kind of risk (per the rubric's pitfalls). If it doesn't (the plan was wrong), write a quick verification yourself — note the deviation in the qa-pass / qa-fail comment.
+   - **Litmus test passes — author's testing covers it.** Independently reproduce the load-bearing piece of the author's exercise — run their curl, hand-roll their fixture, drive the same UI path. Confirm it actually covers what the plan claimed and that the kind of verification matches the kind of risk (per the rubric's pitfalls). If it doesn't (the plan was wrong), write a quick verification yourself — note the deviation in the qa-pass / qa-fail comment.
    - **Explicit verification steps.** Carry out what the plan describes. The means is whatever the plan named:
      - **Driving UI** → use Playwright MCP tools per `.dev/exercising-the-ui.md`. For any artifacts you create (streams, tasks, uploads), use stream slug `qa-bespoke-${PR_NUMBER}`.
      - **API probe** → curl per CLAUDE.md "Using HappyHQ's API for verification".
