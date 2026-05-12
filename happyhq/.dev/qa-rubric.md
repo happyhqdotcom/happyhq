@@ -117,7 +117,3 @@ These tune _how_ QA runs. Not gates.
 **First-hand or it didn't happen.** Every claim in your qa-pass comment must cite something you did — a file you read, a command you ran, a UI you drove. The author's evidence is upstream defense; your evidence is what makes the pass real. If your comment paraphrases the PR body, you haven't done QA.
 
 **A pass isn't just the label.** The comment is the artifact a future reader uses to understand what was verified. Write it so someone reading the PR a month later understands what the QA loop saw.
-
-## Tuning signal
-
-When the QA loop gets it wrong — passes a PR that broke main, fails a PR that was actually fine — that's a rubric-tuning signal. Edit this file. The next run picks up the change.
