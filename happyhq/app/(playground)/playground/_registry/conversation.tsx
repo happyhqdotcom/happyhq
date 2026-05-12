@@ -1,4 +1,4 @@
-import { StartTaskCard } from '@/components/features/chat/interaction/start-task-card'
+import { TaskBubble } from '@/components/features/chat/interaction/task-bubble'
 import { ChatMessageList } from '@/components/features/chat/messages/chat-message-list'
 import type { ChatMessage, ToolCall } from '@/lib/chat/types'
 
@@ -28,17 +28,28 @@ const fullConversation: PlaygroundComponent = {
     return (
       <ChatMessageList
         messages={messages}
-        renderCreateTask={(tc: ToolCall) => (
-          <StartTaskCard
-            name={(tc.input as { name?: string })?.name ?? 'untitled'}
-            title={
-              (tc.input as { textContext?: string })?.textContext ?? undefined
-            }
-            onStart={() => {
-              log('start-task', tc.input)
-            }}
-          />
-        )}
+        renderCreateTask={(tc: ToolCall) => {
+          const input = tc.input as {
+            name?: string
+            textContext?: string
+          }
+          return (
+            <TaskBubble
+              name={input.name ?? 'untitled'}
+              textContext={input.textContext}
+              state={
+                tc.taskStarted
+                  ? 'started'
+                  : tc.taskCreated
+                    ? 'created'
+                    : 'suggested'
+              }
+              onCreate={() => log('create-task', tc.input)}
+              onStart={() => log('start-task', tc.input)}
+              onView={() => log('view-task', tc.input)}
+            />
+          )
+        }}
       />
     )
   },

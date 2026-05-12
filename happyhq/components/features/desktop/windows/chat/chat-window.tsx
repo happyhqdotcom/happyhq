@@ -2,7 +2,10 @@
 
 import { ChatContent } from '@/components/features/chat/chat-content'
 import { ChatSelectorDropdown } from '@/components/features/chat/chat-selector-dropdown'
-import { StartTaskCard } from '@/components/features/chat/interaction/start-task-card'
+import {
+  TaskBubble,
+  type TaskBubbleState,
+} from '@/components/features/chat/interaction/task-bubble'
 import { StreamContextSelector } from '@/components/features/chat/list/home-composer/stream-context-selector'
 import { ChatMessageList } from '@/components/features/chat/messages/chat-message-list'
 import { useChatActions } from '@/components/features/desktop/hooks/use-chat-actions'
@@ -92,23 +95,30 @@ function InteractiveChatContent({
         textContext: string
         files?: string[]
       }
-      if (tc.taskStarted) {
-        return (
-          <StartTaskCard
-            name={input.name}
-            onStart={() =>
-              router.push(
-                `/${encodeURIComponent(streamSlug)}/${encodeURIComponent(input.name)}`,
-              )
-            }
-            started
-          />
-        )
+      const state: TaskBubbleState = tc.taskStarted
+        ? 'started'
+        : tc.taskCreated
+          ? 'created'
+          : 'suggested'
+      const navigate = () => {
+        const slug = tc.taskSlug ?? input.name
+        if (streamSlug) {
+          router.push(
+            `/${encodeURIComponent(streamSlug)}/${encodeURIComponent(slug)}`,
+          )
+        } else {
+          router.push(`/tasks/${encodeURIComponent(slug)}`)
+        }
       }
       return (
-        <StartTaskCard
+        <TaskBubble
           name={input.name}
+          state={state}
+          streamSlug={streamSlug || null}
+          textContext={input.textContext}
+          onCreate={() => chatActions.createTaskFromChat(input, tc.id)}
           onStart={() => chatActions.startTask(input, tc.id)}
+          onView={navigate}
         />
       )
     },

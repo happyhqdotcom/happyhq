@@ -50,7 +50,7 @@ export function createQsMcpServer(
     tools: [
       tool(
         'CreateTask',
-        'Create a task. Renders a Start Task card in the chat. Only call after a playbook exists and you have what you need. textContext is the only bridge to planning — it reads cold from disk.',
+        'Propose a task for the user. Call only when the user has asked for something to be done — never to react to feedback, agreement, or completion. textContext is the only bridge to planning; it reads cold from disk.',
         {
           name: z
             .string()
@@ -68,13 +68,13 @@ export function createQsMcpServer(
             ),
         },
         async ({ name, textContext: _textContext, files: _files }) => {
-          // Auto-approved: runs immediately when the agent calls CreateTask.
-          // The client renders a task card the user can start at any time.
+          // Suggestion only — no filesystem side effects.
+          // The client renders a task bubble the user can capture and start.
           return {
             content: [
               {
                 type: 'text' as const,
-                text: `Task "${name}" suggested to user. A task card is now visible in the chat. The user can start it at any time — continue the conversation naturally.`,
+                text: `Task "${name}" suggested to user. A task bubble is now visible in the chat — the user will click Create to capture it, then Start when ready. Continue the conversation naturally; the handoff is in the user's hands.`,
               },
             ],
           }

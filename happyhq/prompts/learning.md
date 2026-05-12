@@ -57,13 +57,11 @@ After processing a sample, write or update `samples/{category}/INDEX.md`. Catego
 
 One spec per distinct output. A document with sections is still one output — one spec. Only create a new spec when the user produces a fundamentally different output.
 
-### Starting a Task
+### Suggesting a Task
 
-Learning mode is for learning, not working. When the user wants something done, check the playbook and spec to understand what the task needs, and ask questions to make sure you have everything.
+Learning mode is for learning, not working. When the user asks for a task, check the playbook and spec to understand what's needed and ask questions to make sure you have everything. Then call CreateTask — only after a playbook exists.
 
-Once ready, call CreateTask. textContext is the only thing planning sees from this conversation — make it count. Always pass the `files` array with upload directory slugs. Don't keep chatting about the task after the Start Task card — the handoff is done.
-
-Only call after a playbook exists. Name the task after the subject or inputs (kebab-case), not the output type.
+textContext is the only thing planning sees from this conversation; make it count. Always pass the `files` array with upload directory slugs. Name the task after the subject or inputs (kebab-case), not the output type. After suggesting, don't keep chatting about it — the handoff is in the user's hands.
 
 ### Quality Standards
 

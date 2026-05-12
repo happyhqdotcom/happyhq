@@ -4,7 +4,11 @@ import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
-import { assertSafeSessionId, safePath } from '@/lib/fs/paths'
+import {
+  assertSafePathSegment,
+  assertSafeSessionId,
+  safePath,
+} from '@/lib/fs/paths'
 import { readTextFile } from '@/lib/fs/read.server'
 import { ensureDirectory, writeTextFile } from '@/lib/fs/write.server'
 import { log } from '@/lib/log.server'
@@ -137,6 +141,69 @@ export async function setChatMode(
 
   try {
     await writeFile(chatJsonPath, JSON.stringify(update), 'utf-8')
+  } catch (err) {
+    if (!isEnoent(err)) throw err
+  }
+}
+
+/**
+ * Record that a task was created from this chat session.
+ * Adds the task name to the createdTasks array and persists the generated
+ * slug in taskSlugs so the bubble can navigate after history reload (slugs
+ * include a timestamp and can't be regenerated).
+ */
+export async function markTaskCreated(
+  sessionId: string,
+  taskName: string,
+  taskSlug: string,
+): Promise<void> {
+  assertSafeSessionId(sessionId)
+  // taskName / taskSlug flow from agent-supplied tool input — validate up-front.
+  assertSafePathSegment(taskName, 'task name')
+  assertSafePathSegment(taskSlug, 'task slug')
+  const chatDir = path.join(HAPPYHQ_ROOT, '.chats', sessionId)
+  const chatJsonPath = safePath(path.join(chatDir, 'chat.json'))
+
+  let existing: Record<string, unknown> = {}
+  const raw = await readTextFile(chatJsonPath)
+  if (raw) {
+    try {
+      existing = JSON.parse(raw)
+    } catch {
+      // Malformed — overwrite with fresh data
+    }
+  }
+
+  const createdTasks: string[] = Array.isArray(existing.createdTasks)
+    ? existing.createdTasks
+    : []
+  if (!createdTasks.includes(taskName)) {
+    createdTasks.push(taskName)
+  }
+
+  // Stored as an array of {name, slug} entries rather than Record<name, slug>
+  // so the agent-supplied taskName never becomes an object key (CodeQL
+  // js/remote-property-injection).
+  const taskSlugs: Array<{ name: string; slug: string }> = Array.isArray(
+    existing.taskSlugs,
+  )
+    ? (existing.taskSlugs as Array<{ name: string; slug: string }>).filter(
+        (e) => e && typeof e.name === 'string' && typeof e.slug === 'string',
+      )
+    : []
+  const existingIdx = taskSlugs.findIndex((e) => e.name === taskName)
+  if (existingIdx >= 0) {
+    taskSlugs[existingIdx] = { name: taskName, slug: taskSlug }
+  } else {
+    taskSlugs.push({ name: taskName, slug: taskSlug })
+  }
+
+  try {
+    await writeFile(
+      chatJsonPath,
+      JSON.stringify({ ...existing, createdTasks, taskSlugs }),
+      'utf-8',
+    )
   } catch (err) {
     if (!isEnoent(err)) throw err
   }
