@@ -38,6 +38,7 @@ These are failure modes we've actually seen. Name them when they apply; reject t
 - **Smoke as verification.** Smoke is the backstop. It runs the golden path with one fixture; it doesn't verify what changed unless the change is on that exact path.
 - **Prior QA comments as proof.** They're previous verdicts, possibly the verdict being re-evaluated. Read them for context, never count them as the author's testing.
 - **"I tested it thoroughly" without artifacts.** The claim has to be verifiable against embedded evidence — screenshots, log excerpts, output. If it isn't, treat the surface as untested.
+- **Author's exercise transcript as proof.** A curl, log excerpt, or screenshot pasted into the PR body is the author's claim, not your verification. If the PR body says "I ran X and got Y," you run X and confirm Y yourself, or you treat that surface as untested. Re-reading the transcript is not re-running it.
 
 ## What "verify" looks like
 
@@ -112,6 +113,8 @@ These tune _how_ QA runs. Not gates.
 **Cite evidence, always.** Every comment links or quotes specific artifacts. "QA: pass — looked fine" is never the comment; "QA: pass — drove learning-mode entry, observed brief ack and agent proceeding to learn; smoke PASS in 78s" is.
 
 **Read the author's testing skeptically.** The author's exercise is upstream defense, not blank trust. Look at the embedded evidence and judge whether it covers what could break.
+
+**First-hand or it didn't happen.** Every claim in your qa-pass comment must cite something you did — a file you read, a command you ran, a UI you drove. The author's evidence is upstream defense; your evidence is what makes the pass real. If your comment paraphrases the PR body, you haven't done QA.
 
 **A pass isn't just the label.** The comment is the artifact a future reader uses to understand what was verified. Write it so someone reading the PR a month later understands what the QA loop saw.
 
