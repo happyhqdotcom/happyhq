@@ -4,7 +4,11 @@ import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
-import { assertSafeSessionId, safePath } from '@/lib/fs/paths'
+import {
+  assertSafePathSegment,
+  assertSafeSessionId,
+  safePath,
+} from '@/lib/fs/paths'
 import { readTextFile } from '@/lib/fs/read.server'
 import { ensureDirectory, writeTextFile } from '@/lib/fs/write.server'
 import { log } from '@/lib/log.server'
@@ -154,6 +158,11 @@ export async function markTaskCreated(
   taskSlug: string,
 ): Promise<void> {
   assertSafeSessionId(sessionId)
+  // taskName flows from agent-supplied tool input into an object key below;
+  // validate up-front to block prototype-pollution (__proto__/constructor) and
+  // any non-segment-shaped values.
+  assertSafePathSegment(taskName, 'task name')
+  assertSafePathSegment(taskSlug, 'task slug')
   const chatDir = path.join(HAPPYHQ_ROOT, '.chats', sessionId)
   const chatJsonPath = safePath(path.join(chatDir, 'chat.json'))
 
