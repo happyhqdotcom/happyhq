@@ -84,7 +84,6 @@ export function StreamPanel({
 
             <PlaybookSection
               playbookBody={playbookBody}
-              streamSlug={streamSlug!}
               onOpen={() =>
                 openOrFocusWindow(
                   'playbook',
