@@ -158,9 +158,7 @@ export async function markTaskCreated(
   taskSlug: string,
 ): Promise<void> {
   assertSafeSessionId(sessionId)
-  // taskName flows from agent-supplied tool input into an object key below;
-  // validate up-front to block prototype-pollution (__proto__/constructor) and
-  // any non-segment-shaped values.
+  // taskName / taskSlug flow from agent-supplied tool input — validate up-front.
   assertSafePathSegment(taskName, 'task name')
   assertSafePathSegment(taskSlug, 'task slug')
   const chatDir = path.join(HAPPYHQ_ROOT, '.chats', sessionId)
@@ -183,11 +181,22 @@ export async function markTaskCreated(
     createdTasks.push(taskName)
   }
 
-  const taskSlugs: Record<string, string> =
-    existing.taskSlugs && typeof existing.taskSlugs === 'object'
-      ? (existing.taskSlugs as Record<string, string>)
-      : {}
-  taskSlugs[taskName] = taskSlug
+  // Stored as an array of {name, slug} entries rather than Record<name, slug>
+  // so the agent-supplied taskName never becomes an object key (CodeQL
+  // js/remote-property-injection).
+  const taskSlugs: Array<{ name: string; slug: string }> = Array.isArray(
+    existing.taskSlugs,
+  )
+    ? (existing.taskSlugs as Array<{ name: string; slug: string }>).filter(
+        (e) => e && typeof e.name === 'string' && typeof e.slug === 'string',
+      )
+    : []
+  const existingIdx = taskSlugs.findIndex((e) => e.name === taskName)
+  if (existingIdx >= 0) {
+    taskSlugs[existingIdx] = { name: taskName, slug: taskSlug }
+  } else {
+    taskSlugs.push({ name: taskName, slug: taskSlug })
+  }
 
   try {
     await writeFile(

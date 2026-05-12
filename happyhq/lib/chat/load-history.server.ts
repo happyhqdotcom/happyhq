@@ -67,8 +67,16 @@ export async function loadChatHistory(
       if (Array.isArray(chatJson.startedTasks)) {
         startedTasks = chatJson.startedTasks
       }
-      if (chatJson.taskSlugs && typeof chatJson.taskSlugs === 'object') {
-        taskSlugs = chatJson.taskSlugs as Record<string, string>
+      if (Array.isArray(chatJson.taskSlugs)) {
+        for (const entry of chatJson.taskSlugs) {
+          if (
+            entry &&
+            typeof entry.name === 'string' &&
+            typeof entry.slug === 'string'
+          ) {
+            taskSlugs[entry.name] = entry.slug
+          }
+        }
       }
       if (chatJson.uploads && typeof chatJson.uploads === 'object') {
         uploads = chatJson.uploads as Record<string, string>
