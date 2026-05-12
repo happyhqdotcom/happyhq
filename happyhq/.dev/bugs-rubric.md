@@ -2,123 +2,115 @@
 
 Source of truth for how Ralphie judges open `bug`-labeled issues. Both `PROMPT_bugs_triage.md` and `PROMPT_bugs_fix.md` load this file. Edit here, not in the prompts.
 
-## Queue contract
+## The litmus test
 
-- The queue is: GitHub issues that are `state:open`, labeled `bug`, and have no label starting with `ralphie:`.
-- A `ralphie:*` label is terminal — Ralphie never re-evaluates a labeled issue. The human removes the label to re-queue.
-- One outcome per session (a label, a comment, a PR, or a rephrased child issue). No chaining.
+Approach every bug as an engineer who cares about the quality of both the user experience and the developer experience. Ask one question:
 
-## What this rubric is not
+> **Am I fixing the right thing, the right way?**
 
-A bug report is the user's best guess at what's wrong and where. It is **not** a script to execute. The fix session reproduces the report, reads the code path, traces symptom to cause, and forms its own opinion. Sometimes the report is right; sometimes the report describes a real symptom but the user's hypothesis about the cause is wrong (the actual fix lives somewhere else); sometimes the report describes intentional behavior the user has mistaken for a bug. When the loop disagrees with the framing, it doesn't ship a wrong-shape fix — it files a rephrased issue with the correct framing and exits via `ralphie:skip-needs-rescope`. This rubric encodes the gates around that engineering judgment, not a substitute for it.
+Everything else in this rubric is how to answer that honestly. A bug report is the reporter's best guess at what's wrong and where — it's not a script to execute. The work is to figure out what's actually broken, decide whether and how to respond, and see the fix through.
 
-## Rubric
+## How to answer the litmus test
 
-Apply in order — bail at the earliest stop. The first six are evaluable from the issue text alone (Phase 1 — triage). The rest only show up after attempting a fix (Phase 2).
+For every bug, walk these:
 
-| #   | Condition                                                                                                                                                                                                                                                                                                      | Label applied                      | What unblocks it                                                                                                                                     |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Fix would touch `happyhq/ee/`                                                                                                                                                                                                                                                                                  | `ralphie:skip-ee`                  | Maintainer decides whether to take it on; remove label after deciding                                                                                |
-| 2   | Author is not OWNER/MEMBER and the report lacks repro details a third party would need to provide                                                                                                                                                                                                              | `ralphie:skip-third-party-unclear` | Add repro details or escalate; remove label                                                                                                          |
-| 3   | Issue body or comments contain unresolved questions for the maintainer                                                                                                                                                                                                                                         | `ralphie:skip-needs-decision`      | Answer the question in a comment, remove label                                                                                                       |
-| 4   | Requires a schema migration, new env var, new dependency, or `.github/`/CI/workflow change                                                                                                                                                                                                                     | `ralphie:skip-out-of-scope`        | Maintainer scopes and does it; remove label if the work was decoupled                                                                                |
-| 5   | No reasonable repro can be inferred from issue + linked logs                                                                                                                                                                                                                                                   | `ralphie:skip-not-reproducible`    | Reporter or maintainer adds repro/logs, remove label                                                                                                 |
-| 6   | Estimated >10 files or >300 LoC after a quick code search (excludes `*.md`/`*.mdx` — spec/doc updates don't count toward the cap)                                                                                                                                                                              | `ralphie:skip-too-big`             | Scope it down (split issue) or do it manually                                                                                                        |
-| 7   | (Phase 2) Repro could not be established locally                                                                                                                                                                                                                                                               | `ralphie:skip-not-reproducible`    | Same as #5                                                                                                                                           |
-| 8   | (Phase 2) After reading the code: the framing is wrong (the symptom has a different cause than the report assumes; or the described behavior is intentional, not a bug). Loop files a rephrased child issue with the correct framing                                                                           | `ralphie:skip-needs-rescope`       | Maintainer reviews the child issue; if the rephrasing is right the queue picks it up next iteration; if wrong, close the child and remove this label |
-| 9   | (Phase 2) `pnpm format` / `pnpm lint` / `pnpm check-types` / `pnpm --filter=happyhq test` failed twice                                                                                                                                                                                                         | `ralphie:skip-verification-failed` | Read the comment Ralphie left; fix locally                                                                                                           |
-| 10  | (Phase 2) Exercise step (PROMPT step 5b) couldn't confirm the user-visible contract — the failure mode wouldn't reproduce / the new state didn't appear / a regression was visible after one rework attempt, OR the surface couldn't be reached after at least one concrete reproducer attempt (see PROMPT 5b) | `ralphie:skip-cannot-verify`       | Maintainer reads the comment + evidence, decides whether to fix locally, scope manually, or close                                                    |
-| 11  | (Phase 2) Risk gate trips (see "Risk gate" below): diff is over threshold AND high-risk                                                                                                                                                                                                                        | `ralphie:split-into-children`      | Children land — when all close, parent closes too                                                                                                    |
-| 12  | (Phase 2) Fix shipped (under threshold, OR over threshold but low-risk and noted in PR body)                                                                                                                                                                                                                   | `ralphie:fixed-in-pr`              | Terminal — the linked PR closes the loop                                                                                                             |
+1. **Reproduce it.** The report describes a symptom. Get the symptom to happen — or get as close as the available logs and code allow.
+2. **Read the code.** Trace symptom to cause. Don't trust the report's hypothesis; verify it. Look for prior art on this surface — recent issues with the same shape, in-flight PRs, specs documenting the affected behavior.
+3. **Form an opinion.** Sometimes the report is right. Sometimes the symptom is real but the cause lives somewhere else. Sometimes the described behavior is intentional. Your read is the value-add.
+4. **Write the right fix.** The "right thing" is the real cause, not the symptom — don't band-aid past it if the underlying problem is what's broken. The "right way" is the change that leaves the system simpler and clearer than you found it.
+5. **Assess the diff.** With the actual change in hand, judge review risk. The size of the diff is a rough proxy; what touched and how it's tested is the real signal.
 
-## Risk gate (replaces the post-fix "too-big" cap)
+Then ask the litmus test again. The honest answer takes one of four shapes — **ship**, **split**, **rescope**, or **skip**.
 
-Size is a proxy for **review risk**, and the proxy is wrong in both directions: a 12-file mechanical fix is lower risk than a 30-line edit in `lib/run/loop.server.ts`. Phase 1 rule 6's pre-engagement size estimate stays as a coarse "is this clearly enormous" pre-screen — but post-fix, with the actual diff in hand, the gate assesses risk explicitly.
+## The four outcomes
 
-**Threshold:** more than 10 files changed OR more than 300 net lines added, excluding `*.md` and `*.mdx`.
+### Ship — `ralphie:fixed-in-pr`
 
-**Low risk** (proceed even if over threshold):
+The fix addresses the real cause, the diff is reviewable as one PR, and you can defend it. Open the PR.
 
-- Change is mechanical: rename, codemod-shaped, uniform fix applied across many sites.
-- Touched files have test coverage that exercises the change, OR the change is provably behavior-preserving.
-- No runtime behavior change, OR the change is the explicit goal and tests pin it.
-- Files cluster outside critical surfaces.
+A PR is reviewable when one of:
 
-**High risk** (do not ship as one PR):
+- Under threshold (≤10 files changed, ≤300 net lines added, excluding `*.md`/`*.mdx`).
+- Over threshold but low risk: mechanical / codemod-shaped, behavior-preserving, well-covered by tests, or clustered outside critical surfaces. Add a "Why this is over threshold but low risk" section to the PR body.
 
-- Touches critical surfaces: `lib/run/`, `lib/database/`, `lib/fs/`, `lib/actions.ts`, server actions, agent orchestration, auth, billing.
-- Mixes unrelated concerns (refactor + behavior fix; multiple separable bugs collapsed into one PR).
-- Behavior change without test coverage that pins it.
-- Per-site decisions diverge meaningfully and warrant separate review.
+### Split — `ralphie:split-into-children`
 
-**Decision tree** (applied post-fix, with the actual diff in hand):
+The right fix is over threshold _and_ high risk — touches critical surfaces (`lib/run/`, `lib/database/`, `lib/fs/`, `lib/actions.ts`, server actions, agent orchestration, auth, billing), mixes unrelated concerns, or changes behavior without test coverage that pins it. Shipping it as one PR puts review beyond what one human can responsibly do.
 
-1. Diff under threshold → ship.
-2. Diff over threshold AND low risk → ship; add a "Why this is over threshold but low risk" section to the PR body with a one-paragraph rationale.
-3. Diff over threshold AND high risk → split (Path B below). Do not push the over-size PR.
+Don't push the over-size PR. Instead:
 
-## Split path (Path B)
+1. Identify the split axis from the diff — usually "fix the immediate symptom" vs "fix the underlying cause," or "fix per surface" when one bug shows up in multiple unrelated places.
+2. For each child: `gh issue create --label bug --title "<parent title> — <axis slice>" --body "..."`. Body must include `Split from #<parent>.`, the scope of this child, and the reproduction narrowed to that scope.
+3. Comment on the parent listing the children: "Split into #X, #Y by `<axis>`. This parent stays open until all children close."
+4. Apply `ralphie:split-into-children` to the parent. Revert the working branch. Exit. Next iteration picks up the children.
 
-When the risk gate trips, the loop creates child bug issues instead of one giant PR. The split itself is a low-risk action: only GitHub metadata writes, no code.
+### Rescope — `ralphie:skip-needs-rescope`
 
-1. **Identify the split axis** from the diff. For most bugs the axis is "fix the immediate symptom" vs "fix the underlying cause" (when the cause refactor is bigger than the bug warrants), or "fix per surface" (when one bug shows up in multiple unrelated places that warrant separate reviews).
-2. **For each child group:** `gh issue create --label bug --title "<parent title> — <axis slice>" --body "..."`. Body must include `Split from #<parent>.`, the scope of this child, and the reproduction steps narrowed to that scope.
-3. **Comment on parent** listing the children: "Split into #X, #Y by <axis>. This parent stays open until all children close."
-4. **Apply `ralphie:split-into-children` to parent.**
-5. **Revert the working branch.** Push nothing. Exit. Next loop iteration picks up the children naturally.
+The framing is wrong: the symptom has a different cause than the report assumes, or the described behavior is intentional and not a bug. **This is the most valuable thing the loop does** — converting a misframed report into a workable issue.
 
-## Rescope path (rule 8)
+File a rephrased child issue: `gh issue create --label bug --title "<rephrased title>" --body "..."`. Body includes:
 
-When the loop reads the code and concludes the bug's framing is wrong — either the symptom has a different cause than the report assumes, or the described behavior is intentional and not a bug — the loop **files a rephrased child issue** rather than just commenting and skipping. The rephrasing is the loop's value-add: it converts a misframed report into a workable issue.
+- `Rephrased from #<original>` with link.
+- **What the report described:** quote the symptom.
+- **What the loop saw:** file:line evidence for the actual cause (or evidence the behavior is intentional).
+- **Why the framings differ:** one paragraph mapping the reporter's hypothesis to your reading.
+- **Suggested fix** (if applicable): 2–3 bullets — the smallest change that would address the actual cause.
 
-1. Open a new bug issue: `gh issue create --label bug --title "<rephrased title>" --body "..."`. Body must include:
-   - `Rephrased from #<original>` with link.
-   - **What the report described:** quote the symptom from the original.
-   - **What the loop saw:** file:line evidence for the actual cause (or evidence that the behavior is intentional).
-   - **Why the framings differ:** one paragraph mapping the user's hypothesis to the loop's reading.
-   - **Suggested fix** (if applicable): 2–3 bullets — the smallest change that would address the actual cause.
-2. **Comment on original** with link to the new issue and a clear undo path: "Filed #<new> with what I think is the correct framing. If I got this wrong, close #<new> and remove the `ralphie:skip-needs-rescope` label here to put this back in the queue."
-3. **Apply `ralphie:skip-needs-rescope` to original.** Revert any working branch. Exit.
+Comment on the original with a clear undo path: "Filed `#<new>` with what I think is the correct framing. If I got this wrong, close `#<new>` and remove the `ralphie:skip-needs-rescope` label here to put this back in the queue." Apply the label. Revert any working branch. Exit.
 
-If the original is purely "this isn't a bug, it's intentional," the new issue is optional — sometimes the right outcome is just the comment + label. Use judgment: if there's a real underlying concern worth tracking, file the rephrased issue; if the report is just wrong, comment-and-skip is enough.
+If the original is purely "this isn't a bug, it's intentional" and there's no underlying concern worth tracking, the new issue is optional — comment-and-skip is enough. Use judgment.
 
-## Comment shape (for skips)
+### Skip — various `ralphie:skip-*` labels
 
-Every skip writes one comment, in this shape:
+Bail before engagement when the issue isn't workable. In rough order:
+
+- Fix would touch `happyhq/ee/` → `ralphie:skip-ee`.
+- Reporter isn't OWNER/MEMBER and the report lacks repro details a third party would need to provide → `ralphie:skip-third-party-unclear`.
+- Issue body or comments contain unresolved questions for the maintainer → `ralphie:skip-needs-decision`.
+- Requires a schema migration, new env var, new dependency, or `.github/`/CI/workflow change → `ralphie:skip-out-of-scope`.
+- No reasonable repro can be inferred from issue + linked logs, or the repro couldn't be established locally → `ralphie:skip-not-reproducible`.
+- Clearly enormous on a quick code search — well over the size threshold before even starting → `ralphie:skip-too-big`. (Borderline cases: engage and decide at step 5.)
+- After fixing: `pnpm format` / `pnpm lint` / `pnpm check-types` / `pnpm --filter=happyhq test` failed twice → `ralphie:skip-verification-failed`.
+- After fixing: the exercise step couldn't confirm the user-visible contract (failure didn't reproduce, new state didn't appear, regression visible after one rework, or surface unreachable after a concrete reproducer attempt) → `ralphie:skip-cannot-verify`.
+
+A `ralphie:*` label is terminal. The maintainer removes it to re-queue.
+
+Every skip writes one comment:
 
 ```
 Ralphie skipped this for: <rubric reason name>
 
-What I saw: <1–3 sentences — the specific evidence in the issue/code that triggered the rule>
+What I saw: <1–3 sentences — the specific evidence in the issue/code that triggered the skip>
 
-What would unblock it: <1 sentence — the concrete action that lets the next Ralphie run pick this up>
+What would unblock it: <1 sentence — the concrete action that lets the next run pick this up>
 ```
 
-For `ralphie:skip-needs-rescope`, the comment additionally links to the new (rephrased) issue. See "Rescope path" above.
+The comment is for the human reading the queue; the label is for the next Ralphie. Rescope and split have their own comment shapes — see those sections above.
 
-For `ralphie:split-into-children`, the parent comment lists the children instead of following this shape — see "Split path".
+## Pitfalls — things that look like the right answer but aren't
 
-Comments are for the human reading the queue. The label is for the next Ralphie.
+These are failure modes we've seen. Name them when they apply; reject them.
 
-## Hard constraints (never violate, regardless of rubric)
+- **Band-aiding the symptom.** The report describes a visible symptom, you patch the visible symptom, the underlying cause is still there. If the real problem is elsewhere, the right move is to fix elsewhere (or rescope to file the issue against the real cause). Smaller isn't better when smaller is wrong.
+- **Splitting when you should rescope.** Splitting is for "the right fix is too big to review as one PR." Rescoping is for "the report is asking for the wrong fix." If the framing is off, splitting just produces several wrong-shape PRs.
+- **Rescoping when the fix is two lines.** If you can ship the right fix in a few lines, ship it. Rescope is for cases where the report's framing actively blocks a workable fix.
+- **Trusting the reporter's hypothesis.** "User says X is broken because of Y" — verify Y. Reporters describe what they see; the cause is yours to determine.
+
+## Hard constraints (never violate)
 
 - Never push to `main`. Never force-push. Never `--no-verify`.
 - Never modify files under `happyhq/ee/`, `.github/`, CI workflows, lockfiles (beyond what a focused fix demands), or licensing files.
-- PRs always target `main`, branch from `main`, use the `fix/` prefix, and include `Closes #<issue>` plus an AI-assistance disclosure (per `CONTRIBUTING.md`).
+- PRs always target `main`, branch from `main`, use the `fix/` prefix, and include `Closes #<issue>` plus an AI-assistance disclosure.
 - One outcome per session. After labeling, opening a PR, splitting into children, or filing a rephrased child issue, exit.
 
 ## Principles
 
-These are guidance, not gates. The rubric above is pass/fail; these tune _how_ the allowed work gets done.
+These tune _how_ the work gets done. Not gates.
 
-**Look around before you write.** Before drafting a fix or skip, scan for prior art on the concern: existing consumers/handlers of the same data shape, recent open/closed issues with the same shape, in-flight PRs touching the same surface, specs documenting the affected behavior. Anchor the work to what's already there. Most "we keep fixing this" pain comes from rederiving in isolation when a reference exists that would have constrained the fix.
+**Simple, maintainable, understandable.** This is the bar for every fix. If the change makes the system harder to read, harder to change later, or harder for the next person to hold in their head, it's the wrong shape — even if it makes the symptom go away. Optimize for the reader who shows up six months from now with no context.
 
-**Pattern fit, not pattern match.** Think about the most appropriate decision factoring in the user experience and the developer experience. Simple, maintainable, understandable. If prior art fits, follow it. If it doesn't, don't scope-creep to make it fit — do the right thing for the context.
+**Pattern fit, not pattern match.** If prior art fits, follow it. If it doesn't, don't deform the fix to make it fit. Think about the most appropriate decision given the user experience and the developer experience.
 
-**A fix isn't just the diff.** Leave the surrounding system coherent. If the fix changes documented behavior, update the spec/doc in the same PR. If you notice a pattern that spans multiple recent issues, surface it for the maintainer rather than fixing one instance silently. If you skip, leave a rationale specific enough that a human can act on it without re-investigating.
+**A fix isn't just the diff.** Leave the surrounding code consistent with the change. If the fix changes documented behavior, update the spec in the same PR. If you notice a pattern across recent issues, surface it for the maintainer. If you skip, leave a rationale specific enough that a human can act on it without re-investigating.
 
-**Tests defend behavior, not lines.** Apply `testing.md`'s litmus test before adding a regression test: "what bug would this catch?" If the only answer is "someone reverted this exact line" — asserting a hardcoded asset path, a class name, copy text, or that a specific element exists — it's a vanity test that locks in implementation. Skip it. Asset swaps, copy tweaks, and CSS-only fixes are visually verified, not test-locked. A good regression test would still catch the bug under any reasonable reimplementation; a vanity test only catches the literal revert.
-
-## Tuning signal
-
-When Ralphie gets it wrong — labels something `skip-too-big` that wasn't, opens a PR that shouldn't have been opened, misses an `ee/` touch — that's a rubric-tuning signal, not a one-off correction. Edit this file. The next run will pick up the change.
+**Tests defend behavior, not lines.** Apply `testing.md`'s litmus: "what bug would this catch?" If the only answer is "someone reverted this exact line" — hardcoded asset paths, class names, copy strings, "this element exists" assertions — it's a vanity test. Skip it. Asset swaps, copy tweaks, and CSS-only fixes are visually verified, not test-locked.
