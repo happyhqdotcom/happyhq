@@ -1,6 +1,10 @@
 import { AskUserConfirmation } from '@/components/features/chat/interaction/ask-user-confirmation'
 import { QuestionOptions } from '@/components/features/chat/interaction/question-options'
 import { StartTaskCard } from '@/components/features/chat/interaction/start-task-card'
+import {
+  TaskBubble,
+  type TaskBubbleState,
+} from '@/components/features/chat/interaction/task-bubble'
 import type { AskUserQuestionInput } from '@/lib/chat/types'
 
 import {
@@ -114,8 +118,88 @@ const startTaskRegistration: PlaygroundComponent = {
   },
 }
 
+const taskBubbleRegistration: PlaygroundComponent = {
+  id: 'interaction/task-bubble',
+  name: 'Task Bubble',
+  category: 'Interaction',
+  variants: {
+    suggested: {
+      name: 'Suggested',
+      data: {
+        name: 'thanksgiving-apple-pies',
+        title: 'Bake three apple pie variants for Thanksgiving',
+        streamSlug: 'pies',
+        textContext:
+          'User wants to try classic Dutch apple, salted caramel, and a savoury bacon-cheddar variant for Thanksgiving.',
+        state: 'suggested',
+      },
+    },
+    created: {
+      name: 'Created',
+      data: {
+        name: 'thanksgiving-apple-pies',
+        title: 'Bake three apple pie variants for Thanksgiving',
+        streamSlug: 'pies',
+        textContext:
+          'User wants to try classic Dutch apple, salted caramel, and a savoury bacon-cheddar variant for Thanksgiving.',
+        state: 'created',
+      },
+    },
+  },
+  controls: {
+    started: {
+      type: 'toggle',
+      label: 'Started',
+      default: false,
+    },
+    showStream: {
+      type: 'toggle',
+      label: 'Show Stream',
+      default: true,
+    },
+    showContext: {
+      type: 'toggle',
+      label: 'Show Context',
+      default: true,
+    },
+  },
+  render: ({ data, controls, log }) => {
+    const d = data as {
+      name: string
+      title: string
+      streamSlug: string | null
+      textContext: string | null
+      state: TaskBubbleState
+    }
+    // 'started' control only meaningful on the Created variant — flips footer off.
+    const effectiveState: TaskBubbleState =
+      d.state === 'created' && (controls.started as boolean)
+        ? 'started'
+        : d.state
+    return (
+      <TaskBubble
+        name={d.name}
+        title={d.title}
+        state={effectiveState}
+        streamSlug={(controls.showStream as boolean) ? d.streamSlug : null}
+        textContext={(controls.showContext as boolean) ? d.textContext : null}
+        onCreate={async () => {
+          log('onCreate', d.name)
+          await new Promise((r) => setTimeout(r, 800))
+        }}
+        onStart={async () => {
+          log('onStart', d.name)
+          await new Promise((r) => setTimeout(r, 1200))
+        }}
+        onView={() => log('onView', d.name)}
+      />
+    )
+  },
+}
+
 export const interactionComponents: PlaygroundComponent[] = [
   confirmationRegistration,
   questionOptionsRegistration,
   startTaskRegistration,
+  taskBubbleRegistration,
 ]
