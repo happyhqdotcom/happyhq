@@ -346,6 +346,48 @@ export async function clearStaleRun(taskName: string): Promise<void> {
 }
 
 /**
+ * Lazy self-heal: when a reader observes a task whose `.run.json` claims an
+ * active phase but no live loop in this process owns it, flip it to `stopped`
+ * with `error: 'Run lost (server restarted)'` and return the healed view.
+ *
+ * Why: after a server crash / HMR / `kill -9`, the writer that would have
+ * finalised the run is gone but the on-disk state still says `working`. The
+ * single-active-run-per-process invariant means at most one task workspace-wide
+ * is stale at a time, so this check is O(1) and only writes once per stale read.
+ */
+export async function healIfStaleRun(
+  taskName: string,
+  info: RunInfo,
+): Promise<RunInfo> {
+  if (
+    info.status !== 'discovering' &&
+    info.status !== 'planning' &&
+    info.status !== 'working'
+  ) {
+    return info
+  }
+  const active = getActiveRunInfo()
+  if (active && active.task === taskName) {
+    return info
+  }
+  await clearStaleRun(taskName)
+  const stoppedDuring: RunInfo['stoppedDuring'] =
+    info.status === 'discovering'
+      ? 'discovery'
+      : info.status === 'planning'
+        ? 'planning'
+        : 'working'
+  return {
+    ...info,
+    status: 'stopped',
+    stoppedDuring,
+    stopReason: 'error',
+    error: 'Run lost (server restarted)',
+    pendingQuestions: undefined,
+  }
+}
+
+/**
  * Get info about the currently active run, or null if no run is active.
  * Used by the /api/run/active endpoint so the chat view can show busy state.
  */

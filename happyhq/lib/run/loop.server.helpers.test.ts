@@ -105,9 +105,21 @@ vi.mock('@/lib/config/config.server', () => ({
 import {
   clearStaleRun,
   getActiveDiscoverySessionId,
+  healIfStaleRun,
   setActiveDiscoverySessionId,
   updateRunInfoPendingQuestions,
 } from './loop.server'
+
+// Test-only: poke the module's globalThis-keyed state so we can simulate a
+// live run in this process. Mirrors STATE_KEY in loop.server.ts.
+const STATE_KEY = Symbol.for('__happyhq_run_loop_state__')
+function setActiveRunForTest(stream: string | null, task: string | null): void {
+  const g = globalThis as unknown as Record<symbol, any>
+  const state = g[STATE_KEY]
+  if (!state) throw new Error('loop.server state not initialised')
+  state.activeRunStream = stream
+  state.activeRunTask = task
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -151,10 +163,12 @@ beforeEach(() => {
   mockClearDirectory.mockResolvedValue(undefined)
   mockUpdateTaskMdPending.mockReset().mockResolvedValue(undefined)
   setActiveDiscoverySessionId(null)
+  setActiveRunForTest(null, null)
 })
 
 afterEach(() => {
   setActiveDiscoverySessionId(null)
+  setActiveRunForTest(null, null)
 })
 
 // ---------------------------------------------------------------------------
@@ -327,6 +341,52 @@ describe('clearStaleRun', () => {
 
     await clearStaleRun(taskName)
 
+    expect(mockWriteTextFile).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// healIfStaleRun — lazy on-read self-heal after server crash / HMR
+// ---------------------------------------------------------------------------
+
+describe('healIfStaleRun', () => {
+  it('heals an active-status run with no live loop owner to stopped/lost', async () => {
+    const stale = baseRun({ status: 'working' })
+    mockReadFile.mockResolvedValue(JSON.stringify(stale))
+
+    const healed = await healIfStaleRun(taskName, stale)
+
+    expect(healed).toMatchObject({
+      status: 'stopped',
+      stoppedDuring: 'working',
+      stopReason: 'error',
+      error: 'Run lost (server restarted)',
+    })
+    const write = getLastRunInfoWrite()
+    expect(write).toMatchObject({
+      status: 'stopped',
+      stoppedDuring: 'working',
+      stopReason: 'error',
+      error: 'Run lost (server restarted)',
+    })
+  })
+
+  it('is a no-op when the active run in this process owns the task', async () => {
+    setActiveRunForTest('s1', taskName)
+    const live = baseRun({ status: 'working' })
+
+    const result = await healIfStaleRun(taskName, live)
+
+    expect(result).toBe(live)
+    expect(mockWriteTextFile).not.toHaveBeenCalled()
+  })
+
+  it('is a no-op for terminal-status runs (no liveness check, no write)', async () => {
+    const done = baseRun({ status: 'completed' })
+
+    const result = await healIfStaleRun(taskName, done)
+
+    expect(result).toBe(done)
     expect(mockWriteTextFile).not.toHaveBeenCalled()
   })
 })
