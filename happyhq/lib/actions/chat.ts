@@ -143,6 +143,55 @@ export async function setChatMode(
 }
 
 /**
+ * Record that a task was created from this chat session.
+ * Adds the task name to the createdTasks array and persists the generated
+ * slug in taskSlugs so the bubble can navigate after history reload (slugs
+ * include a timestamp and can't be regenerated).
+ */
+export async function markTaskCreated(
+  sessionId: string,
+  taskName: string,
+  taskSlug: string,
+): Promise<void> {
+  assertSafeSessionId(sessionId)
+  const chatDir = path.join(HAPPYHQ_ROOT, '.chats', sessionId)
+  const chatJsonPath = safePath(path.join(chatDir, 'chat.json'))
+
+  let existing: Record<string, unknown> = {}
+  const raw = await readTextFile(chatJsonPath)
+  if (raw) {
+    try {
+      existing = JSON.parse(raw)
+    } catch {
+      // Malformed — overwrite with fresh data
+    }
+  }
+
+  const createdTasks: string[] = Array.isArray(existing.createdTasks)
+    ? existing.createdTasks
+    : []
+  if (!createdTasks.includes(taskName)) {
+    createdTasks.push(taskName)
+  }
+
+  const taskSlugs: Record<string, string> =
+    existing.taskSlugs && typeof existing.taskSlugs === 'object'
+      ? (existing.taskSlugs as Record<string, string>)
+      : {}
+  taskSlugs[taskName] = taskSlug
+
+  try {
+    await writeFile(
+      chatJsonPath,
+      JSON.stringify({ ...existing, createdTasks, taskSlugs }),
+      'utf-8',
+    )
+  } catch (err) {
+    if (!isEnoent(err)) throw err
+  }
+}
+
+/**
  * Record that a task was started from this chat session.
  * Adds the task name to the startedTasks array in chat.json.
  * Same read-merge-write pattern as setChatName.

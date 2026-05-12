@@ -6,6 +6,7 @@ import {
   createChatSession,
   createTask,
   deleteChat,
+  markTaskCreated,
   markTaskStarted,
   setupTaskFromChat,
   uploadFile,
@@ -34,6 +35,10 @@ export interface ChatActions {
   cancelQuestion: () => Promise<void>
   allowConfirmation: () => Promise<void>
   denyConfirmation: () => Promise<void>
+  createTaskFromChat: (
+    input: { name: string; textContext: string; files?: string[] },
+    toolCallId: string,
+  ) => Promise<void>
   startTask: (
     input: { name: string; textContext: string; files?: string[] },
     toolCallId: string,
@@ -228,27 +233,45 @@ export function useChatActions(): ChatActions {
     })
   }, [store, sessionIdRef])
 
-  const startTask = useCallback(
+  // Helper: read the persisted taskSlug from the tool call (set by Create).
+  // Falls back to regenerating from input.name, but that produces a *different*
+  // slug than was actually written (timestamp varies) — only used as a defensive
+  // last resort if Start somehow fires before Create's optimistic update lands.
+  const taskSlugFor = useCallback(
+    (toolCallId: string, fallbackName: string): string => {
+      const state = store.getState()
+      for (const msg of state.messages) {
+        for (const tc of msg.toolCalls ?? []) {
+          if (tc.id === toolCallId && tc.taskSlug) return tc.taskSlug
+        }
+      }
+      return generateTaskSlug(fallbackName)
+    },
+    [store],
+  )
+
+  const createTaskFromChat = useCallback(
     async (
       input: { name: string; textContext: string; files?: string[] },
       toolCallId: string,
     ) => {
       const slug = generateTaskSlug(input.name)
 
-      // Optimistic UI — flip card to "View Task" instantly
+      // Optimistic UI — flip bubble to "Created" and stash the slug
       store.setState((state) => ({
         messages: state.messages.map((m) => ({
           ...m,
           toolCalls: m.toolCalls?.map((tc) =>
-            tc.id === toolCallId ? { ...tc, taskStarted: true } : tc,
+            tc.id === toolCallId
+              ? { ...tc, taskCreated: true, taskSlug: slug }
+              : tc,
           ),
         })),
       }))
 
-      // Persist to chat.json so history loads show "View Task"
-      // Uses input.name (not slug) to match against tool call input.name
+      // Persist to chat.json (name + slug) so history reload shows Created state
       if (sessionIdRef.current) {
-        markTaskStarted(sessionIdRef.current, input.name).catch(() => {})
+        markTaskCreated(sessionIdRef.current, input.name, slug).catch(() => {})
       }
 
       await createTask(
@@ -259,33 +282,54 @@ export function useChatActions(): ChatActions {
       )
       await setupTaskFromChat(slug, sessionIdRef.current!, input.files ?? [])
 
-      // Pre-populate SWR caches and navigate immediately so the user
-      // lands on the task view without waiting for /api/run/start.
-      const now = new Date().toISOString()
-      const planningRun = {
-        status: 'planning' as const,
-        startedAt: now,
-        lastIterationAt: now,
-        phases: [],
+      // Surface the new task in the user's list
+      mutate(taskItemsKey())
+      if (streamSlug) invalidateStream(streamSlug)
+    },
+    [store, sessionIdRef, streamSlug],
+  )
+
+  const startTask = useCallback(
+    async (
+      input: { name: string; textContext: string; files?: string[] },
+      toolCallId: string,
+    ) => {
+      const slug = taskSlugFor(toolCallId, input.name)
+
+      // Optimistic UI — flip bubble to "Started"
+      store.setState((state) => ({
+        messages: state.messages.map((m) => ({
+          ...m,
+          toolCalls: m.toolCalls?.map((tc) =>
+            tc.id === toolCallId ? { ...tc, taskStarted: true } : tc,
+          ),
+        })),
+      }))
+
+      if (sessionIdRef.current) {
+        markTaskStarted(sessionIdRef.current, input.name).catch(() => {})
       }
 
-      // Seed the task content cache so it shows planning status
+      // Seed the task content cache so the navigated-to page shows planning
+      const now = new Date().toISOString()
       mutate(
         taskContentKey(slug),
         {
           plan: null,
           frontmatter: null,
           description: null,
-          run: planningRun,
+          run: {
+            status: 'planning' as const,
+            startedAt: now,
+            lastIterationAt: now,
+            phases: [],
+          },
           inputs: [],
           working: [],
           outputs: [],
         } satisfies TaskContent,
         false,
       )
-
-      // Invalidate the task list so the new task appears
-      mutate(taskItemsKey())
 
       if (streamSlug) {
         router.push(
@@ -295,7 +339,6 @@ export function useChatActions(): ChatActions {
         router.push('/tasks')
       }
 
-      // Start the planning run in the background after navigation
       await fetch('/api/run/start', {
         method: 'POST',
         headers: {
@@ -309,10 +352,9 @@ export function useChatActions(): ChatActions {
         }),
       }).catch(() => {})
 
-      // Revalidate so the server confirms the optimistic data
       if (streamSlug) invalidateStream(streamSlug)
     },
-    [store, sessionIdRef, streamSlug, router, token],
+    [store, sessionIdRef, streamSlug, router, token, taskSlugFor],
   )
 
   const newChat = useCallback(async () => {
@@ -408,6 +450,7 @@ export function useChatActions(): ChatActions {
     cancelQuestion,
     allowConfirmation,
     denyConfirmation,
+    createTaskFromChat,
     startTask,
     newChat,
     switchChat,

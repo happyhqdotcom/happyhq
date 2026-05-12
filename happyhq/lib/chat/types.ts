@@ -247,7 +247,9 @@ export interface ToolCall {
   name: string // 'AskUserQuestion' | 'CreateTask'
   input: Record<string, unknown>
   answers?: Record<string, string> // AskUserQuestion: maps question text → user's answer
+  taskCreated?: boolean // CreateTask: set client-side (optimistic) or from chat.json createdTasks (history load)
   taskStarted?: boolean // CreateTask: set client-side (optimistic) or from chat.json startedTasks (history load)
+  taskSlug?: string // CreateTask: persisted slug for Start/View navigation (slugs include a timestamp and can't be regenerated)
 }
 
 // --- Tool call input shapes (parsed from ToolCall.input) ---

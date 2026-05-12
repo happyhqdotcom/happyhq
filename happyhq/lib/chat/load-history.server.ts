@@ -46,7 +46,9 @@ export async function loadChatHistory(
 
   const messages = parseJournalEntries(content)
   let chatName: string | null = null
+  let createdTasks: string[] = []
   let startedTasks: string[] = []
+  let taskSlugs: Record<string, string> = {}
   let mode: string | null = null
   let chatStreamSlug: string | null = null
   let selectedStreamSlug: string | null = null
@@ -59,8 +61,14 @@ export async function loadChatHistory(
       mode = chatJson.mode ?? null
       chatStreamSlug = chatJson.streamSlug ?? null
       selectedStreamSlug = chatJson.selectedStreamSlug ?? null
+      if (Array.isArray(chatJson.createdTasks)) {
+        createdTasks = chatJson.createdTasks
+      }
       if (Array.isArray(chatJson.startedTasks)) {
         startedTasks = chatJson.startedTasks
+      }
+      if (chatJson.taskSlugs && typeof chatJson.taskSlugs === 'object') {
+        taskSlugs = chatJson.taskSlugs as Record<string, string>
       }
       if (chatJson.uploads && typeof chatJson.uploads === 'object') {
         uploads = chatJson.uploads as Record<string, string>
@@ -70,17 +78,19 @@ export async function loadChatHistory(
     }
   }
 
-  // Annotate CreateTask tool calls that the user started
-  if (startedTasks.length > 0) {
+  // Annotate CreateTask tool calls that the user created (and started).
+  // Started implies Created — clicking Start without Create can't happen.
+  if (createdTasks.length > 0 || startedTasks.length > 0) {
+    const createdSet = new Set([...createdTasks, ...startedTasks])
     const startedSet = new Set(startedTasks)
     for (const msg of messages) {
       for (const tc of msg.toolCalls ?? []) {
-        if (
-          tc.name === 'CreateTask' &&
-          startedSet.has((tc.input as { name: string }).name)
-        ) {
-          tc.taskStarted = true
-        }
+        if (tc.name !== 'CreateTask') continue
+        const taskName = (tc.input as { name: string }).name
+        if (createdSet.has(taskName)) tc.taskCreated = true
+        if (startedSet.has(taskName)) tc.taskStarted = true
+        const slug = taskSlugs[taskName]
+        if (slug) tc.taskSlug = slug
       }
     }
   }

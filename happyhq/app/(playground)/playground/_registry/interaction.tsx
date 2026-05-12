@@ -1,6 +1,5 @@
 import { AskUserConfirmation } from '@/components/features/chat/interaction/ask-user-confirmation'
 import { QuestionOptions } from '@/components/features/chat/interaction/question-options'
-import { StartTaskCard } from '@/components/features/chat/interaction/start-task-card'
 import {
   TaskBubble,
   type TaskBubbleState,
@@ -71,48 +70,6 @@ const questionOptionsRegistration: PlaygroundComponent = {
         questions={questions}
         onAnswer={(answers) => log('onAnswer', answers)}
         onCancel={() => log('onCancel')}
-      />
-    )
-  },
-}
-
-const startTaskRegistration: PlaygroundComponent = {
-  id: 'interaction/start-task',
-  name: 'Start Task Card',
-  category: 'Interaction',
-  variants: {
-    default: {
-      name: 'Default',
-      data: {
-        name: 'thanksgiving-apple-pies',
-        title: 'Bake three apple pie variants for Thanksgiving',
-      },
-    },
-  },
-  controls: {
-    started: {
-      type: 'toggle',
-      label: 'Started',
-      default: false,
-    },
-    showTitle: {
-      type: 'toggle',
-      label: 'Show Title',
-      default: true,
-    },
-  },
-  render: ({ data, controls, log }) => {
-    const { name, title } = data as { name: string; title: string }
-    return (
-      <StartTaskCard
-        name={name}
-        title={(controls.showTitle as boolean) ? title : null}
-        started={controls.started as boolean}
-        onStart={async () => {
-          log('onStart', name)
-          // Simulate async delay so the "Starting…" state is visible
-          await new Promise((resolve) => setTimeout(resolve, 1500))
-        }}
       />
     )
   },
@@ -200,6 +157,5 @@ const taskBubbleRegistration: PlaygroundComponent = {
 export const interactionComponents: PlaygroundComponent[] = [
   confirmationRegistration,
   questionOptionsRegistration,
-  startTaskRegistration,
   taskBubbleRegistration,
 ]

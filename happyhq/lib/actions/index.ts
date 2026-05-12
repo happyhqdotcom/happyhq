@@ -11,6 +11,7 @@ export {
 export {
   createChatSession,
   deleteChat,
+  markTaskCreated,
   markTaskStarted,
   setChatMode,
   setChatName,
