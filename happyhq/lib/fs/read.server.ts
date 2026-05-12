@@ -3,6 +3,7 @@ import { open, readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 
 import { HAPPYHQ_ROOT } from '@/lib/constants.server'
+import { healIfStaleRun } from '@/lib/run/loop.server'
 
 import { assessTextQuality } from './assess-quality.server'
 import {
@@ -637,6 +638,9 @@ export async function listAllTaskItems(): Promise<TaskItem[]> {
               // Malformed .run.json — leave as null
             }
           }
+          if (run) {
+            run = await healIfStaleRun(entry.name, run)
+          }
 
           items.push({
             slug: entry.name,
@@ -790,6 +794,9 @@ export async function readTaskContent(
     } catch {
       // Malformed .run.json — return null rather than crashing.
     }
+  }
+  if (run) {
+    run = await healIfStaleRun(taskSlug, run)
   }
 
   return {
