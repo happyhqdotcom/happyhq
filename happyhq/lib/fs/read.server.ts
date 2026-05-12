@@ -461,13 +461,12 @@ export async function listSamples(
     (e) => e.isDirectory() && !e.name.startsWith('.'),
   )
 
-  const sampleTypes: SampleType[] = []
   const nested = await Promise.all(
     categories.map(async (cat) => {
       try {
         assertSafePathSegment(cat.name, 'sample category')
       } catch {
-        return []
+        return null
       }
       const catDir = path.join(safeSamplesDir, cat.name)
 
@@ -478,10 +477,10 @@ export async function listSamples(
       ])
 
       const categoryTitle = parseTitle(metaRaw)
-      sampleTypes.push({ slug: cat.name, title: categoryTitle })
+      const type: SampleType = { slug: cat.name, title: categoryTitle }
       const descriptions = indexMd ? parseIndexDescriptions(indexMd) : {}
 
-      return fileItems.map(
+      const items = fileItems.map(
         (item) =>
           ({
             ...item,
@@ -490,10 +489,14 @@ export async function listSamples(
             description: descriptions[item.name] ?? '',
           }) as SampleEntry,
       )
+      return { type, items }
     }),
   )
 
-  const flat = nested.flat()
+  // Order tracks `categories` (deterministic readdir order), not I/O completion
+  // — pushing inside the async callbacks above would shuffle on each call.
+  const sampleTypes = nested.flatMap((n) => (n ? [n.type] : []))
+  const flat = nested.flatMap((n) => (n ? n.items : []))
   flat.sort((a, b) => {
     const dt =
       new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()

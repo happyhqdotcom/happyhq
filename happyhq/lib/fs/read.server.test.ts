@@ -51,6 +51,7 @@ import {
   listChats,
   listDirectory,
   listFileItems,
+  listSamples,
   parseRunInfo,
   readChatJson,
   readStreamContent,
@@ -349,6 +350,45 @@ describe('readStreamContent', () => {
     expect(result.specs).toEqual([])
     expect(result.samples).toEqual([])
     expect(result.sampleTypes).toEqual([])
+  })
+})
+
+// --- listSamples ---
+
+describe('listSamples', () => {
+  it('returns sampleTypes in readdir order regardless of I/O completion order', async () => {
+    // Three categories: 'a', 'b', 'c'. Make 'a' the slowest to resolve and 'c'
+    // the fastest, so push-during-await would shuffle order to ['c', 'b', 'a'].
+    const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+    const delayByCat: Record<string, number> = { a: 30, b: 15, c: 0 }
+
+    mockReaddir.mockImplementation(async (dirPath: unknown) => {
+      const p = dirPath as string
+      if (p.endsWith('/samples'))
+        return [
+          makeDirent('a', true),
+          makeDirent('b', true),
+          makeDirent('c', true),
+        ] as Dirent[]
+      // Inside each category dir: no sample files (keeps the test focused on
+      // sampleTypes order; samples are sorted by mtime separately).
+      return [] as Dirent[]
+    })
+    mockReadFile.mockImplementation(async (filePath: unknown) => {
+      const p = filePath as string
+      const cat = (['a', 'b', 'c'] as const).find((c) =>
+        p.includes(`/samples/${c}/`),
+      )
+      if (cat) await delay(delayByCat[cat])
+      throw enoent()
+    })
+    mockStat.mockResolvedValue(makeStats())
+
+    const first = await listSamples(path.join(MOCK_ROOT, 'samples'))
+    const second = await listSamples(path.join(MOCK_ROOT, 'samples'))
+
+    expect(first.sampleTypes.map((t) => t.slug)).toEqual(['a', 'b', 'c'])
+    expect(second.sampleTypes.map((t) => t.slug)).toEqual(['a', 'b', 'c'])
   })
 })
 
