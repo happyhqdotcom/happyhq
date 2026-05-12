@@ -133,8 +133,8 @@ export interface ChatErrorEvent {
 // subprocess fast-fail, provider 5xx) but the loop is continuing. Toasted on
 // the client so users see the cause when deterministic failures repeat — the
 // terminal `no_progress` stop that eventually fires doesn't carry the actual
-// error message. Dedup by message on the client so deterministic repeats
-// collapse to a single toast.
+// error message. One toast per occurrence (no dedup) — NO_PROGRESS_LIMIT
+// caps the deterministic-repeat case at a small number of toasts anyway.
 export interface ChatIterationErrorEvent {
   type: 'iteration_error'
   message: string

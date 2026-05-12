@@ -1221,13 +1221,12 @@ async function runWorkingLoop(
       //
       // Iteration errors are broadcast as a non-terminal `iteration_error`
       // event so live subscribers can toast the actual cause (e.g. "Context
-      // limit exceeded"). The client dedups by message id so deterministic
-      // repeats collapse to a single toast. The previous policy reserved
-      // toasts for terminal errors only, on the assumption iteration errors
-      // self-heal — true for transient failures, wrong for deterministic
-      // ones (e.g. an oversized attachment that overflows every iteration
-      // until `no_progress` trips with a message that doesn't name the
-      // cause). See #282.
+      // limit exceeded"). One toast per occurrence — no dedup. The previous
+      // policy reserved toasts for terminal errors only, on the assumption
+      // iteration errors self-heal — true for transient failures, wrong for
+      // deterministic ones (e.g. an oversized attachment that overflows
+      // every iteration until `no_progress` trips with a message that
+      // doesn't name the cause). See #282.
       const iterErrMsg = error instanceof Error ? error.message : String(error)
       const iterStderrTail = stderrBuf.getTail()
       lastIterationError = iterStderrTail
