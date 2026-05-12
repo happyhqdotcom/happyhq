@@ -1034,6 +1034,10 @@ async function runWorkingLoop(
   const NO_PROGRESS_LIMIT = 2
   let lastTaskCommit = getLatestTaskCommit(taskName)
   let staleIterations = 0
+  // Tracks the most recent iteration error so the terminal `no_progress`
+  // message can include the actual cause — users who missed the live toast
+  // still get a diagnosable failure on stop.
+  let lastIterationError: string | null = null
 
   for (
     let iteration = startIteration;
@@ -1215,16 +1219,22 @@ async function runWorkingLoop(
       // Iteration timeout or other error — continue to next iteration.
       // "Fresh context self-heals problems."
       //
-      // Transient (non-terminal) iteration errors stay in the runtime log
-      // (`run.iteration` below) and are not toasted. The toast surface is
-      // reserved for terminal errors that flip `.run.json` to `stopped` —
-      // those are picked up by the client's SWR-observed terminal-error
-      // toast in useTaskData (see #227). Surfacing transient stderr-fails
-      // on top would create a second timing-sensitive surface for very
-      // little user value (the run continues; the next iteration usually
-      // self-heals).
+      // Iteration errors are broadcast as a non-terminal `iteration_error`
+      // event so live subscribers can toast the actual cause (e.g. "Context
+      // limit exceeded"). One toast per occurrence — no dedup. The previous
+      // policy reserved toasts for terminal errors only, on the assumption
+      // iteration errors self-heal — true for transient failures, wrong for
+      // deterministic ones (e.g. an oversized attachment that overflows
+      // every iteration until `no_progress` trips with a message that
+      // doesn't name the cause). See #282.
       const iterErrMsg = error instanceof Error ? error.message : String(error)
       const iterStderrTail = stderrBuf.getTail()
+      lastIterationError = iterStderrTail
+        ? `${iterErrMsg}\n\n${iterStderrTail}`
+        : iterErrMsg
+      broadcast(
+        encodeEvent({ type: 'iteration_error', message: lastIterationError }),
+      )
       await writeRunInfo(taskName, {
         status: 'working',
         startedAt,
@@ -1254,13 +1264,17 @@ async function runWorkingLoop(
           lastTaskCommit = currentCommit
         }
         if (staleIterations >= NO_PROGRESS_LIMIT) {
+          const baseMsg = `No progress: agent committed no work for ${NO_PROGRESS_LIMIT} consecutive iterations`
+          const errorMsg = lastIterationError
+            ? `${baseMsg}\n\nLast iteration error: ${lastIterationError}`
+            : baseMsg
           await writeRunInfo(taskName, {
             status: 'stopped',
             stoppedDuring: 'working',
             stopReason: 'no_progress',
             startedAt,
             lastIterationAt: new Date().toISOString(),
-            error: `No progress: agent committed no work for ${NO_PROGRESS_LIMIT} consecutive iterations`,
+            error: errorMsg,
             costUsd: totalCost,
             phases,
           })

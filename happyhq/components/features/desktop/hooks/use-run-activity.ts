@@ -554,6 +554,14 @@ export function useRunActivity(
                 ? { id: `run-error:${runStartedAtRef.current}` }
                 : undefined,
             )
+          } else if (event.type === 'iteration_error') {
+            // Non-terminal: the working loop hit an iteration error (context
+            // overflow, timeout, subprocess fast-fail) and is continuing.
+            // One toast per occurrence — no dedup. NO_PROGRESS_LIMIT=2 caps
+            // the deterministic-repeat case at 2 toasts, and we'd rather
+            // reinforce "this is recurring" than risk a dismissed toast
+            // silencing future occurrences.
+            toastError(event.message)
           } else if (event.type === 'result') {
             setLastResultAt(Date.now())
             setActivitySteps([]) // iteration boundary — reset
