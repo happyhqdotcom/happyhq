@@ -9,6 +9,7 @@ export type ChatStreamEvent =
   | ChatSubagentEvent // Subagent lifecycle (started/progress/completed) from SDK 'system' task events
   | ChatResultEvent // End of response (from SDK 'result')
   | ChatErrorEvent // Server-side error wrapper
+  | ChatIterationErrorEvent // Run iteration errored but loop continues — toast-only, non-terminal
   | ChatAuthErrorEvent // Invalid API key — redirect to /setup
   | ChatPendingConfirmationEvent // Unapproved tool — block until user allows/denies
   | ChatStreamContentChangedEvent // Agent wrote a file (Write/Edit) — client should revalidate SWR
@@ -125,6 +126,17 @@ export interface ChatResultEvent {
 
 export interface ChatErrorEvent {
   type: 'error'
+  message: string
+}
+
+// Non-terminal: a single run iteration errored (timeout, context overflow,
+// subprocess fast-fail, provider 5xx) but the loop is continuing. Toasted on
+// the client so users see the cause when deterministic failures repeat — the
+// terminal `no_progress` stop that eventually fires doesn't carry the actual
+// error message. Dedup by message on the client so deterministic repeats
+// collapse to a single toast.
+export interface ChatIterationErrorEvent {
+  type: 'iteration_error'
   message: string
 }
 

@@ -639,6 +639,71 @@ describe('working mode', () => {
     expect(terminal.status).toBe('completed')
   })
 
+  it('broadcasts iteration_error to subscribers when an iteration throws', async () => {
+    mockQuery.mockImplementation(() =>
+      (async function* () {
+        throw new Error('Context limit exceeded')
+      })(),
+    )
+    // Force the run to stop after the first errored iteration so the test
+    // doesn't hang waiting for retries. Same SHA → staleness trips at 2.
+    mockGetLatestTaskCommit.mockReturnValue('stuck-sha')
+    mockIsTaskCompleted.mockReturnValue(false)
+
+    const stream = (async () => {
+      await startRun('s1', 't1', 'working')
+      const s = getActiveStream()
+      if (!s) throw new Error('no stream')
+      return s
+    })()
+    const events: any[] = []
+    const reader = (await stream).getReader()
+    const decoder = new TextDecoder()
+    const readerDone = (async () => {
+      let buf = ''
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value)
+        let nl: number
+        while ((nl = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, nl)
+          buf = buf.slice(nl + 1)
+          if (line) events.push(JSON.parse(line))
+        }
+      }
+    })()
+    await _waitForLoop()
+    // Allow stream to flush + close
+    await readerDone.catch(() => {})
+
+    const iterErrors = events.filter((e) => e.type === 'iteration_error')
+    expect(iterErrors.length).toBeGreaterThan(0)
+    expect(iterErrors[0].message).toContain('Context limit exceeded')
+  })
+
+  it('terminal no_progress error includes the last iteration error', async () => {
+    mockQuery.mockImplementation(() =>
+      (async function* () {
+        throw new Error('Context limit exceeded')
+      })(),
+    )
+    mockIsTaskCompleted.mockReturnValue(false)
+    mockGetLatestTaskCommit.mockReturnValue('stuck-sha')
+
+    await startRun('s1', 't1', 'working')
+    await _waitForLoop()
+
+    const writes = getRunInfoWrites()
+    const terminal = writes[writes.length - 1]
+    expect(terminal).toMatchObject({
+      status: 'stopped',
+      stopReason: 'no_progress',
+    })
+    expect(terminal.error).toContain('No progress')
+    expect(terminal.error).toContain('Context limit exceeded')
+  })
+
   it('stops with no_progress when agent commits nothing for 2 consecutive iterations', async () => {
     mockQuery.mockImplementation(() => fakeQuery([]))
     mockIsTaskCompleted.mockReturnValue(false)

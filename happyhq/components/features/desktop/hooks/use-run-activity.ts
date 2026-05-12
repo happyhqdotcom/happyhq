@@ -13,6 +13,20 @@ import { useEffect, useRef, useState } from 'react'
 const RECONNECT_DELAY_MS = 2000
 const THINKING_ID = '__thinking__'
 
+/**
+ * Stable id for Sonner dedup. Same message → same id → one toast even when
+ * the same iteration error fires across multiple iterations. Uses a fast
+ * non-cryptographic hash; collisions are harmless (different messages would
+ * just share a toast slot).
+ */
+function iterationErrorId(message: string): string {
+  let h = 0
+  for (let i = 0; i < message.length; i++) {
+    h = (h * 31 + message.charCodeAt(i)) | 0
+  }
+  return String(h)
+}
+
 export interface ActivityStep {
   toolUseId: string
   toolName: string
@@ -554,6 +568,14 @@ export function useRunActivity(
                 ? { id: `run-error:${runStartedAtRef.current}` }
                 : undefined,
             )
+          } else if (event.type === 'iteration_error') {
+            // Non-terminal: the working loop hit an iteration error (context
+            // overflow, timeout, subprocess fast-fail) and is continuing.
+            // Key the toast by message so deterministic repeats — the case
+            // this surface exists for, per #282 — collapse to one toast.
+            toastError(event.message, {
+              id: `iter-error:${iterationErrorId(event.message)}`,
+            })
           } else if (event.type === 'result') {
             setLastResultAt(Date.now())
             setActivitySteps([]) // iteration boundary — reset
