@@ -92,6 +92,17 @@ export function OutputsSection({
         ) : stoppedDuringWorking ? (
           <SectionHeader
             label={`Working ${isBudgetStop ? 'paused' : 'stopped'} after ${formatDuration(workDurationMs)}`}
+            onLabelClick={
+              workingSessionIds.length > 0 && streamSlug && taskSlug
+                ? () =>
+                    openChatSessionWindow(
+                      streamSlug,
+                      workingSessionIds,
+                      'Working Session',
+                      `chat-${taskSlug}-working`,
+                    )
+                : undefined
+            }
             rightSlot={
               isBudgetStop ? (
                 <button
