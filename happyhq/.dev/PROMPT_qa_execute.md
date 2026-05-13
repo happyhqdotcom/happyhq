@@ -29,18 +29,19 @@
      - **Log inspection** → `npx tsx scripts/read-logs.ts --event=...` per CLAUDE.md "Debugging Q".
      - **Targeted unit test** → `pnpm test <path>` from `happyhq/`.
 
-   Capture evidence as you go: screenshots into `/tmp/qa-bespoke-${PR_NUMBER}/`, log excerpts in working memory, command output in working memory. You'll cite all of it in the comment.
+   Capture evidence as you go: screenshots **only** into `/tmp/qa-bespoke-${PR_NUMBER}/` (never anywhere inside the repo tree — the wrapper's pre-flight guard will reject the next run if it finds stray PNGs), log excerpts in working memory, command output in working memory. You'll cite all of it in the comment.
 
 6. **Run smoke as backstop** — unless the plan's `Backstop:` is `skip`. From `happyhq/`: `pnpm smoke:e2e`. Capture full output (stdout + stderr) — you'll quote the last 30 lines on failure.
 
 7. **Apply the litmus test one final time.** _Are you satisfied with what's been tested?_ If yes → pass. If no (verification failed, smoke failed, or the verification's kind didn't match the risk's kind after all) → fail.
 
-8. **Workspace cleanup** if you used the `qa-bespoke-${PR_NUMBER}` stream slug:
-   - `rm -rf ~/HappyHQ/qa-bespoke-${PR_NUMBER}`. Best-effort — note any failure under an "Artifacts" line in the comment, but don't let cleanup failure change the verdict.
+8. **Upload evidence + workspace cleanup.**
+   - **Upload first, clean up after.** If you captured any screenshots in `/tmp/qa-bespoke-${PR_NUMBER}/`, run `npx tsx scripts/upload-evidence.ts ${PR_NUMBER} /tmp/qa-bespoke-${PR_NUMBER}` and keep the printed R2 URLs for step 9 — pass or fail, embed them in the comment. The comment must stand alone for future readers; "screenshot captured locally" is not citation.
+   - **Then clean up.** If you used the `qa-bespoke-${PR_NUMBER}` stream slug: `rm -rf ~/HappyHQ/qa-bespoke-${PR_NUMBER}`. Also `rm -rf /tmp/qa-bespoke-${PR_NUMBER}` if you wrote screenshots there. Best-effort — note any failure under an "Artifacts" line in the comment, but don't let cleanup failure change the verdict.
 
 9. **Apply the terminal label and post the comment** per the rubric's "Comment shape":
-   - On pass: `gh pr edit ${PR_NUMBER} --add-label "ralphie:qa-pass"` + `gh pr comment ${PR_NUMBER} --body "..."` using the qa-pass shape. Cite the verification evidence and the smoke result (or `skipped — non-code`).
-   - On fail: `gh pr edit ${PR_NUMBER} --add-label "ralphie:qa-fail"` + qa-fail comment. Quote the failing step (last 30 log lines on smoke fail). Link the preserved smoke root (`/tmp/happyhq-smoke-*`). Embed any failure screenshot via `npx tsx scripts/upload-evidence.ts ${PR_NUMBER} <dir>`.
+   - On pass: `gh pr edit ${PR_NUMBER} --add-label "ralphie:qa-pass"` + `gh pr comment ${PR_NUMBER} --body "..."` using the qa-pass shape. Cite the verification evidence (including the R2 screenshot URLs from step 8) and the smoke result (or `skipped — non-code`).
+   - On fail: `gh pr edit ${PR_NUMBER} --add-label "ralphie:qa-fail"` + qa-fail comment. Quote the failing step (last 30 log lines on smoke fail). Link the preserved smoke root (`/tmp/happyhq-smoke-*`). Embed the R2 screenshot URLs from step 8.
 
    The triage comment stays untouched. If you deviated from the plan, name the deviation in your own qa-pass / qa-fail comment.
 
@@ -56,7 +57,7 @@
 
 **[1]** ONE PR per session. Read its triage plan, run the verification, smoke as backstop, apply the litmus test, label, comment, summarize, exit.
 **[2]** Hard constraints from @qa-rubric.md are non-negotiable: never auto-merge, never push to a PR's branch, never apply both `qa-pass` and `qa-fail` to the same PR, never QA fork PRs (apply `qa-fail` with v1-limitation comment), only operate in the qa worktree.
-**[3]** Cite evidence in every comment — quote smoke output, link the smoke root on failure, embed screenshot URLs (upload via `npx tsx scripts/upload-evidence.ts ${PR_NUMBER} <dir>`). Comments are the artifact future-readers consume; they need to stand alone.
+**[3]** Cite evidence in every comment — quote smoke output, link the smoke root on failure, embed screenshot URLs (always upload via `npx tsx scripts/upload-evidence.ts ${PR_NUMBER} /tmp/qa-bespoke-${PR_NUMBER}` when you captured screenshots, pass or fail). Comments are the artifact future-readers consume; they need to stand alone.
 **[4]** Don't return to `${BASE_BRANCH}` or stop the dev server before exiting — the wrapper does both before the next PR.
 **[5]** Bespoke workspace cleanup (`rm -rf ~/HappyHQ/qa-bespoke-${PR_NUMBER}`) IS your job — the wrapper doesn't know what stream slug you used. Run it after any UI-driving verification, even on failure. Best-effort: cleanup failure doesn't change the verdict.
 **[6]** Preserve the smoke root on failure — never delete `/tmp/happyhq-smoke-*` directories yourself.
