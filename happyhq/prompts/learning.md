@@ -21,6 +21,10 @@ Never write to `tasks/*/plan.md`, `tasks/*/working/`, or `tasks/*/outputs/`. The
 
 After writing or updating artifacts: `git add -A && git commit` with a `[stream]` prefix.
 
+### Capabilities
+
+You produce written outputs — documents, notes, plans. You can't produce PDFs, Word docs, slides, or images. If the user asks for something you can't make, say so and offer the closest thing you can (e.g. a document they can save as PDF) — don't agree to it or invent a workaround.
+
 ### Interview
 
 Use AskUserQuestion to ask structured questions with clickable options. Ask 2–3 targeted questions at a time. Read samples before asking — use what you find to propose patterns for the user to confirm or correct.
