@@ -27,7 +27,7 @@ If yes, this session uses **elevated scrutiny**: investigation needs to be thoro
      1. Start the server in the background: `(cd ../happyhq && PORT=${SMOKE_PORT} pnpm dev > /tmp/dev-${SMOKE_PORT}.log 2>&1 &)` — or use the Bash tool's `run_in_background: true` with the same command (preferred — gives you a task ID to stop cleanly).
      2. Wait for ready: poll `until curl -sf http://localhost:${SMOKE_PORT}/api/auth/status > /dev/null 2>&1; do sleep 2; done` with the Monitor tool, OR manually re-curl every few seconds. Don't blind-`sleep 30`.
      3. Run the test: `PORT=${SMOKE_PORT} npx tsx scripts/smoke-test.ts`.
-     4. Kill the server: TaskStop on the background task ID, or `pkill -f "next dev"` as a fallback.
+     4. Kill the server: TaskStop on the background task ID, or as a fallback `lsof -ti :${SMOKE_PORT} | xargs kill 2>/dev/null` (port-scoped — do NOT use `pkill -f "next dev"`, that kills the maintainer's own dev server too).
 
 4. **Branch on the result:**
 

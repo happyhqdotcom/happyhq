@@ -115,12 +115,27 @@ git fetch origin --quiet || { echo -e "  ${RED}git fetch failed${RESET}" >&2; ex
 git reset --hard origin/main >/dev/null || { echo -e "  ${RED}git reset failed${RESET}" >&2; exit 1; }
 (cd "$REPO_ROOT" && (pnpm install --frozen-lockfile || pnpm install)) || { echo -e "  ${RED}pnpm install failed${RESET}" >&2; exit 1; }
 
+# Kill processes matching $1 whose cwd is under $REPO_ROOT — i.e. only
+# processes this loop spawned, not the user's own dev/test runs in a
+# sibling worktree.
+kill_scoped() {
+    local pattern="$1"
+    local pid cwd
+    for pid in $(pgrep -f "$pattern" 2>/dev/null); do
+        cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | awk '/^n/ {sub(/^n/,""); print; exit}')
+        if [[ -n "$cwd" && "$cwd" == "$REPO_ROOT"* ]]; then
+            kill "$pid" 2>/dev/null || true
+        fi
+    done
+}
+
 cleanup() {
     echo -e "\n${DIM}Cleaning up child processes...${RESET}"
     pkill -P $$ 2>/dev/null
-    pkill -f "next dev" 2>/dev/null
-    pkill -f "node.*vitest" 2>/dev/null
+    kill_scoped "node.*vitest"
     # Stop any lingering dev server from a smoke run mid-execute.
+    # dev-server.ts is PID-file-scoped per cwd hash, so this only kills
+    # the server this loop started — not the user's own `pnpm dev`.
     (cd "$REPO_ROOT/happyhq" && npx tsx scripts/dev-server.ts stop 2>/dev/null) || true
     exit 0
 }
@@ -252,7 +267,6 @@ done
 git -C "$REPO_ROOT" checkout "$BASE_BRANCH" >/dev/null 2>&1 || true
 git -C "$REPO_ROOT" reset --hard origin/main >/dev/null 2>&1 || true
 (cd "$REPO_ROOT/happyhq" && npx tsx scripts/dev-server.ts stop 2>/dev/null) || true
-pkill -f "next dev" 2>/dev/null || true
 
 echo -e "\n  ${GREEN}✓${RESET} QA pass complete. PRs processed: ${QUEUE_COUNT}$([ $ERROR_COUNT -gt 0 ] && echo " (${ERROR_COUNT} errors)")"
 echo -e "  ${DIM}Per-PR outcomes posted as labels and comments on each PR.${RESET}"

@@ -115,10 +115,24 @@ git fetch origin --quiet || { echo -e "  ${RED}git fetch failed${RESET}" >&2; ex
 git reset --hard origin/main >/dev/null || { echo -e "  ${RED}git reset failed${RESET}" >&2; exit 1; }
 (cd "$REPO_ROOT" && (pnpm install --frozen-lockfile || pnpm install)) || { echo -e "  ${RED}pnpm install failed${RESET}" >&2; exit 1; }
 
+# Kill processes matching $1 whose cwd is under $REPO_ROOT — i.e. only
+# processes this loop spawned, not the user's own dev/test runs in a
+# sibling worktree.
+kill_scoped() {
+    local pattern="$1"
+    local pid cwd
+    for pid in $(pgrep -f "$pattern" 2>/dev/null); do
+        cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | awk '/^n/ {sub(/^n/,""); print; exit}')
+        if [[ -n "$cwd" && "$cwd" == "$REPO_ROOT"* ]]; then
+            kill "$pid" 2>/dev/null || true
+        fi
+    done
+}
+
 cleanup() {
     echo -e "\n${DIM}Cleaning up child processes...${RESET}"
     pkill -P $$ 2>/dev/null
-    pkill -f "node.*vitest" 2>/dev/null
+    kill_scoped "node.*vitest"
     exit 0
 }
 trap cleanup SIGINT SIGTERM
@@ -216,7 +230,7 @@ while [ $ISSUES_DONE -lt $MAX_ISSUES ]; do
         exit 1
     fi
 
-    pkill -f "node.*vitest" 2>/dev/null || true
+    kill_scoped "node.*vitest"
     sleep 1
 done
 
