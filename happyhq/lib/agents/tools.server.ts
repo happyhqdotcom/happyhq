@@ -50,7 +50,7 @@ export function createQsMcpServer(
     tools: [
       tool(
         'CreateTask',
-        'Propose a task for the user. Call only when the user has asked for something to be done — never to react to feedback, agreement, or completion. textContext is the only bridge to planning; it reads cold from disk.',
+        "Propose a task for the user. Call only when the user has explicitly asked for a task — a specific piece of the stream's actual work they want done. Capability questions, output-format discussion, feedback, agreement, and stream improvements aren't tasks. textContext is the only bridge to planning; it reads cold from disk.",
         {
           name: z
             .string()
