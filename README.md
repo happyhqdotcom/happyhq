@@ -26,6 +26,18 @@ A few capabilities are off by default and enabled via env vars (see [`happyhq/.e
 - **User accounts** — sign-in via InstantDB + Google OAuth
 - **Billing** — Stripe-backed subscriptions (requires accounts; lives under `ee/`)
 
+## Local data folder
+
+HappyHQ stores its workspace at `~/HappyHQ` by default. On first run the app creates this folder and writes a `.happyhq` marker (`{"schemaVersion":1}`) so it can tell its own data folder apart from any unrelated directory you might point it at.
+
+Override the location by setting `HAPPYHQ_ROOT` in `happyhq/.env.local`:
+
+```sh
+HAPPYHQ_ROOT="$HOME/Documents/HappyHQ"
+```
+
+If `HAPPYHQ_ROOT` points at a non-empty folder that lacks the marker, the app refuses to mount and prints how to fix it. Note: on macOS the default filesystem is case-insensitive, so `~/happyhq` and `~/HappyHQ` resolve to the same path — if you happen to clone this repo into your home directory, set `HAPPYHQ_ROOT` to a different folder.
+
 ## Common commands
 
 - `pnpm dev` — start the dev server

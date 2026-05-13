@@ -25,6 +25,8 @@ import path from 'node:path'
 
 import { chromium } from 'playwright'
 
+import { writeDataRootMarker } from '../lib/fs/data-root.server'
+
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
@@ -70,6 +72,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 function seedFixtures(): void {
   fs.mkdirSync(SMOKE_ROOT, { recursive: true, mode: 0o700 })
+  writeDataRootMarker(SMOKE_ROOT)
 
   const streamDir = path.join(SMOKE_ROOT, STREAM_SLUG)
   fs.mkdirSync(path.join(streamDir, 'specs'), { recursive: true })

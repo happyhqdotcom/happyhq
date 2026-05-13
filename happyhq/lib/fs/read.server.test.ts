@@ -30,6 +30,11 @@ const { mockAccess, mockOpen, mockReadFile, mockReaddir, mockStat } =
     }
   })
 
+// readStreams gates on ensureDataRoot; stub it so these tests don't touch the real fs.
+vi.mock('./data-root.server', () => ({
+  ensureDataRoot: vi.fn(),
+}))
+
 vi.mock('node:fs/promises', () => ({
   default: {
     access: mockAccess,
