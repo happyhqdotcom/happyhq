@@ -319,7 +319,7 @@ export function useChatActions(): ChatActions {
           frontmatter: null,
           description: null,
           run: {
-            status: 'planning' as const,
+            status: 'discovering' as const,
             startedAt: now,
             lastIterationAt: now,
             phases: [],
@@ -348,7 +348,7 @@ export function useChatActions(): ChatActions {
         body: JSON.stringify({
           stream: streamSlug ?? undefined,
           task: slug,
-          mode: 'planning',
+          mode: 'discovery',
         }),
       }).catch(() => {})
 
