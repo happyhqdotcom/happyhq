@@ -18,7 +18,8 @@ For every bug, walk these:
 2. **Read the code.** Trace symptom to cause. Don't trust the report's hypothesis; verify it. Look for prior art on this surface — recent issues with the same shape, in-flight PRs, specs documenting the affected behavior.
 3. **Form an opinion.** Sometimes the report is right. Sometimes the symptom is real but the cause lives somewhere else. Sometimes the described behavior is intentional. Your read is the value-add.
 4. **Write the right fix.** The "right thing" is the real cause, not the symptom — don't band-aid past it if the underlying problem is what's broken. The "right way" is the change that leaves the system simpler and clearer than you found it.
-5. **Assess the diff.** With the actual change in hand, judge review risk. The size of the diff is a rough proxy; what touched and how it's tested is the real signal.
+5. **Validate.** Exercise the user-visible contract at the surface where it lives — code-only checks (lint/types/tests) prove the plumbing; this proves the behavior. For a behavior fix, induce the failure and confirm the new state. For a behavior-preserving fix, drive the happy path on each surface you touched. Sweep for adjacent regressions.
+6. **Assess the diff.** With the actual change in hand, judge review risk. The size of the diff is a rough proxy; what touched and how it's tested is the real signal.
 
 Then ask the litmus test again. The honest answer takes one of four shapes — **ship**, **split**, **rescope**, or **skip**.
 
@@ -113,6 +114,12 @@ These tune _how_ the work gets done. Not gates.
 
 **Pattern fit, not pattern match.** If prior art fits, follow it. If it doesn't, don't deform the fix to make it fit. Think about the most appropriate decision given the user experience and the developer experience.
 
+**If you reach for a constraint, look for the cause.** When the fix would be a cap, limit, truncate, or hide, the unbounded behavior has a cause — find it and fix the cause, even when it lives in nearby code. Scope follows the cause: touch nearby code when it's the cause, leave it when it's just adjacent and looks improvable.
+
 **A fix isn't just the diff.** Leave the surrounding code consistent with the change. If the fix changes documented behavior, update the spec in the same PR. If you notice a pattern across recent issues, surface it for the maintainer. If you skip, leave a rationale specific enough that a human can act on it without re-investigating.
 
-**Tests defend behavior, not lines.** Apply `testing.md`'s litmus: "what bug would this catch?" If the only answer is "someone reverted this exact line" — hardcoded asset paths, class names, copy strings, "this element exists" assertions — it's a vanity test. Skip it. Asset swaps, copy tweaks, and CSS-only fixes are visually verified, not test-locked.
+**Capture the why, not the what.** Put the why in the PR body and (if non-obvious) in a code comment. Never narrate what in comments — well-named code does that.
+
+**Tests defend behavior, not lines.** Apply `testing.md`'s litmus: "what bug would this catch?" If the only answer is "someone reverted this exact line" — hardcoded asset paths, class names, copy strings, "this element exists" assertions — it's a vanity test. Skip it. Asset swaps, copy tweaks, and CSS-only fixes are visually verified, not test-locked. If you cannot articulate a user-visible contract the test defends, the fix is either too trivial to need a test, or you haven't found the right contract yet — re-think before writing one.
+
+Tests verify behavior — what the system guarantees to the user. 50 different implementations should pass the same test. Test conditional rendering driven by state, input/output contracts, error paths, security boundaries. Never `toBeTruthy()`, snapshots, "renders without crashing", asserts on specific src/href/class/copy values, or "mock was called" (unless the call IS the contract).
