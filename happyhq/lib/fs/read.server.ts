@@ -6,6 +6,7 @@ import { HAPPYHQ_ROOT } from '@/lib/constants.server'
 import { healIfStaleRun } from '@/lib/run/loop.server'
 
 import { assessTextQuality } from './assess-quality.server'
+import { ensureDataRoot } from './data-root.server'
 import {
   assertSafePathSegment,
   safePath,
@@ -834,6 +835,7 @@ export async function streamExists(streamName: string): Promise<boolean> {
  * Returns newest-first by birthtime. Empty array if ~/HappyHQ/ doesn't exist.
  */
 export async function readStreams(): Promise<StreamEntry[]> {
+  ensureDataRoot()
   try {
     const entries = await readdir(HAPPYHQ_ROOT, { withFileTypes: true })
     const streams = await Promise.all(
