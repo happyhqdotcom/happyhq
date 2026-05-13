@@ -537,6 +537,17 @@ export function TaskPanel({
                   ) : stoppedDuringPlanning ? (
                     <SectionHeader
                       label={`Planning ${isBudgetStop ? 'paused' : 'stopped'} after ${formatDuration(planDurationMs)}`}
+                      onLabelClick={
+                        planningPhase?.sessionId && streamSlug && taskSlug
+                          ? () =>
+                              openChatSessionWindow(
+                                streamSlug,
+                                [planningPhase.sessionId],
+                                'Planning Session',
+                                `chat-${taskSlug}-planning`,
+                              )
+                          : undefined
+                      }
                       rightSlot={
                         isBudgetStop ? (
                           <button
@@ -663,6 +674,17 @@ export function TaskPanel({
                   ) : stoppedDuringWorking ? (
                     <SectionHeader
                       label={`Working ${isBudgetStop ? 'paused' : 'stopped'} after ${formatDuration(workDurationMs)}`}
+                      onLabelClick={
+                        workingSessionIds.length > 0 && streamSlug && taskSlug
+                          ? () =>
+                              openChatSessionWindow(
+                                streamSlug,
+                                workingSessionIds,
+                                'Working Session',
+                                `chat-${taskSlug}-working`,
+                              )
+                          : undefined
+                      }
                       rightSlot={
                         isBudgetStop ? (
                           <button

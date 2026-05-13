@@ -90,6 +90,17 @@ export function PlanSection({
         ) : stoppedDuringPlanning ? (
           <SectionHeader
             label={`Planning ${isBudgetStop ? 'paused' : 'stopped'} after ${formatDuration(planDurationMs)}`}
+            onLabelClick={
+              planningPhase?.sessionId && streamSlug && taskSlug
+                ? () =>
+                    openChatSessionWindow(
+                      streamSlug,
+                      [planningPhase.sessionId],
+                      'Planning Session',
+                      `chat-${taskSlug}-planning`,
+                    )
+                : undefined
+            }
             rightSlot={
               isBudgetStop ? (
                 <button
