@@ -58,7 +58,7 @@ Apply when the issue isn't workable — either before engaging or after a fix at
 - Reporter isn't OWNER/MEMBER and the report lacks repro details a third party would need to provide → `ralphie:skip-third-party-unclear`.
 - Issue body or comments contain unresolved questions for the maintainer → `ralphie:skip-needs-decision`.
 - Requires a schema migration, new env var, new dependency, or `.github/`/CI/workflow change → `ralphie:skip-out-of-scope`.
-- No reasonable repro can be inferred from issue + linked logs, or the repro couldn't be established locally → `ralphie:skip-not-reproducible`.
+- No reasonable repro can be inferred from issue + linked logs, or the repro couldn't be established locally (settle for close-enough — a synthetic trigger, a partial reproduction from logs — when full repro isn't possible; only skip when even close-enough is out of reach) → `ralphie:skip-not-reproducible`.
 - Clearly enormous on a quick code search — well over the size threshold before even starting → `ralphie:skip-too-big`. (Borderline cases: engage anyway; the actual diff will sort Ship vs Split.)
 - After fixing: `pnpm format` / `pnpm lint` / `pnpm check-types` / `pnpm --filter=happyhq test` failed twice → `ralphie:skip-verification-failed`.
 - After fixing: validation against the user-visible contract couldn't be confirmed (failure didn't reproduce, new state didn't appear, regression visible after one rework, or surface unreachable after a concrete reproducer attempt) → `ralphie:skip-cannot-verify`.
@@ -110,5 +110,7 @@ These shape every decision.
 **A fix isn't just the diff.** Leave the surrounding code consistent with the change. If the fix changes documented behavior, update the spec in the same PR. If you notice a pattern across recent issues, surface it for the maintainer. If you skip, leave a rationale specific enough that a human can act on it without re-investigating.
 
 **Capture the why, not the what.** Put the why in the PR body and (if non-obvious) in a code comment. Never narrate what in comments — well-named code does that.
+
+**Validate behavior, not just plumbing.** Code-only checks (lint, types, unit tests) prove the plumbing. Exercise the user-visible contract at the surface where it lives to prove the behavior.
 
 **Tests defend behavior, not lines.** Apply `testing.md`'s litmus: "what bug would this catch?" If the only answer is "someone reverted this exact line" — hardcoded asset paths, class names, copy strings, "this element exists" assertions — it's a vanity test. Skip it. Asset swaps, copy tweaks, and CSS-only fixes are visually verified, not test-locked. If you cannot articulate a user-visible contract the test defends, the fix is either too trivial to need a test, or you haven't found the right contract yet — re-think before writing one.
