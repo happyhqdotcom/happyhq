@@ -1,206 +1,580 @@
-# Mac App
+# Electron App
 
-Packaging Q as a native Mac application that non-developers can download, install, and run without a terminal.
+Packaging HappyHQ as a native Mac application that non-developers can download, install, and run without a terminal.
 
-## Purpose
+## Context
 
-This spec defines how Q is wrapped as a `.app` bundle using Electron so that regular Mac users can run it locally. The user downloads a `.dmg`, drags Q to Applications, and launches it. No Node.js, no Homebrew, no terminal. The existing setup flow handles Anthropic credentials.
+HappyHQ today runs as a Next.js app — fine for developers, opaque for everyone else. This spec defines how it gets wrapped as a `.app` bundle using Electron so a regular Mac user can download a `.dmg`, drag HappyHQ to Applications, and launch it. No Node.js, no Homebrew, no terminal. The existing setup flow handles Anthropic credentials.
+
+The goal of this spec is to be executable end-to-end by an autonomous coding agent overnight, so every file, command, and version is pinned below.
 
 ## Why Electron
 
-Q's server side is entirely Node.js — API routes, server actions, filesystem I/O, and `child_process.spawn` calls to `claude` and `git`. Electron's main process IS Node.js, so the standalone Next.js server runs natively as a forked child process.
+HappyHQ's server is entirely Node.js — API routes, server actions, filesystem I/O, and `child_process.spawn` calls to git. Electron's main process is Node, so the standalone Next.js server runs natively as a forked child.
 
-Tauri was considered. It uses the system WebView (lighter), but Q's server needs Node.js regardless. Tauri would require bundling Node.js as a sidecar — two runtimes with the Rust side doing nothing useful. Electron's ~150MB Chromium overhead is acceptable for a professional tool (VS Code is 400MB, Slack 300MB).
+Tauri was considered. It uses the system WebView (lighter), but the server needs Node regardless. Tauri would require bundling Node as a sidecar — two runtimes with the Rust side doing nothing useful. Electron's ~150MB Chromium overhead is acceptable for a professional tool (VS Code is 400MB, Slack 300MB).
+
+## Why `happyhq/electron/` (not top-level, not `desktop/`)
+
+- **Not top-level.** The Electron shell exists _for_ HappyHQ; it isn't a peer product. Nesting it inside `happyhq/` matches the conceptual hierarchy and matches the current monorepo shape (everything except root configs lives under `happyhq/`).
+- **Not `desktop/`.** That word is already taken by [desktop.md](desktop.md) — the in-app workspace metaphor with draggable windows, icons, and an island. The components at [components/features/desktop/](../components/features/desktop/) and routes at [app/(desktop)/desktop/](<../app/(desktop)/desktop/>) own that name.
+- **Why a workspace, not a subdirectory.** Electron + electron-builder pull in a large dependency tree we don't want bloating `happyhq/node_modules`. Adding `happyhq/electron` to `pnpm-workspace.yaml` keeps the trees separate.
 
 ## Architecture
 
 ```
 Electron Main Process (main.ts)
-  ├── fork('standalone/app/server.js')
+  ├── fork('standalone/happyhq/server.js')
   │     └── Next.js server on 127.0.0.1:<dynamic-port>
   │         └── All existing API routes, server actions, FS ops, Agent SDK
   └── BrowserWindow
         └── loads http://127.0.0.1:<port>
 ```
 
-The Next.js standalone output (already configured via `output: 'standalone'` in `next.config.ts`) produces a self-contained `server.js` that runs identically to how it runs in Docker. Electron forks it as a child process.
+The Next.js standalone output (already configured via `output: 'standalone'` in [next.config.ts](../next.config.ts)) produces a self-contained `server.js`. Electron forks it as a child process. No changes to HappyHQ's runtime behavior — the same code runs in dev, Docker, and the Mac app.
 
-**No changes to Q's runtime behavior.** The same code runs in dev, Docker, and the Mac app. The only difference is how the server process starts and where bundled binaries live.
+## Versions (pinned)
 
-## Monorepo Structure
+| Package            | Version   | Why                                                             |
+| ------------------ | --------- | --------------------------------------------------------------- |
+| `electron`         | `^42.0.1` | Latest stable (May 2026). Chromium 146, Node 24 LTS.            |
+| `electron-builder` | `^25.1.8` | Latest stable; DMG unsigned by default (correct since 20.43.0). |
+| `tsx`              | `^4.20.6` | Already at the monorepo root for scripts.                       |
+| `typescript`       | `^6.0.3`  | Matches the root override.                                      |
 
-New `desktop/` package at the monorepo root:
+## Repo Layout
 
 ```
-desktop/
-  package.json              # Electron + electron-builder config
+happyhq/electron/
+  package.json
   tsconfig.json
+  electron-builder.yml
   src/
     main.ts                 # App lifecycle, port, server fork, window
-    preload.ts              # Context isolation (minimal)
+    preload.ts              # Empty — contextIsolation target
   scripts/
-    prepare-standalone.ts   # Copies build artifacts into desktop/standalone/
+    prepare-standalone.ts   # Copies build artifacts into standalone/
+    build-icon.sh           # SVG → .icns
   build/
-    icon.icns               # Mac app icon
-    entitlements.mac.plist  # macOS entitlements for code signing
+    entitlements.mac.plist  # Hardened-runtime entitlements (committed)
+    icon.icns               # Generated, gitignored
+  standalone/               # Generated, gitignored
+  dist/                     # Compiled main.ts/preload.ts, gitignored
+  dist-packages/            # electron-builder output, gitignored
 ```
 
-Added to `pnpm-workspace.yaml` alongside existing packages.
+### Workspace registration
 
-## Main Process Responsibilities
+`pnpm-workspace.yaml`:
 
-### Port Allocation
+```yaml
+packages:
+  - happyhq
+  - happyhq/electron
+```
 
-Find a free port at startup using `net.createServer()` on port 0. This avoids collisions if the user also runs `pnpm dev` on port 3000.
+### `.gitignore` additions (under `happyhq/electron/`)
 
-### Server Lifecycle
+```
+standalone/
+dist/
+dist-packages/
+build/icon.icns
+build/*.iconset
+```
 
-Fork the standalone `server.js` via `child_process.fork()` with:
+## File contents
 
-| Env var                 | Value                                    |
-| ----------------------- | ---------------------------------------- |
-| `PORT`                  | Dynamic port from allocation             |
-| `HOSTNAME`              | `127.0.0.1` (no network exposure)        |
-| `Q_DESKTOP`             | `1`                                      |
-| `Q_DESKTOP_CLAUDE_PATH` | Absolute path to bundled `claude` binary |
+### `happyhq/electron/package.json`
 
-The `cwd` must be set to the standalone app directory so `process.cwd()` resolves `prompts/` and `q/` correctly (same requirement as the Dockerfile's `WORKDIR /app/app`).
+```json
+{
+  "name": "@happyhq/electron",
+  "version": "0.0.1",
+  "private": true,
+  "license": "MIT",
+  "main": "dist/main.js",
+  "scripts": {
+    "build:standalone": "tsx scripts/prepare-standalone.ts",
+    "build:ts": "tsc -p .",
+    "build:icon": "./scripts/build-icon.sh",
+    "build": "pnpm --filter=happyhq build && pnpm build:standalone && pnpm build:ts && pnpm build:icon",
+    "package": "pnpm build && electron-builder --mac dmg",
+    "start": "pnpm build:standalone && pnpm build:ts && electron ."
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.2",
+    "electron": "^42.0.1",
+    "electron-builder": "^25.1.8",
+    "tsx": "^4.20.6",
+    "typescript": "^6.0.3"
+  }
+}
+```
 
-Poll `http://127.0.0.1:<port>` until 200 or 302 (redirect to setup), then load the URL in the window.
+### `happyhq/electron/tsconfig.json`
 
-If the server process exits unexpectedly, restart it and reload the window.
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "dist",
+    "rootDir": "src",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true
+  },
+  "include": ["src/**/*"]
+}
+```
 
-### Window
+### `happyhq/electron/electron-builder.yml`
 
-Single `BrowserWindow` with `titleBarStyle: 'hiddenInset'` for a native Mac feel. Q's own desktop windowing system (Zustand-managed) runs inside this single Electron window.
+```yaml
+appId: com.happyhq.app
+productName: HappyHQ
+artifactName: '${productName}-${version}-${arch}.${ext}'
 
-OAuth URLs (`claude.ai/*`, `platform.claude.com/*`) intercepted via `setWindowOpenHandler` and opened in the default browser with `shell.openExternal()`.
+# The standalone server.js is forked at runtime and needs real filesystem
+# paths; asar packing breaks child_process.fork().
+asar: false
 
-### Git Check
+directories:
+  output: dist-packages
+  buildResources: build
 
-On first launch, check for `git` availability. Two failure modes exist on macOS:
+files:
+  - dist/**/*
+  - package.json
 
-1. **Xcode CLT not installed** — `git` command not found. Show a native dialog offering to run `xcode-select --install` (triggers the macOS Command Line Tools installer GUI). One-time step, no Terminal needed.
-2. **Xcode CLT installed but license not accepted** — `git` exists but every command fails with "You have not agreed to the Xcode license agreements." This happens after Xcode updates. The only fix is `sudo xcodebuild -license accept` in Terminal, which is not realistic for non-technical users. There is no native macOS GUI for accepting the license without the full Xcode app (~7GB).
+extraResources:
+  - from: standalone
+    to: standalone
+    filter: ['**/*']
 
-The app degrades gracefully in both cases — git init and sync failures are caught and logged, the app keeps working, but users lose file version history. Long-term fix: bundle a standalone git binary (see Bundled Binaries).
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: false # flip to true once Apple Developer creds are in env
+  target:
+    - target: dmg
+      arch: [arm64, x64]
 
-## Bundled Binaries
+dmg:
+  sign: false # Gatekeeper validates the notarized .app inside
+```
 
-| Binary         | Strategy                                                                                                                                                                                                               |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **claude CLI** | Installed via `@anthropic-ai/claude-code` npm dep. Binary path passed to Agent SDK via `Q_DESKTOP_CLAUDE_PATH`.                                                                                                        |
-| **git**        | Not bundled yet. Xcode CLT is prompted if missing, but the license-not-accepted failure mode can't be resolved without Terminal. Bundle a standalone git binary (~15–30MB) to eliminate the Xcode dependency entirely. |
-| **Node.js**    | Bundled by Electron (it ships with V8 + Node).                                                                                                                                                                         |
-
-## Changes to Existing Code
-
-One env-var check. No behavior changes for dev or Docker.
-
-### `lib/agents/config.server.ts`
-
-The `claudeExecutable` currently only resolves for Docker (`Q_PASSWORD`). Add a fallback for the desktop app:
+### `happyhq/electron/src/main.ts`
 
 ```ts
-const claudeExecutable = process.env.Q_PASSWORD
-  ? '/usr/local/bin/claude'
-  : process.env.Q_DESKTOP_CLAUDE_PATH || undefined
+import { app, BrowserWindow, dialog, shell } from 'electron'
+import { ChildProcess, fork } from 'node:child_process'
+import { createServer } from 'node:net'
+import { join } from 'node:path'
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+}
+
+const STANDALONE_DIR = app.isPackaged
+  ? join(process.resourcesPath, 'standalone')
+  : join(__dirname, '../standalone')
+const SERVER_ENTRY = join(STANDALONE_DIR, 'happyhq/server.js')
+const SERVER_CWD = join(STANDALONE_DIR, 'happyhq')
+
+let serverProcess: ChildProcess | null = null
+let mainWindow: BrowserWindow | null = null
+let serverPort = 0
+let quitting = false
+
+async function allocatePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const s = createServer()
+    s.unref()
+    s.on('error', reject)
+    s.listen(0, '127.0.0.1', () => {
+      const addr = s.address()
+      if (addr && typeof addr === 'object') {
+        const { port } = addr
+        s.close(() => resolve(port))
+      } else {
+        reject(new Error('Failed to allocate port'))
+      }
+    })
+  })
+}
+
+async function waitForServer(port: number, timeoutMs = 30_000): Promise<void> {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/health`)
+      if (res.ok) return
+    } catch {
+      // not ready yet
+    }
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  throw new Error(
+    `Server did not respond within ${timeoutMs}ms on port ${port}`,
+  )
+}
+
+async function startServer(): Promise<void> {
+  serverPort = await allocatePort()
+  serverProcess = fork(SERVER_ENTRY, [], {
+    cwd: SERVER_CWD,
+    env: {
+      ...process.env,
+      PORT: String(serverPort),
+      HOSTNAME: '127.0.0.1',
+    },
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+  })
+
+  serverProcess.stdout?.on('data', (d) =>
+    console.log('[server]', String(d).trimEnd()),
+  )
+  serverProcess.stderr?.on('data', (d) =>
+    console.error('[server]', String(d).trimEnd()),
+  )
+
+  serverProcess.on('exit', (code, signal) => {
+    console.error(`Server exited (code=${code}, signal=${signal})`)
+    if (quitting) return
+    startServer()
+      .then(() => mainWindow?.loadURL(`http://127.0.0.1:${serverPort}`))
+      .catch((err) => dialog.showErrorBox('Server restart failed', String(err)))
+  })
+
+  await waitForServer(serverPort)
+}
+
+function createWindow(): void {
+  mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    titleBarStyle: 'hiddenInset',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: join(__dirname, 'preload.js'),
+    },
+  })
+
+  mainWindow.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith(`http://127.0.0.1:${serverPort}`))
+      return { action: 'allow' }
+    shell.openExternal(url)
+    return { action: 'deny' }
+  })
+
+  mainWindow.loadURL(`http://127.0.0.1:${serverPort}`)
+}
+
+app.on('second-instance', () => {
+  if (!mainWindow) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.focus()
+})
+
+app.whenReady().then(async () => {
+  try {
+    await startServer()
+    createWindow()
+  } catch (err) {
+    dialog.showErrorBox('HappyHQ failed to start', String(err))
+    app.quit()
+  }
+})
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('before-quit', () => {
+  quitting = true
+  serverProcess?.kill()
+})
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow()
+})
 ```
 
-PDF text extraction uses `@hyzyla/pdfium` (WASM, in-process) — no system binary needed, no env var for path.
+### `happyhq/electron/src/preload.ts`
 
-## Build Pipeline
+```ts
+// Empty preload. The UI talks to the local Next.js server via HTTP, so no
+// IPC bridge is needed. This file exists so contextIsolation has a target.
+export {}
+```
 
-Mirrors the Dockerfile assembly:
+### `happyhq/electron/scripts/prepare-standalone.ts`
 
-1. **Build Next.js standalone** — `pnpm --filter=app build`
-2. **Assemble artifacts** — `prepare-standalone.ts` copies:
-   - `.next/standalone/` → `desktop/standalone/`
-   - `.next/static/` → `desktop/standalone/app/.next/static/`
-   - `public/` → `desktop/standalone/app/public/`
-   - `prompts/` → `desktop/standalone/app/prompts/`
-   - `q/` → `desktop/standalone/app/q/`
-   - Bundled binaries → `desktop/bin/`
-3. **Build Electron** — `tsc` compiles `main.ts` and `preload.ts`
-4. **Package** — `electron-builder --mac dmg` produces the `.dmg`
+Mirrors the Dockerfile's stage 4 layout ([Dockerfile](../Dockerfile)):
 
-`asar: false` in electron-builder config — the standalone output needs real filesystem access and `child_process.fork()` needs a real file path.
+```ts
+import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 
-## Code Signing & Distribution
+const electronRoot = resolve(__dirname, '..')
+const happyhqRoot = resolve(electronRoot, '..')
+const dst = join(electronRoot, 'standalone')
 
-**For local testing:** Works unsigned on the developer's machine.
+if (existsSync(dst)) rmSync(dst, { recursive: true, force: true })
+mkdirSync(dst, { recursive: true })
 
-**For distribution:**
+// .next/standalone/* -> standalone/* (server.js lands at standalone/happyhq/server.js)
+cpSync(join(happyhqRoot, '.next/standalone'), dst, {
+  recursive: true,
+  dereference: true,
+})
+
+// .next/static is not included in standalone output
+cpSync(join(happyhqRoot, '.next/static'), join(dst, 'happyhq/.next/static'), {
+  recursive: true,
+  dereference: true,
+})
+
+// Runtime files loaded via process.cwd() — same set as the Dockerfile
+for (const dir of ['public', 'prompts', 'q']) {
+  cpSync(join(happyhqRoot, dir), join(dst, 'happyhq', dir), {
+    recursive: true,
+    dereference: true,
+  })
+}
+
+console.log(`Standalone prepared at ${dst}`)
+```
+
+### `happyhq/electron/scripts/build-icon.sh`
+
+```sh
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+SRC="../app/icon.svg"
+ICONSET="build/HappyHQ.iconset"
+OUT="build/icon.icns"
+
+if ! command -v rsvg-convert >/dev/null 2>&1; then
+  echo "rsvg-convert not found. Install with: brew install librsvg" >&2
+  exit 1
+fi
+if ! command -v iconutil >/dev/null 2>&1; then
+  echo "iconutil not found. Install Xcode Command Line Tools." >&2
+  exit 1
+fi
+
+rm -rf "$ICONSET" "$OUT"
+mkdir -p "$ICONSET"
+
+for size in 16 32 64 128 256 512 1024; do
+  rsvg-convert -w "$size" -h "$size" "$SRC" -o "$ICONSET/icon_${size}x${size}.png"
+done
+
+# Apple's iconset naming requires @2x variants of each base size.
+cp "$ICONSET/icon_32x32.png"     "$ICONSET/icon_16x16@2x.png"
+cp "$ICONSET/icon_64x64.png"     "$ICONSET/icon_32x32@2x.png"
+cp "$ICONSET/icon_256x256.png"   "$ICONSET/icon_128x128@2x.png"
+cp "$ICONSET/icon_512x512.png"   "$ICONSET/icon_256x256@2x.png"
+cp "$ICONSET/icon_1024x1024.png" "$ICONSET/icon_512x512@2x.png"
+
+iconutil -c icns "$ICONSET" -o "$OUT"
+rm -rf "$ICONSET"
+echo "Wrote $OUT"
+```
+
+Source artwork: [app/icon.svg](../app/icon.svg) (256×256 magenta Q mark) — also available as [public/brand/q.svg](../public/brand/q.svg).
+
+### `happyhq/electron/build/entitlements.mac.plist`
+
+Hardened-runtime entitlements for a Node-embedding Electron app:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key><true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>
+  <key>com.apple.security.cs.disable-library-validation</key><true/>
+  <key>com.apple.security.network.client</key><true/>
+  <key>com.apple.security.network.server</key><true/>
+  <key>com.apple.security.files.user-selected.read-write</key><true/>
+  <key>com.apple.security.files.downloads.read-write</key><true/>
+</dict>
+</plist>
+```
+
+## Runtime environment
+
+Only two env vars are set by main.ts. No `Q_PASSWORD`, no `Q_DESKTOP_*`.
+
+| Env var    | Value       | Purpose                                      |
+| ---------- | ----------- | -------------------------------------------- |
+| `PORT`     | dynamic     | Allocated by `net.createServer({ port: 0 })` |
+| `HOSTNAME` | `127.0.0.1` | No network exposure                          |
+
+- `Q_PASSWORD` unset → middleware bypassed (see [proxy.ts](../proxy.ts)).
+- `HOME` defaults to the user's home, so `~/.claude/` and `~/HappyHQ` work naturally.
+- The Agent SDK resolves the `claude` binary from its bundled platform optional dependency (`@anthropic-ai/claude-agent-sdk-darwin-arm64` or `-darwin-x64`), already force-included by [next.config.ts](../next.config.ts) via `outputFileTracingIncludes`. No `pathToClaudeCodeExecutable` is set anywhere in the codebase; nothing needs to change.
+
+## OAuth and external links
+
+`setWindowOpenHandler` routes everything except `http://127.0.0.1:<port>` to the default browser via `shell.openExternal()`. Anthropic OAuth flows (`claude.ai/*`, `platform.claude.com/*`) open externally and return via the system handler.
+
+## Git on macOS
+
+On first launch, check for `git`. Two known failure modes:
+
+1. **Xcode CLT not installed** — `git` command not found. Show a native dialog with a button that runs `xcode-select --install` (triggers the macOS Command Line Tools installer GUI). One-time, no Terminal.
+2. **Xcode CLT installed but license not accepted** — `git` exists, every command fails with "You have not agreed to the Xcode license agreements." Only fix is `sudo xcodebuild -license accept` in Terminal — unrealistic for non-technical users.
+
+The app degrades gracefully in both cases: `instrumentation.ts` git init and `lib/git/sync.server.ts` sync failures are caught and logged. App keeps working; users lose file version history. Long-term fix: bundle a standalone git binary (deferred — see Acceptance Criteria).
+
+## Server lifecycle details
+
+- **Readiness probe.** `GET /api/health` ([app/api/health/route.ts](../app/api/health/route.ts)) — already exempt from middleware. Polled at 100ms intervals up to 30s.
+- **Restart on crash.** `serverProcess.on('exit')` allocates a new port, restarts the fork, and reloads the BrowserWindow at the new URL. Suppressed during `before-quit` via the `quitting` flag.
+- **Single-instance lock.** Second invocations focus the existing window instead of starting a second server.
+
+## Build pipeline
+
+```
+pnpm --filter=happyhq build                          # next build (standalone output)
+  └─ produces .next/standalone/, .next/static/
+pnpm --filter=@happyhq/electron build:standalone
+  └─ copies into happyhq/electron/standalone/happyhq/
+pnpm --filter=@happyhq/electron build:ts
+  └─ tsc compiles src/ → dist/
+pnpm --filter=@happyhq/electron build:icon
+  └─ rsvg-convert + iconutil → build/icon.icns
+pnpm --filter=@happyhq/electron package
+  └─ electron-builder --mac dmg
+  └─ produces dist-packages/HappyHQ-0.0.1-arm64.dmg (and -x64.dmg)
+```
+
+The `package` script runs all of the above in order.
+
+## Bundled binaries
+
+| Binary   | Strategy                                                                                                           |
+| -------- | ------------------------------------------------------------------------------------------------------------------ |
+| `claude` | Auto-resolved by Agent SDK from its platform-specific optional dep. Bundled inside `.next/standalone` via tracing. |
+| `git`    | Not bundled. Xcode CLT prompt on first launch; license-not-accepted failure mode logged but unrecoverable in-app.  |
+| Node.js  | Provided by Electron (Node 24 LTS in Electron 42).                                                                 |
+
+## Code signing & distribution
+
+**First cut: unsigned + ad-hoc.** Works on the developer's machine; right-click → Open on other machines.
+
+**For real distribution:**
 
 - Apple Developer account ($99/year)
-- Developer ID Application certificate
-- `electron-builder` handles signing + notarization via env vars
-- Entitlements: JIT (V8), `network.client` (API), `network.server` (local port), file access
-- Future: auto-update via `electron-updater` + GitHub Releases
-
-## Design Decisions
-
-**Forked child process, not inline require.** The standalone `server.js` calls `http.createServer()` and `server.listen()`. Running it via `fork()` keeps the Electron main process clean and avoids conflicts between Electron's internal HTTP handling and Next.js. A crash in the server doesn't take down the shell — main process can detect and restart.
-
-**Dynamic port, not fixed.** Avoids collisions with `pnpm dev`. The port is an implementation detail — the user never sees it.
-
-**No `Q_PASSWORD` in desktop mode.** The middleware bypasses password auth when `Q_PASSWORD` is unset (local dev mode). Same behavior for the desktop app — there's no need for password auth on a local machine.
-
-**`HAPPYHQ_ROOT` unchanged.** `constants.server.ts` defaults to `~/HappyHQ`. This is already the right location for a desktop app. No changes needed.
+- Developer ID Application certificate in the keychain
+- Set `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` in the build environment
+- Flip `mac.notarize: true` in `electron-builder.yml`
+- electron-builder handles signing + notarization automatically
+- DMG stays unsigned by default (Gatekeeper validates the notarized `.app` inside)
 
 ## Acceptance Criteria
 
-- [ ] `desktop/` package exists in monorepo with Electron + electron-builder deps
-- [ ] `pnpm --filter=app build && pnpm --filter=desktop build` produces a working `.app`
-- [ ] Launching the `.app` starts the Next.js server and opens the Q UI
-- [ ] Setup flow works (API key entry and OAuth sign-in)
-- [ ] Chat works with streaming responses
-- [ ] File operations work (create stream, upload file, browse directories)
-- [ ] PDF processing works with pdfium (in-process, no binary needed)
-- [ ] Git operations work (stream versioning, auto-commit)
-- [ ] No port conflict when `pnpm dev` is also running
-- [ ] App shows a helpful dialog when git is not installed
-- [ ] OAuth URLs open in the default browser, not in the Electron window
-- [ ] Server crash restarts automatically without losing the window
-- [ ] _(deferred)_ Code signing and notarization for distribution
-- [ ] _(deferred)_ Bundle standalone git binary to remove Xcode CLT dependency
-- [ ] _(deferred)_ Auto-update mechanism
-- [ ] _(deferred)_ DMG background image and branding
+**Phase 1 — builds and packages (autonomously verifiable):**
 
-## Testing
+- [ ] `happyhq/electron` listed in `pnpm-workspace.yaml`
+- [ ] `pnpm install` from repo root completes with the new workspace
+- [ ] `pnpm --filter=@happyhq/electron build:standalone` produces `happyhq/electron/standalone/happyhq/server.js`
+- [ ] `pnpm --filter=@happyhq/electron build:ts` produces `happyhq/electron/dist/main.js`
+- [ ] `pnpm --filter=@happyhq/electron build:icon` produces `happyhq/electron/build/icon.icns` (requires `librsvg`; document as a host prereq)
+- [ ] `pnpm --filter=@happyhq/electron package` produces `happyhq/electron/dist-packages/HappyHQ-0.0.1-arm64.dmg`
+- [ ] `pnpm check-types` passes from the repo root with the new workspace included
+- [ ] `pnpm lint` passes
 
-Primarily manual verification — Electron packaging is integration-heavy.
+**Phase 2 — runtime behavior (manual QA):**
 
-1. Build and launch: `pnpm --filter=desktop package`, open the `.dmg`, run the `.app`
-2. Walk through setup flow with API key
-3. Create a stream, send a chat message, verify streaming works
-4. Upload a PDF, verify pdfium text extraction
-5. Create files via agent, verify git auto-commit
-6. Kill the server process (`kill <pid>`), verify it restarts
-7. Run with `pnpm dev` simultaneously, verify no port collision
+- [ ] Mounting the DMG reveals `HappyHQ.app`
+- [ ] Launching `HappyHQ.app` opens a window and loads the HappyHQ UI
+- [ ] Setup flow accepts an Anthropic API key
+- [ ] Chat streams responses
+- [ ] File operations create files under `~/HappyHQ`
+- [ ] PDF upload works (pdfium runs in-process; no binary needed)
+- [ ] OAuth links open in the default browser, not in the Electron window
+- [ ] `pnpm dev` running in parallel does not collide (dynamic port)
+- [ ] Killing the forked server PID restarts it without losing the window
 
-### Not tested
+**Deferred:**
 
-Automated Electron testing (Spectron/Playwright) — deferred until the packaging is stable. The underlying Next.js app has its own test suite.
+- [ ] Code signing + notarization (Apple Developer account required)
+- [ ] DMG background image and branding polish
+- [ ] Auto-update via `electron-updater` + GitHub Releases
+- [ ] Bundle a standalone git binary (~15–30MB) to remove Xcode CLT dependency
+- [ ] Windows / Linux targets
+
+## Verification (Ralphie-runnable)
+
+After implementation, an autonomous agent can self-verify:
+
+```bash
+# From repo root
+pnpm install
+pnpm --filter=@happyhq/electron build:standalone
+test -f happyhq/electron/standalone/happyhq/server.js
+test -d happyhq/electron/standalone/happyhq/public
+test -d happyhq/electron/standalone/happyhq/prompts
+test -d happyhq/electron/standalone/happyhq/q
+
+pnpm --filter=@happyhq/electron build:ts
+test -f happyhq/electron/dist/main.js
+
+pnpm --filter=@happyhq/electron build:icon
+test -f happyhq/electron/build/icon.icns
+
+pnpm --filter=@happyhq/electron package
+ls happyhq/electron/dist-packages/HappyHQ-*-arm64.dmg
+```
+
+Smoke runtime test (requires GUI session, document for manual follow-up):
+
+```bash
+cd happyhq/electron && pnpm start
+```
+
+A BrowserWindow should open, load HappyHQ, and the setup screen should render.
 
 ## Edge Cases
 
-- **No internet connection** — App launches, server starts, but API calls to Anthropic fail. Existing error handling in the chat route covers this.
-- **`~/HappyHQ` on an external drive** — Works if the volume is mounted. Fails gracefully with filesystem errors if not.
-- **Very large HappyHQ directory** — No different from dev mode. Filesystem operations are the same.
-- **macOS Sequoia privacy prompts** — User will see "Q wants to access files in Documents" on first run. Normal and expected.
-- **Multiple instances** — Each finds its own port. Multiple windows into the same `~/HappyHQ` could cause git conflicts. _(deferred — consider a single-instance lock)_
+- **No internet** — App launches, server starts; API calls to Anthropic fail; existing error handling in chat route covers it.
+- **`~/HappyHQ` on external drive** — Works when mounted; filesystem errors when not.
+- **Very large `~/HappyHQ`** — Same as dev mode; no special handling.
+- **Sequoia privacy prompts** — User sees "HappyHQ wants to access Documents" on first run. Expected.
+- **Multiple instances** — Single-instance lock focuses the existing window.
 
 ## Constraints
 
-- Mac-only (no Windows/Linux) — matches the target audience
-- Requires internet for Anthropic API calls (no offline mode)
-- Requires git via Xcode CLT (not bundled yet — plan to bundle standalone git to avoid Xcode license issues)
-- Node.js version locked to whatever Electron ships (currently Node 20.x in Electron 33+)
+- Mac-only for now (no Windows/Linux build targets in this spec)
+- Requires internet for Anthropic API calls
+- Requires `git` via Xcode CLT (not bundled yet)
+- Node version locked to whatever Electron ships (Node 24 LTS in Electron 42)
+- `librsvg` required on the build host for icon generation (`brew install librsvg`)
 
 ## Cross-References
 
 - [Filesystem Layout](filesystem-layout.md) — `~/HappyHQ` directory structure
 - [Chat](chat.md) — streaming architecture
 - [Planning](planning.md) / [Working](working.md) — agent modes
-- Dockerfile (`app/Dockerfile`) — reference implementation for standalone assembly
+- [Dockerfile](../Dockerfile) — the canonical standalone-assembly layout this spec mirrors
+- [next.config.ts](../next.config.ts) — `output: 'standalone'` + Agent SDK platform tracing
+- [proxy.ts](../proxy.ts) — middleware bypassed when `Q_PASSWORD` is unset
+
+> Note: [desktop.md](desktop.md) is unrelated. That spec describes the in-app workspace metaphor (icons, draggable windows, the island). The Electron shell is the surrounding `.app`; the Desktop is the UI that runs inside it.
