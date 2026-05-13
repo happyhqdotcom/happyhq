@@ -46,7 +46,7 @@ Don't push the over-size PR. Instead:
 
 ### Rescope — `ralphie:skip-needs-rescope`
 
-The framing is wrong: the symptom has a different cause than the report assumes, or the described behavior is intentional and not a bug. **This is the most valuable thing the loop does** — converting a misframed report into a workable issue.
+The framing is wrong: the symptom has a different cause than the report assumes, or the described behavior is intentional and not a bug.
 
 File a rephrased child issue: `gh issue create --label bug --title "<rephrased title>" --body "..."`. Body includes:
 
@@ -108,6 +108,8 @@ These are failure modes we've seen. Name them when they apply; reject them.
 These tune _how_ the work gets done. Not gates.
 
 **Simple, maintainable, understandable.** This is the bar for every fix. If the change makes the system harder to read, harder to change later, or harder for the next person to hold in their head, it's the wrong shape — even if it makes the symptom go away. Optimize for the reader who shows up six months from now with no context.
+
+**When triage is ambiguous, lean toward eligible.** The fix loop has its own gates — false eligibility is cheaper than false skip. A wrong skip closes a door on a real issue; a wrong eligible just means the fix loop does the extra evaluation and bails if it has to.
 
 **Pattern fit, not pattern match.** If prior art fits, follow it. If it doesn't, don't deform the fix to make it fit. Think about the most appropriate decision given the user experience and the developer experience.
 
