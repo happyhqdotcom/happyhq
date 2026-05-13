@@ -17,10 +17,28 @@ RESET='\033[0m'
 
 STATS_FILE=$(mktemp /tmp/loop-stats.XXXXXX)
 
+# Loop.sh is invoked from a worktree's repo root (where pnpm test runs).
+# Capture it so kill_scoped can match processes by cwd.
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+# Kill processes matching $1 whose cwd is under $REPO_ROOT — i.e. only
+# processes this loop spawned, not the user's own dev/test runs in a
+# sibling worktree.
+kill_scoped() {
+    local pattern="$1"
+    local pid cwd
+    for pid in $(pgrep -f "$pattern" 2>/dev/null); do
+        cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | awk '/^n/ {sub(/^n/,""); print; exit}')
+        if [[ -n "$cwd" && "$cwd" == "$REPO_ROOT"* ]]; then
+            kill "$pid" 2>/dev/null || true
+        fi
+    done
+}
+
 cleanup() {
     echo -e "\nCleaning up child processes..."
     pkill -P $$ 2>/dev/null
-    pkill -f "node.*vitest" 2>/dev/null
+    kill_scoped "node.*vitest"
     rm -f "$STATS_FILE"
     print_grand_total
     exit 0
@@ -190,7 +208,7 @@ while true; do
     read_stats
 
     # Clean up any orphaned vitest/node workers from this iteration
-    pkill -f "node.*vitest" 2>/dev/null || true
+    kill_scoped "node.*vitest"
     sleep 1
 
     # Show what was committed this iteration
