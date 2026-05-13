@@ -38,6 +38,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { writeDataRootMarker } from '../lib/fs/data-root.server'
+
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
@@ -101,6 +103,7 @@ function copyDirSync(from: string, to: string): void {
 
 function seedFixtures(): void {
   fs.mkdirSync(SMOKE_ROOT, { recursive: true, mode: 0o700 })
+  writeDataRootMarker(SMOKE_ROOT)
 
   // Stream fixture (playbook + spec + sample) → ${SMOKE_ROOT}/${STREAM_SLUG}/
   copyDirSync(STREAM_FIXTURE_DIR, path.join(SMOKE_ROOT, STREAM_SLUG))

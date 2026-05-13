@@ -14,6 +14,16 @@ import { HAPPYHQ_ROOT } from '@/lib/constants.server'
 const MARKER_FILE = '.happyhq'
 const MARKER_CONTENT = JSON.stringify({ schemaVersion: 1 }, null, 2) + '\n'
 
+/**
+ * Write the `.happyhq` marker into an existing directory. Exposed so tools
+ * that legitimately construct a happyhq data root from scratch (e.g. the
+ * smoke harnesses, which pre-seed content before booting) can declare the
+ * root rather than tripping the ensureDataRoot guard.
+ */
+export function writeDataRootMarker(rootDir: string): void {
+  writeFileSync(path.join(rootDir, MARKER_FILE), MARKER_CONTENT, 'utf-8')
+}
+
 export class DataRootError extends Error {
   constructor(message: string) {
     super(message)
@@ -84,7 +94,7 @@ function runChecks(): void {
 }
 
 function writeMarker(): void {
-  writeFileSync(path.join(HAPPYHQ_ROOT, MARKER_FILE), MARKER_CONTENT, 'utf-8')
+  writeDataRootMarker(HAPPYHQ_ROOT)
 }
 
 function looksLikeHappyhqRoot(entries: string[]): boolean {
