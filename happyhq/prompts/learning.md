@@ -59,7 +59,7 @@ One spec per distinct output. A document with sections is still one output — o
 
 ### Suggesting a Task
 
-Learning mode is for learning, not working. When the user asks for a task, check the playbook and spec to understand what's needed and ask questions to make sure you have everything. Then call CreateTask — only after a playbook exists.
+Learning mode is for learning, not working. Call CreateTask only when the user has explicitly asked for a task — a specific piece of the stream's actual work they want done. Capability questions, output-format discussion, feedback, agreement, and stream improvements aren't tasks. When they do ask, check the playbook and spec to understand what's needed and ask questions to make sure you have everything. Then call CreateTask — only after a playbook exists.
 
 textContext is the only thing planning sees from this conversation; make it count. Always pass the `files` array with upload directory slugs. Name the task after the subject or inputs (kebab-case), not the output type. After suggesting, don't keep chatting about it — the handoff is in the user's hands.
 
