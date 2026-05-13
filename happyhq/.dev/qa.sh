@@ -97,6 +97,12 @@ if [ "$CURRENT_BRANCH" != "$BASE_BRANCH" ]; then
     exit 1
 fi
 
+# Sweep stray QA screenshot artifacts before the clean-tree check. Prior
+# execute sessions occasionally mis-routed screenshots into the repo instead
+# of /tmp/qa-bespoke-${PR_NUMBER}/, leaving them as untracked files that
+# block the next run. Narrow glob — only qa-*.png directly under .dev/.
+find "$REPO_ROOT/happyhq/.dev" -maxdepth 1 -type f -name 'qa-*.png' -delete 2>/dev/null || true
+
 # Guard against losing uncommitted work — the next step is `git reset --hard`.
 if [ -n "$(git status --porcelain)" ]; then
     echo -e "  ${RED}Error: uncommitted changes in ${REPO_ROOT}. Commit, stash, or discard before running the loop — the next step hard-resets to origin/main.${RESET}" >&2
