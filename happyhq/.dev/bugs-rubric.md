@@ -4,24 +4,13 @@ Source of truth for how Ralphie judges open `bug`-labeled issues. Both `PROMPT_b
 
 ## The litmus test
 
-Approach every bug as an engineer who cares about the quality of both the user experience and the developer experience. Ask one question:
+Approach every bug as an engineer who cares about both the user experience and the developer experience. Ask one question:
 
 > **Am I fixing the right thing, the right way?**
 
-Everything else in this rubric is how to answer that honestly. A bug report is the reporter's best guess at what's wrong and where — it's not a script to execute. The work is to figure out what's actually broken, decide whether and how to respond, and see the fix through.
+A bug report is the reporter's best guess. It's not a script to execute. The work is to figure out what's broken, decide whether and how to respond, and see the fix through.
 
-## How to answer the litmus test
-
-For every bug, walk these:
-
-1. **Reproduce it.** The report describes a symptom. Get the symptom to happen — or get as close as the available logs and code allow.
-2. **Read the code.** Trace symptom to cause. Don't trust the report's hypothesis; verify it. Look for prior art on this surface — recent issues with the same shape, in-flight PRs, specs documenting the affected behavior.
-3. **Form an opinion.** Sometimes the report is right. Sometimes the symptom is real but the cause lives somewhere else. Sometimes the described behavior is intentional. Your read is the value-add.
-4. **Write the right fix.** The "right thing" is the real cause, not the symptom — don't band-aid past it if the underlying problem is what's broken. The "right way" is the change that leaves the system simpler and clearer than you found it.
-5. **Validate.** Exercise the user-visible contract at the surface where it lives — code-only checks (lint/types/tests) prove the plumbing; this proves the behavior. For a behavior fix, induce the failure and confirm the new state. For a behavior-preserving fix, drive the happy path on each surface you touched. Sweep for adjacent regressions.
-6. **Assess the diff.** With the actual change in hand, judge review risk. The size of the diff is a rough proxy; what touched and how it's tested is the real signal.
-
-Then ask the litmus test again. The honest answer takes one of four shapes — **ship**, **split**, **rescope**, or **skip**.
+The answer takes one of four shapes — **ship**, **split**, **rescope**, or **skip**.
 
 ## The four outcomes
 
@@ -63,16 +52,16 @@ If the original is purely "this isn't a bug, it's intentional" and there's no un
 
 ### Skip — various `ralphie:skip-*` labels
 
-Bail before engagement when the issue isn't workable. In rough order:
+Apply when the issue isn't workable — either before engaging or after a fix attempt:
 
 - Fix would touch `happyhq/ee/` → `ralphie:skip-ee`.
 - Reporter isn't OWNER/MEMBER and the report lacks repro details a third party would need to provide → `ralphie:skip-third-party-unclear`.
 - Issue body or comments contain unresolved questions for the maintainer → `ralphie:skip-needs-decision`.
 - Requires a schema migration, new env var, new dependency, or `.github/`/CI/workflow change → `ralphie:skip-out-of-scope`.
 - No reasonable repro can be inferred from issue + linked logs, or the repro couldn't be established locally → `ralphie:skip-not-reproducible`.
-- Clearly enormous on a quick code search — well over the size threshold before even starting → `ralphie:skip-too-big`. (Borderline cases: engage and decide at step 5.)
+- Clearly enormous on a quick code search — well over the size threshold before even starting → `ralphie:skip-too-big`. (Borderline cases: engage anyway; the actual diff will sort Ship vs Split.)
 - After fixing: `pnpm format` / `pnpm lint` / `pnpm check-types` / `pnpm --filter=happyhq test` failed twice → `ralphie:skip-verification-failed`.
-- After fixing: the exercise step couldn't confirm the user-visible contract (failure didn't reproduce, new state didn't appear, regression visible after one rework, or surface unreachable after a concrete reproducer attempt) → `ralphie:skip-cannot-verify`.
+- After fixing: validation against the user-visible contract couldn't be confirmed (failure didn't reproduce, new state didn't appear, regression visible after one rework, or surface unreachable after a concrete reproducer attempt) → `ralphie:skip-cannot-verify`.
 
 A `ralphie:*` label is terminal. The maintainer removes it to re-queue.
 
@@ -106,20 +95,20 @@ These are failure modes we've seen. Name them when they apply; reject them.
 
 ## Principles
 
-These tune _how_ the work gets done. Not gates.
+These shape every decision.
 
 **Simple, maintainable, understandable.** This is the bar for every fix. If the change makes the system harder to read, harder to change later, or harder for the next person to hold in their head, it's the wrong shape — even if it makes the symptom go away. Optimize for the reader who shows up six months from now with no context.
 
-**When triage is ambiguous, lean toward eligible.** The fix loop has its own gates — false eligibility is cheaper than false skip. A wrong skip closes a door on a real issue; a wrong eligible just means the fix loop does the extra evaluation and bails if it has to.
+**When triage is ambiguous, lean toward eligible.** The fix loop has its own gates — a wrong skip closes a door on a real issue; a wrong eligible just means the fix loop does the extra evaluation and bails if it has to.
 
 **Pattern fit, not pattern match.** If prior art fits, follow it. If it doesn't, don't deform the fix to make it fit. Think about the most appropriate decision given the user experience and the developer experience.
 
 **If you reach for a constraint, look for the cause.** When the fix would be a cap, limit, truncate, or hide, the unbounded behavior has a cause — find it and fix the cause, even when it lives in nearby code. Scope follows the cause: touch nearby code when it's the cause, leave it when it's just adjacent and looks improvable.
+
+**Review risk isn't size.** The size of the diff is a rough proxy; what touched and how it's tested is the real signal. A 12-file mechanical rename can be lower risk than a 30-line edit to critical infrastructure.
 
 **A fix isn't just the diff.** Leave the surrounding code consistent with the change. If the fix changes documented behavior, update the spec in the same PR. If you notice a pattern across recent issues, surface it for the maintainer. If you skip, leave a rationale specific enough that a human can act on it without re-investigating.
 
 **Capture the why, not the what.** Put the why in the PR body and (if non-obvious) in a code comment. Never narrate what in comments — well-named code does that.
 
 **Tests defend behavior, not lines.** Apply `testing.md`'s litmus: "what bug would this catch?" If the only answer is "someone reverted this exact line" — hardcoded asset paths, class names, copy strings, "this element exists" assertions — it's a vanity test. Skip it. Asset swaps, copy tweaks, and CSS-only fixes are visually verified, not test-locked. If you cannot articulate a user-visible contract the test defends, the fix is either too trivial to need a test, or you haven't found the right contract yet — re-think before writing one.
-
-Tests verify behavior — what the system guarantees to the user. 50 different implementations should pass the same test. Test conditional rendering driven by state, input/output contracts, error paths, security boundaries. Never `toBeTruthy()`, snapshots, "renders without crashing", asserts on specific src/href/class/copy values, or "mock was called" (unless the call IS the contract).
