@@ -40,6 +40,11 @@ export function subscribeOpenCreateStreamDialog(handler: () => void) {
   return () => window.removeEventListener(OPEN_EVENT, handler)
 }
 
+// Browser-side caps so a runaway paste can't ship a 100kb body to /api/chat.
+// Server still validates; these are courtesy ceilings.
+const NAME_MAX = 100
+const INTENT_MAX = 5000
+
 type Starter = { id: string; label: string; intent: string }
 
 const STARTERS: Starter[] = [
@@ -208,6 +213,7 @@ function CreateStreamDialogShell({
             <input
               autoFocus
               type="text"
+              maxLength={NAME_MAX}
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
@@ -229,6 +235,7 @@ function CreateStreamDialogShell({
           >
             <textarea
               value={intent}
+              maxLength={INTENT_MAX}
               onChange={(e) => setIntent(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
