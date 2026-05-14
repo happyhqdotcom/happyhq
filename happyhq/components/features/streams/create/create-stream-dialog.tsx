@@ -7,6 +7,11 @@ import { useRouter } from 'next/navigation'
 
 import { Dialog, DialogTitle } from '@/components/common/catalyst/dialog'
 import { toastError } from '@/components/common/ui/sonner'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/common/ui/tooltip'
 import { useCurrentUser } from '@/lib/accounts/hooks'
 import {
   checkStreamExists,
@@ -17,6 +22,7 @@ import { toSlug } from '@/lib/format'
 import { reportError } from '@/lib/report-error'
 import { useStreamsMutate } from '@/stores/streamsStore'
 import clsx from 'clsx'
+import { Info } from 'lucide-react'
 
 // ── Starters ───────────────────────────────────────────────────────────
 // Casual, pre-canned playbook examples. Clicking a pill fills the prompt with
@@ -250,6 +256,11 @@ function CreateStreamDialogShell({
             />
           </FloatingField>
 
+          {/* Slug preview — quiet education: each Stream is a folder on disk.
+              Only renders when the typed name produces a non-empty slug, so
+              empty / pure-punctuation names don't clutter the surface. */}
+          <SlugPreview name={name} />
+
           {/* Prompt — the hero */}
           <FloatingField
             label="What kind of work should this Stream do?"
@@ -407,5 +418,38 @@ function FloatingField({
       </span>
       {children}
     </label>
+  )
+}
+
+// ── Slug preview ─────────────────────────────────────────────────────────
+// Small line under the Name input: shows the kebab slug that becomes the
+// folder name on disk. Reinforces HappyHQ's "your stuff is files you own"
+// brand value at exactly the moment the user creates a new thing.
+
+function SlugPreview({ name }: { name: string }) {
+  const slug = toSlug(name.trim())
+  if (!slug) return null
+  return (
+    <div className="-mt-2 flex items-center gap-1.5 pl-3.5 text-[11.5px] text-zinc-400">
+      <span aria-hidden>↳</span>
+      <span className="font-mono">{slug}</span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label="What is this?"
+            className="rounded-full p-0.5 text-zinc-300 transition-colors hover:text-zinc-500"
+          >
+            <Info className="size-3" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" align="start" className="max-w-56">
+          Each Stream lives as a folder on your computer at
+          <span className="ml-1 font-mono">~/HappyHQ/{slug}/</span>. The name is
+          the label; the folder is where Q stores everything it learns.
+        </TooltipContent>
+      </Tooltip>
+    </div>
   )
 }
