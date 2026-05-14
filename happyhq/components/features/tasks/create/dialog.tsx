@@ -8,6 +8,7 @@ import { useFileDrop } from '@/components/features/desktop/windows/shared/use-fi
 import { StreamPicker } from '@/components/features/tasks/atoms/stream-picker'
 import { useCurrentUser } from '@/lib/accounts/hooks'
 import { createTask, ingestTaskInput } from '@/lib/actions'
+import { friendlyErrorMessage } from '@/lib/errors/friendly-message'
 import { ALLOWED_INPUT_ACCEPT } from '@/lib/file-types'
 import { generateTaskSlug } from '@/lib/format'
 import { taskItemsKey } from '@/lib/swr-keys'
@@ -94,7 +95,7 @@ function TaskCreateDialogShell({
       mutate(taskItemsKey())
       onClose()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create task')
+      toast.error(friendlyErrorMessage(err, 'Failed to create task'))
     } finally {
       setIsCreating(false)
     }

@@ -2,6 +2,7 @@
 
 import { toastError } from '@/components/common/ui/sonner'
 import { useBillingData } from '@/components/features/billing/use-billing-data'
+import { friendlyErrorMessage } from '@/lib/errors/friendly-message'
 import type { DesktopData, RunInfo, TaskContent } from '@/lib/fs/types'
 import { invalidateStream } from '@/lib/swr-helpers'
 import { desktopDataKey, taskContentKey } from '@/lib/swr-keys'
@@ -174,7 +175,7 @@ export function useRunActions(
       // in desktop-data-provider handles live updates, and calling it here
       // would fight the optimistic update we just set above.
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to approve'
+      const msg = friendlyErrorMessage(err, 'Failed to approve')
       setError(msg)
       toastError(msg)
       // Revalidate to undo optimistic update on failure
@@ -226,7 +227,7 @@ export function useRunActions(
           setRemainingMinutes(data.remainingMinutes ?? null)
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Failed to continue'
+        const msg = friendlyErrorMessage(err, 'Failed to continue')
         setError(msg)
         toastError(msg)
         invalidateStream(streamSlug)
@@ -277,7 +278,7 @@ export function useRunActions(
       }
       // No invalidateStream() on success — same reasoning as approve().
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to start'
+      const msg = friendlyErrorMessage(err, 'Failed to start')
       setError(msg)
       toastError(msg)
       // Revalidate to undo optimistic update on failure
@@ -309,7 +310,7 @@ export function useRunActions(
       }
       invalidateStream(streamSlug)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to stop'
+      const msg = friendlyErrorMessage(err, 'Failed to stop')
       setError(msg)
       toastError(msg)
       setIsStopping(false)
@@ -337,8 +338,7 @@ export function useRunActions(
         }
         invalidateStream(streamSlug)
       } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : 'Failed to submit answer'
+        const msg = friendlyErrorMessage(err, 'Failed to submit answer')
         toastError(msg)
         throw err
       }
