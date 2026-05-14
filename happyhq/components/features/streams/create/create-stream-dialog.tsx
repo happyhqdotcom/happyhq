@@ -7,11 +7,6 @@ import { useRouter } from 'next/navigation'
 
 import { Dialog, DialogTitle } from '@/components/common/catalyst/dialog'
 import { toastError } from '@/components/common/ui/sonner'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/common/ui/tooltip'
 import { useCurrentUser } from '@/lib/accounts/hooks'
 import {
   checkStreamExists,
@@ -22,7 +17,6 @@ import { toSlug } from '@/lib/format'
 import { reportError } from '@/lib/report-error'
 import { useStreamsMutate } from '@/stores/streamsStore'
 import clsx from 'clsx'
-import { Info } from 'lucide-react'
 
 // ── Starters ───────────────────────────────────────────────────────────
 // Casual, pre-canned playbook examples. Clicking a pill fills the prompt with
@@ -51,7 +45,27 @@ export function subscribeOpenCreateStreamDialog(handler: () => void) {
 const NAME_MAX = 100
 const INTENT_MAX = 5000
 
-type Starter = { id: string; label: string; intent: string }
+export type Starter = { id: string; label: string; intent: string }
+
+/**
+ * Decide whether clicking a starter pill should overwrite the textarea.
+ * Pulled out as a pure function so the rule is testable without mounting
+ * the whole dialog.
+ *
+ * Rule: only overwrite when the textarea is "unedited" — i.e. empty or
+ * still matches the previously-picked starter's preset text. Otherwise the
+ * click is a no-op (`null`) so we don't destroy user typing.
+ */
+export function nextStarterState(opts: {
+  next: Starter
+  current: Starter | undefined
+  intent: string
+}): { starterId: string; intent: string } | null {
+  const isUnedited =
+    opts.intent.trim() === '' || opts.intent === (opts.current?.intent ?? '')
+  if (!isUnedited) return null
+  return { starterId: opts.next.id, intent: opts.next.intent }
+}
 
 const STARTERS: Starter[] = [
   { id: 'blank', label: 'Blank', intent: '' },
@@ -132,19 +146,16 @@ function CreateStreamDialogShell({
   const intentRef = useRef<HTMLTextAreaElement>(null)
 
   // Picking a starter prefills the intent textarea — but only if the user
-  // hasn't typed anything custom yet. We treat the textarea as "unedited" when
-  // it's empty OR matches the previously-picked starter's text. That lets users
-  // browse pills freely without losing typed work.
-  //
-  // When the text IS edited, the click is a no-op: highlighting a different
-  // pill without changing the text would lie about what's in the box.
-  const pickStarter = (s: Starter) => {
-    const currentStarter = STARTERS.find((x) => x.id === starterId)
-    const isUnedited =
-      intent.trim() === '' || intent === (currentStarter?.intent ?? '')
-    if (!isUnedited) return
-    setStarterId(s.id)
-    setIntent(s.intent)
+  // hasn't typed anything custom yet. See `nextStarterState` for the rule.
+  const pickStarter = (next: Starter) => {
+    const result = nextStarterState({
+      next,
+      current: STARTERS.find((x) => x.id === starterId),
+      intent,
+    })
+    if (!result) return
+    setStarterId(result.starterId)
+    setIntent(result.intent)
     // Hand focus to the textarea with the cursor at the end so the user can
     // immediately tailor the preset text. requestAnimationFrame waits for the
     // controlled-value update to commit before we move the caret.
@@ -237,8 +248,13 @@ function CreateStreamDialogShell({
             Start a new Stream
           </DialogTitle>
 
-          {/* Name — floating-label gray fill */}
-          <FloatingField label="Name" disabled={isCreating}>
+          {/* Name — floating-label gray fill, with the slug preview as its
+              in-field footer so the path sits inside the input container. */}
+          <FloatingField
+            label="Name"
+            disabled={isCreating}
+            footer={<SlugPreview name={name} />}
+          >
             <input
               autoFocus
               type="text"
@@ -255,11 +271,6 @@ function CreateStreamDialogShell({
               className="w-full bg-transparent text-[15px] leading-[1.4] font-normal tracking-[-0.005em] text-zinc-950 placeholder:text-zinc-300 focus:outline-none"
             />
           </FloatingField>
-
-          {/* Slug preview — quiet education: each Stream is a folder on disk.
-              Only renders when the typed name produces a non-empty slug, so
-              empty / pure-punctuation names don't clutter the surface. */}
-          <SlugPreview name={name} />
 
           {/* Prompt — the hero */}
           <FloatingField
@@ -391,11 +402,15 @@ function FloatingField({
   label,
   hero = false,
   disabled = false,
+  footer,
   children,
 }: {
   label: string
   hero?: boolean
   disabled?: boolean
+  /** Optional content rendered inside the field below the input, separated
+   *  by a hairline. Used for the slug preview under Name. */
+  footer?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
@@ -417,39 +432,35 @@ function FloatingField({
         {label}
       </span>
       {children}
+      {footer !== undefined && (
+        <div className="mt-2 border-t border-zinc-200/70 pt-2">{footer}</div>
+      )}
     </label>
   )
 }
 
 // ── Slug preview ─────────────────────────────────────────────────────────
-// Small line under the Name input: shows the kebab slug that becomes the
-// folder name on disk. Reinforces HappyHQ's "your stuff is files you own"
-// brand value at exactly the moment the user creates a new thing.
+// Rendered as the Name field's footer slot. Shows the filesystem path the
+// Stream will live at — the visible path is its own explanation.
+//
+// Always-rendered so the field's height is reserved; the inner text fades
+// to invisible when there's no slug yet, so typing doesn't shift the form.
 
 function SlugPreview({ name }: { name: string }) {
   const slug = toSlug(name.trim())
-  if (!slug) return null
   return (
-    <div className="-mt-2 flex items-center gap-1.5 pl-3.5 text-[11.5px] text-zinc-400">
-      <span aria-hidden>↳</span>
-      <span className="font-mono">{slug}</span>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            tabIndex={-1}
-            aria-label="What is this?"
-            className="rounded-full p-0.5 text-zinc-300 transition-colors hover:text-zinc-500"
-          >
-            <Info className="size-3" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="top" align="start" className="max-w-56">
-          Each Stream lives as a folder on your computer at
-          <span className="ml-1 font-mono">~/HappyHQ/{slug}/</span>. The name is
-          the label; the folder is where Q stores everything it learns.
-        </TooltipContent>
-      </Tooltip>
+    <div
+      className={clsx('flex items-center gap-2', !slug && 'invisible')}
+      aria-hidden={!slug}
+    >
+      <span className="text-[10px] tracking-wide text-zinc-400 uppercase">
+        Saved to
+      </span>
+      <span className="font-mono text-[11px] leading-none">
+        <span className="text-zinc-400">~/HappyHQ/</span>
+        <span className="font-medium text-zinc-700">{slug || 'stream'}</span>
+        <span className="text-zinc-400">/</span>
+      </span>
     </div>
   )
 }
