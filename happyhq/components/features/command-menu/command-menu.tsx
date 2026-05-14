@@ -210,7 +210,7 @@ function NewGroup() {
       />
       <CommandMenuItem
         id="new-stream"
-        label="New stream"
+        label="New Stream"
         icon={Hash}
         action="Create"
         iconColor="blue"

@@ -142,7 +142,7 @@ function RecentRow({ item }: { item: RecentItem }) {
         </span>
       )}
       {item.type === 'stream' && (
-        <span className="shrink-0 text-xs text-black/20">stream</span>
+        <span className="shrink-0 text-xs text-black/20">Stream</span>
       )}
     </button>
   )

@@ -124,7 +124,7 @@ function CreateStreamDialogShell({
     try {
       const exists = await checkStreamExists(slug)
       if (exists) {
-        toastError('A stream with this name already exists')
+        toastError('A Stream with this name already exists')
         setIsCreating(false)
         return
       }
@@ -153,7 +153,7 @@ function CreateStreamDialogShell({
       onClose()
       router.push(`/${encodeURIComponent(slug)}`)
     } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to create stream')
+      toastError(err instanceof Error ? err.message : 'Failed to create Stream')
       setIsCreating(false)
     }
   }
@@ -169,7 +169,7 @@ function CreateStreamDialogShell({
         {/* ─ Left column — form ───────────────────────────────────────── */}
         <div className="flex flex-col gap-[18px] bg-white px-8 pt-[30px] pb-6">
           <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-zinc-950">
-            Start a new stream
+            Start a new Stream
           </h2>
 
           {/* Name — floating-label gray fill */}
@@ -192,7 +192,7 @@ function CreateStreamDialogShell({
 
           {/* Prompt — the hero */}
           <FloatingField
-            label="What kind of work should this stream do?"
+            label="What kind of work should this Stream do?"
             hero
             disabled={isCreating}
           >
@@ -206,7 +206,7 @@ function CreateStreamDialogShell({
                 }
               }}
               disabled={isCreating}
-              placeholder="Describe how you do this kind of work — the goal, your approach, what good looks like, what to pull from. Q turns this into a playbook it can run anytime."
+              placeholder="Describe how you do this kind of work — the goal, your approach, what good looks like, what to pull from. Q turns this into a Playbook it can run anytime."
               className="block min-h-[124px] w-full resize-none bg-transparent text-[14.5px] leading-[1.55] text-zinc-950 placeholder:text-zinc-300 focus:outline-none"
             />
           </FloatingField>
@@ -281,19 +281,19 @@ function CreateStreamDialogShell({
             />
 
             <div className="text-[10.5px] font-medium tracking-[0.14em] text-zinc-400 uppercase">
-              What&apos;s a stream
+              Meet Streams
             </div>
 
             <h3 className="-mt-1 text-[32px] leading-[1.1] font-medium tracking-[-0.03em] text-zinc-950">
-              Teach once.
+              Teach Q how.
               <br />
-              Then assign work.
+              Then assign it Tasks.
             </h3>
 
             <p className="text-[13.5px] leading-[1.6] text-zinc-500">
-              Streams capture how you do a kind of work — your steps, sources,
-              and style. Once you&apos;ve taught one, hand it a task and Q does
-              the work your way.
+              Q will start by asking you questions about how this work gets
+              done. You&apos;ll go back and forth until Q creates a Playbook and
+              Spec. Then you&apos;re ready to start assigning Tasks to Q.
             </p>
           </div>
         </aside>
