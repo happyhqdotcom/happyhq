@@ -1,5 +1,9 @@
 'use client'
 
+import {
+  streamCreateHandoffKey,
+  type StreamCreateHandoff,
+} from '@/components/features/streams/create/create-stream-dialog'
 import { useCurrentUser } from '@/lib/accounts/hooks'
 import type { ChatMessage } from '@/lib/chat/types'
 import type { DesktopData, TaskItem } from '@/lib/fs/types'
@@ -13,6 +17,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import useSWR, { mutate as globalMutate } from 'swr'
 import { useRunActions } from '../hooks/use-run-actions'
 import { useRunActivity } from '../hooks/use-run-activity'
+import { openInteractiveChatWindow } from '../windows/chat/open-chat-window'
 
 /**
  * Headless initializer — returns null.
@@ -36,6 +41,26 @@ export function DesktopInitializer() {
     useWindowStore.getState().clearAll()
     useDesktopStore.getState().reset()
     useStreamsStore.getState().setActiveStreamSlug(streamSlug || null)
+
+    // Consume any one-shot handoff from the Create Stream dialog. Must run
+    // after clearAll(), otherwise the window we open here gets wiped.
+    if (streamSlug) {
+      const raw = sessionStorage.getItem(streamCreateHandoffKey(streamSlug))
+      if (raw) {
+        sessionStorage.removeItem(streamCreateHandoffKey(streamSlug))
+        try {
+          const { intent, maximize } = JSON.parse(raw) as StreamCreateHandoff
+          openInteractiveChatWindow(streamSlug, {
+            initialMode: 'learning',
+            intent,
+            maximize,
+          })
+        } catch {
+          // Malformed handoff payload — silently drop. The user can chat manually.
+        }
+      }
+    }
+
     return () => {
       useStreamsStore.getState().setActiveStreamSlug(null)
     }

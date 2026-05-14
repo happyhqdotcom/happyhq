@@ -104,6 +104,7 @@ export interface ChatWindowMeta {
   sessionId?: string // live session ID for interactive mode (provider manages state)
   initialMode?: 'general' | 'learning' // set at window creation, consumed once by provider
   intent?: string // user's stated intent for the stream; sent as the first user turn on mount, then cleared
+  shouldMaximize?: boolean // one-shot: ChatWindow maximizes against its canvas on mount, then clears
 }
 
 export interface ChatWindow extends WindowStateBase {

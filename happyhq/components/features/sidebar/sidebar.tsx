@@ -29,7 +29,10 @@ import {
 } from '@/components/common/ui/tooltip'
 import { AccountFooter } from '@/components/features/sidebar/atoms/account-footer'
 import { ActionButtons } from '@/components/features/sidebar/atoms/action-buttons'
-import { CreateStreamDialog } from '@/components/features/streams/create/create-stream-dialog'
+import {
+  CreateStreamDialog,
+  subscribeOpenCreateStreamDialog,
+} from '@/components/features/streams/create/create-stream-dialog'
 import { TaskCreateDialog } from '@/components/features/tasks/create/dialog'
 import { displayTitle } from '@/lib/format'
 import type { StreamEntry, TaskItem } from '@/lib/fs/types'
@@ -57,12 +60,10 @@ export function GlobalSidebar({
 
   // Listen for "open create stream" events from elsewhere in the app
   // (command menu, quick-open panel, etc.) so the dialog has a single owner.
-  useEffect(() => {
-    const handler = () => setStreamCreateOpen(true)
-    window.addEventListener('happyhq:open-create-stream', handler)
-    return () =>
-      window.removeEventListener('happyhq:open-create-stream', handler)
-  }, [])
+  useEffect(
+    () => subscribeOpenCreateStreamDialog(() => setStreamCreateOpen(true)),
+    [],
+  )
   const storeStreams = useStreams()
   const streams = storeStreams.length > 0 ? storeStreams : initialStreams
   const { data: taskItems = [] } = useSWR<TaskItem[]>(taskItemsKey(), fetcher)

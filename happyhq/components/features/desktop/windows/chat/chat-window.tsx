@@ -27,11 +27,37 @@ import { useWindowStore } from '@/stores/windowStore'
 import { Loader2 } from 'lucide-react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { useCallback, useRef } from 'react'
+import type { RefObject } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { WindowComponentProps } from '../types'
 import { useFrameProps } from '../use-frame-props'
 import { WindowFrame } from '../window-frame'
 import { ChatWindowProvider } from './chat-window-provider'
+
+// ── Maximize-on-mount helper ─────────────────────────────────────────
+// Consumes `meta.shouldMaximize` once when the window first mounts on its
+// canvas, then clears the flag. Used to maximize a freshly-opened chat
+// window after a cross-route navigation (e.g. the stream-create dialog).
+
+function MaximizeOnMount({
+  windowId,
+  canvasRef,
+}: {
+  windowId: string
+  canvasRef: RefObject<HTMLDivElement | null>
+}) {
+  const consumed = useRef(false)
+  useEffect(() => {
+    if (consumed.current) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    consumed.current = true
+    const store = useWindowStore.getState()
+    store.toggleMaximize(windowId, canvas.getBoundingClientRect())
+    store.updateChatMeta(windowId, { shouldMaximize: undefined })
+  }, [windowId, canvasRef])
+  return null
+}
 
 // ── Read-only helpers ────────────────────────────────────────────────
 
@@ -213,18 +239,23 @@ export function ChatWindow({ id, canvasRef }: WindowComponentProps) {
   // ── Interactive mode: delegate to ChatContent via per-window provider
   if (interactive) {
     return (
-      <ChatWindowProvider
-        sessionId={w.meta.sessionId}
-        windowId={w.id}
-        initialMode={w.meta.initialMode}
-        intent={w.meta.intent}
-      >
-        <InteractiveChatContent
-          frameProps={frameProps}
-          windowTitle={w.title}
-          sessionId={w.meta.sessionId ?? null}
-        />
-      </ChatWindowProvider>
+      <>
+        {w.meta.shouldMaximize && (
+          <MaximizeOnMount windowId={w.id} canvasRef={canvasRef} />
+        )}
+        <ChatWindowProvider
+          sessionId={w.meta.sessionId}
+          windowId={w.id}
+          initialMode={w.meta.initialMode}
+          intent={w.meta.intent}
+        >
+          <InteractiveChatContent
+            frameProps={frameProps}
+            windowTitle={w.title}
+            sessionId={w.meta.sessionId ?? null}
+          />
+        </ChatWindowProvider>
+      </>
     )
   }
 

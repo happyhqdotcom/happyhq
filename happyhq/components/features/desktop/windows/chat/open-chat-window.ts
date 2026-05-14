@@ -17,6 +17,8 @@ export function openInteractiveChatWindow(
     title?: string
     initialMode?: 'general' | 'learning'
     intent?: string
+    /** When true, ChatWindow maximizes against its canvas on first mount. */
+    maximize?: boolean
   },
 ): string {
   const windowId = `chat-${crypto.randomUUID().slice(0, 8)}`
@@ -37,6 +39,7 @@ export function openInteractiveChatWindow(
       sessionId: opts?.sessionId,
       initialMode: opts?.initialMode,
       intent: opts?.intent,
+      shouldMaximize: opts?.maximize,
     },
   })
 

@@ -1,5 +1,6 @@
 'use client'
 
+import { openCreateStreamDialog } from '@/components/features/streams/create/create-stream-dialog'
 import { displayTitle } from '@/lib/format'
 import type { TaskItem } from '@/lib/fs/types'
 import { fetcher } from '@/lib/swr'
@@ -42,9 +43,7 @@ export function QuickOpen() {
         <ActionButton
           icon={<Hash className="size-[18px]" />}
           label="New Stream"
-          onClick={() =>
-            window.dispatchEvent(new Event('happyhq:open-create-stream'))
-          }
+          onClick={openCreateStreamDialog}
         />
         <ActionButton
           icon={

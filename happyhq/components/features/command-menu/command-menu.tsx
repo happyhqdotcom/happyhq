@@ -6,6 +6,7 @@
 
 'use client'
 
+import { openCreateStreamDialog } from '@/components/features/streams/create/create-stream-dialog'
 import type { UnfurlResult } from '@/lib/actions/unfurl'
 import { addWebInput } from '@/lib/actions/web-input'
 import { invalidateStream } from '@/lib/swr-helpers'
@@ -216,7 +217,7 @@ function NewGroup() {
         iconColor="blue"
         keywords={['new', 'stream', 'create', 'workspace']}
         onSelect={() => {
-          window.dispatchEvent(new Event('happyhq:open-create-stream'))
+          openCreateStreamDialog()
           close()
         }}
       />

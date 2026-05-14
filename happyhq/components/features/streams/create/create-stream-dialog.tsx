@@ -7,7 +7,6 @@ import { useRouter } from 'next/navigation'
 
 import { Dialog } from '@/components/common/catalyst/dialog'
 import { toastError } from '@/components/common/ui/sonner'
-import { openInteractiveChatWindow } from '@/components/features/desktop/windows/chat/open-chat-window'
 import { useCurrentUser } from '@/lib/accounts/hooks'
 import {
   checkStreamExists,
@@ -16,13 +15,40 @@ import {
 } from '@/lib/actions'
 import { toSlug } from '@/lib/format'
 import { useStreamsMutate } from '@/stores/streamsStore'
-import { useWindowStore } from '@/stores/windowStore'
 import clsx from 'clsx'
 
 // ── Starters ───────────────────────────────────────────────────────────
 // Casual, pre-canned playbook examples. Clicking a pill fills the prompt with
 // the starter's text — these aren't formal templates (that'll be its own
 // first-class thing), just a quick way to see what teaching Q looks like.
+
+// Shared event for opening this dialog from elsewhere in the app
+// (sidebar +, quick-open, command menu). Single source of truth so callers
+// can't misspell the event name.
+const OPEN_EVENT = 'happyhq:open-create-stream'
+
+// SessionStorage key prefix for the one-shot handoff between this dialog
+// and the destination stream page (DesktopInitializer reads + clears it).
+// Lives here so producer and consumer share the same key shape.
+export const streamCreateHandoffKey = (slug: string) =>
+  `happyhq:stream-create:${slug}`
+
+export type StreamCreateHandoff = {
+  intent: string
+  maximize?: boolean
+}
+
+/** Fire this from anywhere to pop the Create Stream dialog. */
+export function openCreateStreamDialog() {
+  window.dispatchEvent(new Event(OPEN_EVENT))
+}
+
+/** Subscribe a handler to "open Create Stream dialog" events. Returns an
+ *  unsubscribe fn — pass it straight to useEffect's cleanup. */
+export function subscribeOpenCreateStreamDialog(handler: () => void) {
+  window.addEventListener(OPEN_EVENT, handler)
+  return () => window.removeEventListener(OPEN_EVENT, handler)
+}
 
 type Starter = { id: string; label: string; intent: string }
 
@@ -139,16 +165,17 @@ function CreateStreamDialogShell({
       }
       mutateStreams?.()
 
-      const windowId = openInteractiveChatWindow(slug, {
-        initialMode: 'learning',
+      // Stash the intent for the destination page to consume. Opening the
+      // chat window directly here doesn't work — DesktopInitializer calls
+      // clearAll() on route change and wipes the window before it renders.
+      const handoff: StreamCreateHandoff = {
         intent: trimmedIntent,
-      })
-      const canvas = document.querySelector('[data-desktop-canvas]')
-      if (canvas) {
-        useWindowStore
-          .getState()
-          .toggleMaximize(windowId, canvas.getBoundingClientRect())
+        maximize: true,
       }
+      sessionStorage.setItem(
+        streamCreateHandoffKey(slug),
+        JSON.stringify(handoff),
+      )
 
       onClose()
       router.push(`/${encodeURIComponent(slug)}`)
@@ -287,7 +314,7 @@ function CreateStreamDialogShell({
             <h3 className="-mt-1 text-[32px] leading-[1.1] font-medium tracking-[-0.03em] text-zinc-950">
               Teach Q how.
               <br />
-              Then assign it Tasks.
+              Then start assigning Tasks.
             </h3>
 
             <p className="text-[13.5px] leading-[1.6] text-zinc-500">
