@@ -93,12 +93,16 @@ function CreateStreamDialogShell({
   const [intent, setIntent] = useState('')
   const [isCreating, setIsCreating] = useState(false)
 
-  // Picking a starter prefills intent with its example text; the user can then
-  // edit freely. Handled inline at the click site (no effect needed — the only
-  // path to change starterId is via the pill click).
+  // Picking a starter prefills the intent textarea — but only if the user
+  // hasn't typed anything custom yet. We treat the textarea as "unedited" when
+  // it's empty OR matches the previously-picked starter's text. That lets users
+  // browse pills freely without losing typed work.
   const pickStarter = (s: Starter) => {
+    const currentStarter = STARTERS.find((x) => x.id === starterId)
+    const isUnedited =
+      intent.trim() === '' || intent === (currentStarter?.intent ?? '')
     setStarterId(s.id)
-    setIntent(s.intent)
+    if (isUnedited) setIntent(s.intent)
   }
 
   const canSubmit = name.trim().length > 0 && intent.trim().length > 0
@@ -125,7 +129,14 @@ function CreateStreamDialogShell({
         return
       }
       await createStream(slug, token)
-      await writeStreamTitle(slug, trimmedName)
+      // The stream directory exists from here on; a title-write failure
+      // shouldn't block creation or roll back. The slug already reflects
+      // the user's name, so the stream is usable without the explicit title.
+      try {
+        await writeStreamTitle(slug, trimmedName)
+      } catch {
+        // Non-fatal — log on the server-action side; we proceed.
+      }
       mutateStreams?.()
 
       const windowId = openInteractiveChatWindow(slug, {
@@ -223,14 +234,6 @@ function CreateStreamDialogShell({
                   </button>
                 )
               })}
-              <button
-                type="button"
-                disabled
-                className="cursor-not-allowed rounded-full border border-dashed border-zinc-200 px-[11px] py-1 text-[11.5px] whitespace-nowrap text-zinc-400"
-                title="Coming soon"
-              >
-                More…
-              </button>
             </div>
           </div>
 
@@ -292,10 +295,6 @@ function CreateStreamDialogShell({
               and style. Once you&apos;ve taught one, hand it a task and Q does
               the work your way.
             </p>
-
-            <a className="mt-1.5 inline-flex w-fit cursor-pointer items-center gap-1.5 text-[12.5px] text-zinc-700 transition-[gap,color] hover:gap-2 hover:text-zinc-950">
-              Learn more <span aria-hidden>→</span>
-            </a>
           </div>
         </aside>
       </div>
