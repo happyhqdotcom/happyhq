@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
@@ -90,17 +90,22 @@ const STARTERS: Starter[] = [
  * (sidebar +, desktop QuickOpen, command menu, ...) triggers it via
  * `openDialog('createStream')` from the uiStore.
  *
- * The form body is lazy-rendered only when open. Going from null → mounted
- * IS a fresh mount, so form state resets on every open without a remount
- * key, and hooks/SWR subscriptions stay dormant while the dialog is closed.
+ * The Body is always mounted so Catalyst/Headless owns the enter/leave
+ * transition — `open` is a prop, not a mount toggle. Form state resets on
+ * the false→true edge so each open feels fresh.
  */
 export function CreateStreamDialog() {
   const isOpen = useUiStore((s) => s.openDialog === 'createStream')
-  if (!isOpen) return null
-  return <CreateStreamDialogBody onClose={closeDialog} />
+  return <CreateStreamDialogBody open={isOpen} onClose={closeDialog} />
 }
 
-function CreateStreamDialogBody({ onClose }: { onClose: () => void }) {
+function CreateStreamDialogBody({
+  open,
+  onClose,
+}: {
+  open: boolean
+  onClose: () => void
+}) {
   const router = useRouter()
   const mutateStreams = useStreamsMutate()
   const { token } = useCurrentUser()
@@ -110,6 +115,19 @@ function CreateStreamDialogBody({ onClose }: { onClose: () => void }) {
   const [intent, setIntent] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const intentRef = useRef<HTMLTextAreaElement>(null)
+
+  // Reset the form on each open. Effect rather than re-mount because Headless
+  // owns the open/close transition — unmounting on close would skip it.
+  const prevOpenRef = useRef(false)
+  useEffect(() => {
+    if (open && !prevOpenRef.current) {
+      setName('')
+      setStarterId('blank')
+      setIntent('')
+      setIsCreating(false)
+    }
+    prevOpenRef.current = open
+  }, [open])
 
   // Picking a starter prefills the intent textarea — but only if the user
   // hasn't typed anything custom yet. See `nextStarterState` for the rule.
@@ -201,7 +219,7 @@ function CreateStreamDialogBody({ onClose }: { onClose: () => void }) {
 
   return (
     <Dialog
-      open
+      open={open}
       onClose={handleClose}
       size="4xl"
       className="overflow-hidden rounded-2xl! p-0!"
@@ -341,7 +359,7 @@ function CreateStreamDialogBody({ onClose }: { onClose: () => void }) {
             <h3 className="-mt-1 text-[32px] leading-[1.1] font-medium tracking-[-0.03em] text-zinc-950">
               Teach Q how.
               <br />
-              Then start assigning Tasks.
+              Then assign Tasks.
             </h3>
 
             <p className="text-[13px] leading-[1.6] text-zinc-500">
