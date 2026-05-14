@@ -23,8 +23,7 @@ export function useOpenPanel(): OpenPanel {
   const taskSlug = params.task
 
   if (taskSlug) return { type: 'task', taskSlug, streamSlug }
-  if (pathname === '/task/new' || pathname === '/stream/new')
-    return { type: 'draft' }
+  if (pathname === '/task/new') return { type: 'draft' }
   if (streamSlug) return { type: 'stream', streamSlug }
   return { type: 'empty' }
 }

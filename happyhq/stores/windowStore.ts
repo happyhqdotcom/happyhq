@@ -103,6 +103,7 @@ export interface ChatWindowMeta {
   interactive?: boolean // when true, render full interactive chat via ChatContent
   sessionId?: string // live session ID for interactive mode (provider manages state)
   initialMode?: 'general' | 'learning' // set at window creation, consumed once by provider
+  intent?: string // user's stated intent for the stream; sent as the first user turn on mount, then cleared
 }
 
 export interface ChatWindow extends WindowStateBase {

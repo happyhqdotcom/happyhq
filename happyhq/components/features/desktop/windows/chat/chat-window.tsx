@@ -217,6 +217,7 @@ export function ChatWindow({ id, canvasRef }: WindowComponentProps) {
         sessionId={w.meta.sessionId}
         windowId={w.id}
         initialMode={w.meta.initialMode}
+        intent={w.meta.intent}
       >
         <InteractiveChatContent
           frameProps={frameProps}

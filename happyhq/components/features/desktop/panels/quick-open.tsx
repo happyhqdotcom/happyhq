@@ -42,7 +42,9 @@ export function QuickOpen() {
         <ActionButton
           icon={<Hash className="size-[18px]" />}
           label="New Stream"
-          onClick={() => router.push('/stream/new')}
+          onClick={() =>
+            window.dispatchEvent(new Event('happyhq:open-create-stream'))
+          }
         />
         <ActionButton
           icon={

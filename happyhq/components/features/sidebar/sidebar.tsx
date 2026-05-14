@@ -1,12 +1,12 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import useSWR from 'swr'
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 
 import {
   SidebarContent,
@@ -29,6 +29,7 @@ import {
 } from '@/components/common/ui/tooltip'
 import { AccountFooter } from '@/components/features/sidebar/atoms/account-footer'
 import { ActionButtons } from '@/components/features/sidebar/atoms/action-buttons'
+import { CreateStreamDialog } from '@/components/features/streams/create/create-stream-dialog'
 import { TaskCreateDialog } from '@/components/features/tasks/create/dialog'
 import { displayTitle } from '@/lib/format'
 import type { StreamEntry, TaskItem } from '@/lib/fs/types'
@@ -50,9 +51,18 @@ export function GlobalSidebar({
   initialStreams: StreamEntry[]
 }) {
   const { toggleSidebar } = useSidebar()
-  const router = useRouter()
   const pathname = usePathname()
   const [createOpen, setCreateOpen] = useState(false)
+  const [streamCreateOpen, setStreamCreateOpen] = useState(false)
+
+  // Listen for "open create stream" events from elsewhere in the app
+  // (command menu, quick-open panel, etc.) so the dialog has a single owner.
+  useEffect(() => {
+    const handler = () => setStreamCreateOpen(true)
+    window.addEventListener('happyhq:open-create-stream', handler)
+    return () =>
+      window.removeEventListener('happyhq:open-create-stream', handler)
+  }, [])
   const storeStreams = useStreams()
   const streams = storeStreams.length > 0 ? storeStreams : initialStreams
   const { data: taskItems = [] } = useSWR<TaskItem[]>(taskItemsKey(), fetcher)
@@ -112,10 +122,14 @@ export function GlobalSidebar({
         open={createOpen}
         onClose={() => setCreateOpen(false)}
       />
+      <CreateStreamDialog
+        open={streamCreateOpen}
+        onClose={() => setStreamCreateOpen(false)}
+      />
       <SidebarContent className="mt-2.5">
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
           <SidebarGroupLabel>Streams</SidebarGroupLabel>
-          <SidebarGroupAction onClick={() => router.push('/stream/new')}>
+          <SidebarGroupAction onClick={() => setStreamCreateOpen(true)}>
             <Plus />
           </SidebarGroupAction>
           <SidebarMenu>

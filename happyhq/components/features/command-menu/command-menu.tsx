@@ -216,7 +216,7 @@ function NewGroup() {
         iconColor="blue"
         keywords={['new', 'stream', 'create', 'workspace']}
         onSelect={() => {
-          router.push('/stream/new')
+          window.dispatchEvent(new Event('happyhq:open-create-stream'))
           close()
         }}
       />

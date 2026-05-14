@@ -22,11 +22,13 @@ export function ChatWindowProvider({
   sessionId,
   windowId,
   initialMode,
+  intent,
 }: {
   children: ReactNode
   sessionId?: string | null
   windowId?: string
   initialMode?: 'general' | 'learning'
+  intent?: string
 }) {
   const streamSlug = useStreamSlug()
   const [store] = useState(() => {
@@ -43,13 +45,40 @@ export function ChatWindowProvider({
   // Load history on mount when restoring a window with an existing session.
   // Uses a ref for the initial sessionId so this does NOT re-fire when
   // ensureSession syncs a freshly-created ID to the window store.
+  // Skip when intent is present — that signals a freshly-minted session
+  // that has nothing to load and would just hit /api/chat/history with empty.
   const initialSessionId = useRef(sessionId)
+  const initialIntent = useRef(intent)
   useEffect(() => {
+    if (initialIntent.current) return
     const id = initialSessionId.current
     if (!id || !streamSlug) return
     sessionIdRef.current = id
     store.getState().loadHistory({ sessionId: id, streamSlug })
   }, [streamSlug, store])
+
+  // Consume intent once on mount: send it as the user's first turn, then
+  // clear the meta so a re-mount (or window store rehydration) doesn't
+  // re-fire. Mirrors the q-home-message pattern in ChatSessionProvider.
+  const consumedIntent = useRef(false)
+  useEffect(() => {
+    if (consumedIntent.current) return
+    const seed = initialIntent.current
+    if (!seed) return
+    const sid = sessionId ?? crypto.randomUUID()
+    consumedIntent.current = true
+    sessionIdRef.current = sid
+    store.getState().sendMessage({
+      message: seed,
+      sessionId: sid,
+      streamSlug: streamSlug || undefined,
+    })
+    if (windowId) {
+      useWindowStore
+        .getState()
+        .updateChatMeta(windowId, { intent: undefined, sessionId: sid })
+    }
+  }, [sessionId, streamSlug, store, windowId])
 
   // Sync chat name → window title so there's a single source of truth.
   // Syncs truthy chatName immediately. Clears the title only when chatName
