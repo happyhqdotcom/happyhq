@@ -268,7 +268,7 @@ function CreateStreamDialogShell({
                 }
               }}
               disabled={isCreating}
-              className="w-full bg-transparent text-[15px] leading-[1.4] font-normal tracking-[-0.005em] text-zinc-950 placeholder:text-zinc-300 focus:outline-none"
+              className="w-full bg-transparent text-[15px] leading-[1.4] tracking-[-0.005em] text-zinc-950 placeholder:text-zinc-300 focus:outline-none"
             />
           </FloatingField>
 
@@ -291,7 +291,7 @@ function CreateStreamDialogShell({
               }}
               disabled={isCreating}
               placeholder="Describe how you do this kind of work — the goal, your approach, what good looks like, what to pull from. Q turns this into a Playbook it can run anytime."
-              className="block min-h-[124px] w-full resize-none bg-transparent text-[14.5px] leading-[1.55] text-zinc-950 placeholder:text-zinc-300 focus:outline-none"
+              className="block min-h-[124px] w-full resize-none bg-transparent text-[15px] leading-[1.55] text-zinc-950 placeholder:text-zinc-300 focus:outline-none"
             />
           </FloatingField>
 
@@ -304,7 +304,9 @@ function CreateStreamDialogShell({
             aria-label="Starters"
             className="flex flex-wrap items-center gap-3 px-1"
           >
-            <span className="text-[11.5px] text-zinc-500">Or, try</span>
+            <span className="text-[11px] font-medium text-zinc-500">
+              Or, try
+            </span>
             <div className="flex flex-wrap gap-1">
               {STARTERS.map((t) => {
                 const isOn = starterId === t.id
@@ -316,7 +318,7 @@ function CreateStreamDialogShell({
                     onClick={() => pickStarter(t)}
                     disabled={isCreating}
                     className={clsx(
-                      'rounded-full border px-[11px] py-1 text-[11.5px] whitespace-nowrap transition-colors disabled:opacity-50',
+                      'rounded-full border px-[11px] py-1 text-[11px] font-medium whitespace-nowrap transition-colors disabled:opacity-50',
                       isOn
                         ? 'border-zinc-950 bg-zinc-950 text-white'
                         : 'border-zinc-200 text-zinc-500 hover:border-zinc-300 hover:text-zinc-950',
@@ -334,7 +336,7 @@ function CreateStreamDialogShell({
               type="button"
               onClick={handleClose}
               disabled={isCreating}
-              className="rounded-full px-4 py-2 text-[13px] text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-950 disabled:opacity-50"
+              className="rounded-full px-4 py-2 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-950 disabled:opacity-50"
             >
               Cancel
             </button>
@@ -355,7 +357,7 @@ function CreateStreamDialogShell({
         </div>
 
         {/* ─ Right column — aesthetic explainer ───────────────────────── */}
-        <aside className="relative flex flex-col justify-center border-l border-zinc-200/60 bg-zinc-50/70 px-[38px] py-11">
+        <aside className="relative flex flex-col justify-center border-l border-zinc-200 bg-zinc-50/70 px-[38px] py-11">
           {/* Decorative dot, top-right */}
           <span
             aria-hidden
@@ -372,7 +374,7 @@ function CreateStreamDialogShell({
               className="mb-1 size-12 select-none"
             />
 
-            <div className="text-[10.5px] font-medium tracking-[0.14em] text-zinc-400 uppercase">
+            <div className="text-[10px] font-medium tracking-[0.14em] text-zinc-400 uppercase">
               Meet Streams
             </div>
 
@@ -382,7 +384,7 @@ function CreateStreamDialogShell({
               Then start assigning Tasks.
             </h3>
 
-            <p className="text-[13.5px] leading-[1.6] text-zinc-500">
+            <p className="text-[13px] leading-[1.6] text-zinc-500">
               Q will start by asking you questions about how this work gets
               done. You&apos;ll go back and forth until Q creates a Playbook and
               Spec. Then you&apos;re ready to start assigning Tasks to Q.
@@ -402,15 +404,16 @@ function FloatingField({
   label,
   hero = false,
   disabled = false,
-  footer,
+  footer = null,
   children,
 }: {
   label: string
   hero?: boolean
   disabled?: boolean
-  /** Optional content rendered inside the field below the input, separated
-   *  by a hairline. Used for the slug preview under Name. */
-  footer?: React.ReactNode
+  /** Optional content rendered inside the field below the input. The footer
+   *  area uses a grid-rows transition so the field grows into view smoothly
+   *  when content appears (and collapses back when null). */
+  footer?: React.ReactNode | null
   children: React.ReactNode
 }) {
   return (
@@ -421,30 +424,21 @@ function FloatingField({
         disabled && 'opacity-60',
       )}
     >
-      <span
-        className={clsx(
-          'mb-1 block tracking-wide',
-          hero
-            ? 'text-[11.5px] font-semibold text-zinc-700'
-            : 'text-[10.5px] font-medium text-zinc-500',
-        )}
-      >
+      <span className="mb-1 block text-[11px] font-medium tracking-wide text-zinc-500">
         {label}
       </span>
       {children}
       {footer !== undefined && (
-        <div className="mt-2 border-t border-zinc-200/70 pt-2">{footer}</div>
+        <div className="mt-2 border-t border-zinc-200 pt-2">{footer}</div>
       )}
     </label>
   )
 }
 
 // ── Slug preview ─────────────────────────────────────────────────────────
-// Rendered as the Name field's footer slot. Shows the filesystem path the
-// Stream will live at — the visible path is its own explanation.
-//
-// Always-rendered so the field's height is reserved; the inner text fades
-// to invisible when there's no slug yet, so typing doesn't shift the form.
+// Rendered as the Name field's footer slot. Always renders so the field
+// height is reserved; the inner row becomes invisible when there's no
+// slug yet so typing doesn't shift the form.
 
 function SlugPreview({ name }: { name: string }) {
   const slug = toSlug(name.trim())
@@ -453,7 +447,7 @@ function SlugPreview({ name }: { name: string }) {
       className={clsx('flex items-center gap-2', !slug && 'invisible')}
       aria-hidden={!slug}
     >
-      <span className="text-[10px] tracking-wide text-zinc-400 uppercase">
+      <span className="text-[10px] font-medium tracking-wide text-zinc-400 uppercase">
         Saved to
       </span>
       <span className="font-mono text-[11px] leading-none">
