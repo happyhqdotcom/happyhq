@@ -78,9 +78,11 @@ const STARTERS: Starter[] = [
 ]
 
 // ── Design tokens ────────────────────────────────────────────────────────
-// Carbon-copied from the handoff's `base.css`. Set as CSS custom properties
-// on the panel root so every nested element can reference them via
-// `var(--ink-…)` / `var(--paper-…)` — same way the prototype works.
+// Warm-neutral oklch ramp scoped to this dialog. Set as CSS custom
+// properties on the panel root so every nested element can reference them
+// via `var(--ink-…)` / `var(--paper-…)` (e.g. `bg-(--paper)`,
+// `text-(--ink-60)`). Kept local for now — promote to `globals.css` if/when
+// another surface needs the same palette.
 const TOKENS = {
   '--paper': 'oklch(0.985 0.005 80)',
   '--paper-2': 'oklch(0.965 0.006 80)',
@@ -99,11 +101,13 @@ const TOKENS = {
  * (sidebar +, desktop QuickOpen, command menu, ...) triggers it via
  * `openDialog('createStream')` from the uiStore.
  *
- * Uses raw `@headlessui/react` Dialog (not Catalyst's wrapper) so the
- * panel chrome — colors, radii, padding, transitions — comes only from
- * this file. Visual styling is a 1:1 port of `var-h.css` from the design
- * handoff (oklch tokens + exact px values), so deviations from the
- * prototype are intentional edits rather than translation drift.
+ * Uses raw `@headlessui/react` Dialog rather than the Catalyst wrapper.
+ * Catalyst's defaults (ring, padding scale, cool neutrals) don't map onto
+ * this dialog's warm-neutral aesthetic, and trying to override them was
+ * the source of repeated visual drift. The primitives we actually need —
+ * focus trap, esc-to-close, return-focus, portal, `aria-labelledby` —
+ * still come from `@headlessui/react`; we've only replaced the styling
+ * layer. Other dialogs in the app continue to use Catalyst.
  */
 export function CreateStreamDialog() {
   const isOpen = useUiStore((s) => s.openDialog === 'createStream')
@@ -229,7 +233,7 @@ function CreateStreamDialogBody({
       onClose={handleClose}
       className="relative z-1050"
     >
-      {/* Scrim — `.vh-scrim` */}
+      {/* Scrim */}
       <Headless.DialogBackdrop
         transition
         className="fixed inset-0 bg-[oklch(0.18_0.01_80/0.28)] backdrop-blur-[2px] transition duration-100 data-closed:opacity-0 data-enter:ease-out data-leave:ease-in"
@@ -242,9 +246,9 @@ function CreateStreamDialogBody({
           style={TOKENS}
           className="grid min-h-[580px] w-[min(980px,100%)] grid-cols-[1.35fr_1fr] overflow-hidden rounded-[20px] border border-(--ink-10) bg-(--paper) shadow-[0_30px_80px_oklch(0_0_0/0.14),_0_2px_8px_oklch(0_0_0/0.06)] transition duration-100 will-change-transform data-closed:scale-[0.98] data-closed:opacity-0 data-enter:ease-out data-leave:ease-in"
         >
-          {/* ─ Left column — `.vh-left` ───────────────────────────────── */}
+          {/* ─ Left column — form ──────────────────────────────────────── */}
           <div className="flex flex-col gap-4 bg-(--paper) px-7 pt-[22px] pb-[22px]">
-            {/* Header — `.vh-header` */}
+            {/* Header */}
             <div className="mb-[2px] flex items-center justify-between">
               <Headless.DialogTitle className="m-0 text-[14px] font-medium tracking-[0.01em] text-(--ink-60)">
                 New stream
@@ -266,7 +270,7 @@ function CreateStreamDialogBody({
               </button>
             </div>
 
-            {/* Name field — `.vh-field` */}
+            {/* Name */}
             <FloatingField
               label="Name"
               disabled={isCreating}
@@ -289,8 +293,8 @@ function CreateStreamDialogBody({
               />
             </FloatingField>
 
-            {/* Prompt — `.vh-field-prompt`. A one-sentence kickoff; Q digs
-                into the real playbook details in the chat after Create. */}
+            {/* Prompt — a one-sentence kickoff. Q digs into the real
+                playbook details in the chat after Create. */}
             <FloatingField
               label="Hey Q! Can you learn how we..."
               hero
@@ -319,10 +323,9 @@ function CreateStreamDialogBody({
               />
             </FloatingField>
 
-            {/* Pills row — `.vh-pills-row`.
-                Skipped in Tab order (tabIndex={-1}) so keyboard users go
-                Name → Textarea → Cancel/Create without detouring through
-                6 pills. Still clickable via mouse. */}
+            {/* Pills — optional accelerators. Skipped in Tab order
+                (tabIndex={-1}) so keyboard users go Name → Textarea →
+                Cancel/Create without detouring through 6 pills. */}
             <div
               role="group"
               aria-label="Starters"
@@ -356,7 +359,7 @@ function CreateStreamDialogBody({
               </div>
             </div>
 
-            {/* Actions — `.vh-actions` */}
+            {/* Actions */}
             <div className="mt-auto flex items-center justify-between border-t border-(--ink-10) pt-4">
               <button
                 type="button"
@@ -402,7 +405,7 @@ function CreateStreamDialogBody({
             </div>
           </div>
 
-          {/* ─ Right column — `.vh-right` ─────────────────────────────── */}
+          {/* ─ Right column — explainer ──────────────────────────────── */}
           <aside
             className="relative flex flex-col justify-center border-l border-(--ink-10) bg-(--paper-2) px-[38px] py-11"
             style={{
@@ -459,9 +462,10 @@ function CreateStreamDialogBody({
   )
 }
 
-// ── Floating-label field — `.vh-field` ──────────────────────────────────
-// Gray-fill container with a small uppercase eyebrow label and the input
-// stacked below. Hero variant bumps the top padding (matches `.vh-field-prompt`).
+// ── Floating-label field ────────────────────────────────────────────────
+// Gray-fill container with a small eyebrow label and the input stacked
+// below. The `hero` variant bumps the top padding for taller inputs
+// (textareas) so the eyebrow sits at the same optical baseline.
 
 function FloatingField({
   label,
@@ -493,10 +497,11 @@ function FloatingField({
   )
 }
 
-// ── Slug preview — `.vh-path` ───────────────────────────────────────────
-// Lives inside the Name field's footer slot. Mirrors the design's
-// three-part path: muted prefix, separator, slug. The slug switches from
-// italic sans "untitled" placeholder to bold mono once the user types.
+// ── Slug preview ────────────────────────────────────────────────────────
+// Lives inside the Name field's footer slot. Static helper ("A folder
+// will be created for your Stream") is always visible; the actual save
+// path fades in inline once the user types a name. Empty state doubles
+// as a quiet education point — Streams are real folders on disk.
 
 function SlugPreview({ name }: { name: string }) {
   const slug = toSlug(name.trim())
