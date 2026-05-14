@@ -32,18 +32,22 @@ export function TaskListItem({
     setLastServerDone(isDone)
     setOptimisticDone(isDone)
   }
+  // Clarification-pending means the agent has handed control back to the user;
+  // the checkbox slot should match the amber badge, not keep spinning as if work
+  // is in flight.
+  const isAwaitingClarification = frontmatter.pending === 'clarification'
   const isRunning =
-    task.run?.status === 'discovering' ||
-    task.run?.status === 'planning' ||
-    task.run?.status === 'working'
+    !isAwaitingClarification &&
+    (task.run?.status === 'discovering' ||
+      task.run?.status === 'planning' ||
+      task.run?.status === 'working')
 
   const streamLabel = frontmatter.stream ? formatSlug(frontmatter.stream) : null
   // "Needs clarification" wins over the run-status label so the human-action
   // ask is visible at a glance — discovery has paused itself awaiting answers.
-  const statusLabel =
-    frontmatter.pending === 'clarification'
-      ? ({ text: 'Needs clarification', badgeColor: 'amber' } as const)
-      : getRunStatusLabel(task.run?.status, task.run?.stopReason)
+  const statusLabel = isAwaitingClarification
+    ? ({ text: 'Needs clarification', badgeColor: 'amber' } as const)
+    : getRunStatusLabel(task.run?.status, task.run?.stopReason)
 
   async function handleToggle() {
     const prev = optimisticDone
