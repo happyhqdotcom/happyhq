@@ -113,12 +113,16 @@ function CreateStreamDialogShell({
   // hasn't typed anything custom yet. We treat the textarea as "unedited" when
   // it's empty OR matches the previously-picked starter's text. That lets users
   // browse pills freely without losing typed work.
+  //
+  // When the text IS edited, the click is a no-op: highlighting a different
+  // pill without changing the text would lie about what's in the box.
   const pickStarter = (s: Starter) => {
     const currentStarter = STARTERS.find((x) => x.id === starterId)
     const isUnedited =
       intent.trim() === '' || intent === (currentStarter?.intent ?? '')
+    if (!isUnedited) return
     setStarterId(s.id)
-    if (isUnedited) setIntent(s.intent)
+    setIntent(s.intent)
   }
 
   const canSubmit = name.trim().length > 0 && intent.trim().length > 0
