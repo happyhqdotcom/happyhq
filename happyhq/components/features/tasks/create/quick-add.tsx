@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { toastError, toastWarning } from '@/components/common/ui/sonner'
 import { FileRow } from '@/components/features/desktop/windows/shared/file-row'
@@ -45,6 +45,14 @@ export function TaskQuickAdd({
   const { isDragOver, dragHandlers } = useFileDrop(addFiles, {
     enabled: expanded,
   })
+
+  useEffect(() => {
+    function focus() {
+      titleRef.current?.focus()
+    }
+    window.addEventListener('happyhq:focus-quick-add', focus)
+    return () => window.removeEventListener('happyhq:focus-quick-add', focus)
+  }, [])
 
   const canSubmit = title.trim().length > 0
 
