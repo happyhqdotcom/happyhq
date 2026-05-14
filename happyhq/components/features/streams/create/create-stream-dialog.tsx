@@ -14,6 +14,10 @@ import {
   writeStreamTitle,
 } from '@/lib/actions'
 import { toSlug } from '@/lib/format'
+import {
+  streamCreateHandoffKey,
+  type StreamCreateHandoff,
+} from '@/lib/stream-create-handoff'
 import { useStreamsMutate } from '@/stores/streamsStore'
 import clsx from 'clsx'
 
@@ -26,17 +30,6 @@ import clsx from 'clsx'
 // (sidebar +, quick-open, command menu). Single source of truth so callers
 // can't misspell the event name.
 const OPEN_EVENT = 'happyhq:open-create-stream'
-
-// SessionStorage key prefix for the one-shot handoff between this dialog
-// and the destination stream page (DesktopInitializer reads + clears it).
-// Lives here so producer and consumer share the same key shape.
-export const streamCreateHandoffKey = (slug: string) =>
-  `happyhq:stream-create:${slug}`
-
-export type StreamCreateHandoff = {
-  intent: string
-  maximize?: boolean
-}
 
 /** Fire this from anywhere to pop the Create Stream dialog. */
 export function openCreateStreamDialog() {

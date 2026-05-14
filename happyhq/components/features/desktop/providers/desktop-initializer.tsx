@@ -1,12 +1,12 @@
 'use client'
 
-import {
-  streamCreateHandoffKey,
-  type StreamCreateHandoff,
-} from '@/components/features/streams/create/create-stream-dialog'
 import { useCurrentUser } from '@/lib/accounts/hooks'
 import type { ChatMessage } from '@/lib/chat/types'
 import type { DesktopData, TaskItem } from '@/lib/fs/types'
+import {
+  streamCreateHandoffKey,
+  type StreamCreateHandoff,
+} from '@/lib/stream-create-handoff'
 import { FetchError, fetcher } from '@/lib/swr'
 import { desktopDataKey, taskItemsKey } from '@/lib/swr-keys'
 import { useDesktopStore } from '@/stores/desktopStore'
