@@ -128,6 +128,11 @@ export async function chatAgentOptions(params: {
     disallowedTools: ['EnterPlanMode', 'ExitPlanMode'],
     canUseTool: async (toolName, input, { signal, toolUseID }) => {
       if (toolName === 'AskUserQuestion') {
+        log('chat.canusetool_fired', {
+          sessionId,
+          toolName,
+          toolUseId: toolUseID,
+        })
         try {
           const answers = await Promise.race([
             waitForAnswer(sessionId),
@@ -139,11 +144,21 @@ export async function chatAgentOptions(params: {
               )
             }),
           ])
+          log('chat.canusetool_resolved', {
+            sessionId,
+            toolUseId: toolUseID,
+            outcome: 'answered',
+          })
           return {
             behavior: 'allow' as const,
             updatedInput: { ...input, answers },
           }
         } catch {
+          log('chat.canusetool_resolved', {
+            sessionId,
+            toolUseId: toolUseID,
+            outcome: 'dismissed',
+          })
           return {
             behavior: 'deny' as const,
             message: 'User dismissed the question',
