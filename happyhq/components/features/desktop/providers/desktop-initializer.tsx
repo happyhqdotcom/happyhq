@@ -40,10 +40,10 @@ export function DesktopInitializer() {
 
     // Consume any one-shot handoff from the Create Stream dialog. Must run
     // after clearAll(), otherwise the window we open here gets wiped.
-    // Skip in mock mode — the dialog isn't reachable there and we don't want
-    // a stale handoff from a previous real session to fire under mocks.
     // Pattern mirrors `q-home-message` (ad-hoc sessionStorage handoff).
-    if (streamSlug && !useDesktopStore.getState().mockMode) {
+    // No mockMode gate — the dialog is reachable in mock mode too, and the
+    // TTL below already guards against stale entries from prior sessions.
+    if (streamSlug) {
       const key = `happyhq:stream-create:${streamSlug}`
       const raw = sessionStorage.getItem(key)
       if (raw) {
