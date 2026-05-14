@@ -11,6 +11,7 @@ import {
   useRecentsStore,
 } from '@/stores/recentsStore'
 import { useStreams } from '@/stores/streamsStore'
+import { openDialog } from '@/stores/uiStore'
 import { FolderOpen, Hash, ListTodo, Plus, Waves } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
@@ -42,7 +43,7 @@ export function QuickOpen() {
         <ActionButton
           icon={<Hash className="size-[18px]" />}
           label="New Stream"
-          onClick={() => router.push('/stream/new')}
+          onClick={() => openDialog('createStream')}
         />
         <ActionButton
           icon={
@@ -140,7 +141,7 @@ function RecentRow({ item }: { item: RecentItem }) {
         </span>
       )}
       {item.type === 'stream' && (
-        <span className="shrink-0 text-xs text-black/20">stream</span>
+        <span className="shrink-0 text-xs text-black/20">Stream</span>
       )}
     </button>
   )

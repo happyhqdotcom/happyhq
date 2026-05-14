@@ -14,6 +14,7 @@ import {
   useCommandMenuPage,
   useCommandMenuStore,
 } from '@/stores/commandMenuStore'
+import { openDialog } from '@/stores/uiStore'
 import { Command as CommandPrimitive } from 'cmdk'
 import { Globe, Hash, ListTodo, Plus, Waves } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -211,13 +212,13 @@ function NewGroup() {
       />
       <CommandMenuItem
         id="new-stream"
-        label="New stream"
+        label="New Stream"
         icon={Hash}
         action="Create"
         iconColor="blue"
         keywords={['new', 'stream', 'create', 'workspace']}
         onSelect={() => {
-          router.push('/stream/new')
+          openDialog('createStream')
           close()
         }}
       />

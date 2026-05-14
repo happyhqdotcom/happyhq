@@ -6,7 +6,7 @@ import useSWR from 'swr'
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 
 import {
   SidebarContent,
@@ -35,6 +35,7 @@ import type { StreamEntry, TaskItem } from '@/lib/fs/types'
 import { fetcher } from '@/lib/swr'
 import { taskItemsKey } from '@/lib/swr-keys'
 import { useStreams } from '@/stores/streamsStore'
+import { openDialog } from '@/stores/uiStore'
 import {
   FerrisWheel,
   Hash,
@@ -50,7 +51,6 @@ export function GlobalSidebar({
   initialStreams: StreamEntry[]
 }) {
   const { toggleSidebar } = useSidebar()
-  const router = useRouter()
   const pathname = usePathname()
   const [createOpen, setCreateOpen] = useState(false)
   const storeStreams = useStreams()
@@ -115,7 +115,7 @@ export function GlobalSidebar({
       <SidebarContent className="mt-2.5">
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
           <SidebarGroupLabel>Streams</SidebarGroupLabel>
-          <SidebarGroupAction onClick={() => router.push('/stream/new')}>
+          <SidebarGroupAction onClick={() => openDialog('createStream')}>
             <Plus />
           </SidebarGroupAction>
           <SidebarMenu>

@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import useSWR, { mutate as globalMutate } from 'swr'
 import { useRunActions } from '../hooks/use-run-actions'
 import { useRunActivity } from '../hooks/use-run-activity'
+import { openInteractiveChatWindow } from '../windows/chat/open-chat-window'
 
 /**
  * Headless initializer — returns null.
@@ -36,6 +37,40 @@ export function DesktopInitializer() {
     useWindowStore.getState().clearAll()
     useDesktopStore.getState().reset()
     useStreamsStore.getState().setActiveStreamSlug(streamSlug || null)
+
+    // Consume any one-shot handoff from the Create Stream dialog. Must run
+    // after clearAll(), otherwise the window we open here gets wiped.
+    // Pattern mirrors `q-home-message` (ad-hoc sessionStorage handoff).
+    // No mockMode gate — the dialog is reachable in mock mode too, and the
+    // TTL below already guards against stale entries from prior sessions.
+    if (streamSlug) {
+      const key = `happyhq:stream-create:${streamSlug}`
+      const raw = sessionStorage.getItem(key)
+      if (raw) {
+        sessionStorage.removeItem(key)
+        try {
+          const { intent, maximize, createdAt } = JSON.parse(raw) as {
+            intent: string
+            maximize?: boolean
+            createdAt: number
+          }
+          // 60s TTL — guards against a refresh-before-hydrate race re-firing.
+          if (
+            typeof createdAt === 'number' &&
+            Date.now() - createdAt < 60_000
+          ) {
+            openInteractiveChatWindow(streamSlug, {
+              initialMode: 'learning',
+              intent,
+              maximize,
+            })
+          }
+        } catch {
+          // Malformed payload — silently drop. The user can chat manually.
+        }
+      }
+    }
+
     return () => {
       useStreamsStore.getState().setActiveStreamSlug(null)
     }
