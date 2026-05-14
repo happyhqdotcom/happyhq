@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
@@ -123,6 +123,7 @@ function CreateStreamDialogShell({
   const [starterId, setStarterId] = useState<string>('blank')
   const [intent, setIntent] = useState('')
   const [isCreating, setIsCreating] = useState(false)
+  const intentRef = useRef<HTMLTextAreaElement>(null)
 
   // Picking a starter prefills the intent textarea — but only if the user
   // hasn't typed anything custom yet. We treat the textarea as "unedited" when
@@ -138,6 +139,16 @@ function CreateStreamDialogShell({
     if (!isUnedited) return
     setStarterId(s.id)
     setIntent(s.intent)
+    // Hand focus to the textarea with the cursor at the end so the user can
+    // immediately tailor the preset text. requestAnimationFrame waits for the
+    // controlled-value update to commit before we move the caret.
+    requestAnimationFrame(() => {
+      const el = intentRef.current
+      if (!el) return
+      el.focus()
+      const end = el.value.length
+      el.setSelectionRange(end, end)
+    })
   }
 
   const canSubmit = name.trim().length > 0 && intent.trim().length > 0
@@ -246,6 +257,7 @@ function CreateStreamDialogShell({
             disabled={isCreating}
           >
             <textarea
+              ref={intentRef}
               value={intent}
               maxLength={INTENT_MAX}
               onChange={(e) => setIntent(e.target.value)}
