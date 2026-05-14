@@ -1,6 +1,7 @@
 import { toastError, toastWarning } from '@/components/common/ui/sonner'
 import { useCurrentUser } from '@/lib/accounts/hooks'
 import { ingestTaskInput } from '@/lib/actions'
+import { friendlyErrorMessage } from '@/lib/errors/friendly-message'
 import { useCallback, useRef, useState } from 'react'
 
 function truncate(s: string, max: number) {
@@ -128,7 +129,7 @@ export function useOptimisticUploads(opts: {
                 ),
               )
               toastError(
-                `Failed to upload ${pf.file.name}: ${err instanceof Error ? err.message : 'Unknown error'}`,
+                `Failed to upload ${pf.file.name}: ${friendlyErrorMessage(err, 'Unknown error')}`,
               )
               throw err
             }

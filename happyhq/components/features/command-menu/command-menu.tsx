@@ -8,6 +8,7 @@
 
 import type { UnfurlResult } from '@/lib/actions/unfurl'
 import { addWebInput } from '@/lib/actions/web-input'
+import { friendlyErrorMessage } from '@/lib/errors/friendly-message'
 import { invalidateStream } from '@/lib/swr-helpers'
 import {
   useCommandMenuPage,
@@ -92,7 +93,7 @@ function PaletteContent() {
         {
           loading: 'Saving link...',
           success: 'Link added to task inputs',
-          error: (err) => err.message || 'Failed to add link',
+          error: (err) => friendlyErrorMessage(err, 'Failed to add link'),
         },
       )
     },
