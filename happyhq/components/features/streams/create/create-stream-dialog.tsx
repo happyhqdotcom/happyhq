@@ -5,7 +5,7 @@ import { useState } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 
-import { Dialog } from '@/components/common/catalyst/dialog'
+import { Dialog, DialogTitle } from '@/components/common/catalyst/dialog'
 import { toastError } from '@/components/common/ui/sonner'
 import { useCurrentUser } from '@/lib/accounts/hooks'
 import {
@@ -14,10 +14,6 @@ import {
   writeStreamTitle,
 } from '@/lib/actions'
 import { toSlug } from '@/lib/format'
-import {
-  streamCreateHandoffKey,
-  type StreamCreateHandoff,
-} from '@/lib/stream-create-handoff'
 import { useStreamsMutate } from '@/stores/streamsStore'
 import clsx from 'clsx'
 
@@ -156,18 +152,22 @@ function CreateStreamDialogShell({
       } catch {
         // Non-fatal — log on the server-action side; we proceed.
       }
-      mutateStreams?.()
+      // Revalidates /api/fs/streams so the sidebar picks up the new stream.
+      mutateStreams()
 
-      // Stash the intent for the destination page to consume. Opening the
-      // chat window directly here doesn't work — DesktopInitializer calls
-      // clearAll() on route change and wipes the window before it renders.
-      const handoff: StreamCreateHandoff = {
-        intent: trimmedIntent,
-        maximize: true,
-      }
+      // One-shot handoff to the destination stream page. The dialog can't
+      // open the chat window itself because DesktopInitializer's clearAll()
+      // on route change would wipe it. Consumer in DesktopInitializer reads
+      // and clears `happyhq:stream-create:{slug}` on mount; `createdAt`
+      // guards against a refresh-before-hydrate race re-firing the message.
+      // Pattern mirrors `q-home-message` (HomeComposer → ChatSessionProvider).
       sessionStorage.setItem(
-        streamCreateHandoffKey(slug),
-        JSON.stringify(handoff),
+        `happyhq:stream-create:${slug}`,
+        JSON.stringify({
+          intent: trimmedIntent,
+          maximize: true,
+          createdAt: Date.now(),
+        }),
       )
 
       onClose()
@@ -188,9 +188,10 @@ function CreateStreamDialogShell({
       <div className="grid min-h-136 grid-cols-1 sm:grid-cols-[1.4fr_1fr]">
         {/* ─ Left column — form ───────────────────────────────────────── */}
         <div className="flex flex-col gap-[18px] bg-white px-8 pt-[30px] pb-6">
-          <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-zinc-950">
+          {/* DialogTitle wires aria-labelledby on the Dialog for screen readers */}
+          <DialogTitle className="text-[17px]! font-semibold tracking-[-0.01em] text-zinc-950!">
             Start a new Stream
-          </h2>
+          </DialogTitle>
 
           {/* Name — floating-label gray fill */}
           <FloatingField label="Name" disabled={isCreating}>

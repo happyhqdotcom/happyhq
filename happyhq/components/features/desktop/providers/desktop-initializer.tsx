@@ -3,10 +3,6 @@
 import { useCurrentUser } from '@/lib/accounts/hooks'
 import type { ChatMessage } from '@/lib/chat/types'
 import type { DesktopData, TaskItem } from '@/lib/fs/types'
-import {
-  streamCreateHandoffKey,
-  type StreamCreateHandoff,
-} from '@/lib/stream-create-handoff'
 import { FetchError, fetcher } from '@/lib/swr'
 import { desktopDataKey, taskItemsKey } from '@/lib/swr-keys'
 import { useDesktopStore } from '@/stores/desktopStore'
@@ -44,19 +40,33 @@ export function DesktopInitializer() {
 
     // Consume any one-shot handoff from the Create Stream dialog. Must run
     // after clearAll(), otherwise the window we open here gets wiped.
-    if (streamSlug) {
-      const raw = sessionStorage.getItem(streamCreateHandoffKey(streamSlug))
+    // Skip in mock mode — the dialog isn't reachable there and we don't want
+    // a stale handoff from a previous real session to fire under mocks.
+    // Pattern mirrors `q-home-message` (ad-hoc sessionStorage handoff).
+    if (streamSlug && !useDesktopStore.getState().mockMode) {
+      const key = `happyhq:stream-create:${streamSlug}`
+      const raw = sessionStorage.getItem(key)
       if (raw) {
-        sessionStorage.removeItem(streamCreateHandoffKey(streamSlug))
+        sessionStorage.removeItem(key)
         try {
-          const { intent, maximize } = JSON.parse(raw) as StreamCreateHandoff
-          openInteractiveChatWindow(streamSlug, {
-            initialMode: 'learning',
-            intent,
-            maximize,
-          })
+          const { intent, maximize, createdAt } = JSON.parse(raw) as {
+            intent: string
+            maximize?: boolean
+            createdAt: number
+          }
+          // 60s TTL — guards against a refresh-before-hydrate race re-firing.
+          if (
+            typeof createdAt === 'number' &&
+            Date.now() - createdAt < 60_000
+          ) {
+            openInteractiveChatWindow(streamSlug, {
+              initialMode: 'learning',
+              intent,
+              maximize,
+            })
+          }
         } catch {
-          // Malformed handoff payload — silently drop. The user can chat manually.
+          // Malformed payload — silently drop. The user can chat manually.
         }
       }
     }
