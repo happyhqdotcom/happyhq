@@ -14,6 +14,7 @@ import {
   writeStreamTitle,
 } from '@/lib/actions'
 import { toSlug } from '@/lib/format'
+import { reportError } from '@/lib/report-error'
 import { useStreamsMutate } from '@/stores/streamsStore'
 import clsx from 'clsx'
 
@@ -149,8 +150,13 @@ function CreateStreamDialogShell({
       // the user's name, so the stream is usable without the explicit title.
       try {
         await writeStreamTitle(slug, trimmedName)
-      } catch {
-        // Non-fatal — log on the server-action side; we proceed.
+      } catch (err) {
+        // Non-fatal: slug already reflects the name, so the stream is usable.
+        // Report so it surfaces in client.* logs instead of disappearing.
+        reportError('client.stream_create.title_write_failed', {
+          stream: slug,
+          message: err instanceof Error ? err.message : String(err),
+        })
       }
       // Revalidates /api/fs/streams so the sidebar picks up the new stream.
       mutateStreams()
@@ -232,8 +238,15 @@ function CreateStreamDialogShell({
             />
           </FloatingField>
 
-          {/* Pills — quiet starters (not first-class templates) */}
-          <div className="flex flex-wrap items-center gap-3 px-1">
+          {/* Pills — quiet starters (not first-class templates).
+              Skipped in Tab order (tabIndex={-1}) because they're optional
+              accelerators; keyboard users go Name → Textarea → Cancel/Create
+              without detouring through 6 pills. Still clickable via mouse. */}
+          <div
+            role="group"
+            aria-label="Starters"
+            className="flex flex-wrap items-center gap-3 px-1"
+          >
             <span className="text-[11.5px] text-zinc-500">Or, try</span>
             <div className="flex flex-wrap gap-1">
               {STARTERS.map((t) => {
@@ -242,6 +255,7 @@ function CreateStreamDialogShell({
                   <button
                     key={t.id}
                     type="button"
+                    tabIndex={-1}
                     onClick={() => pickStarter(t)}
                     disabled={isCreating}
                     className={clsx(

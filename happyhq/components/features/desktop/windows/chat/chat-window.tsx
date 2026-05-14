@@ -38,24 +38,31 @@ import { ChatWindowProvider } from './chat-window-provider'
 // Consumes `meta.shouldMaximize` once when the window first mounts on its
 // canvas, then clears the flag. Used to maximize a freshly-opened chat
 // window after a cross-route navigation (e.g. the stream-create dialog).
+// `toggleMaximize` would flip an already-maximized window back to restored,
+// so we only toggle when not yet maximized — but we always clear the flag
+// so a later restore can't re-trigger it.
 
 function MaximizeOnMount({
   windowId,
   canvasRef,
+  alreadyMaximized,
 }: {
   windowId: string
   canvasRef: RefObject<HTMLDivElement | null>
+  alreadyMaximized: boolean
 }) {
   const consumed = useRef(false)
   useEffect(() => {
     if (consumed.current) return
-    const canvas = canvasRef.current
-    if (!canvas) return
-    consumed.current = true
     const store = useWindowStore.getState()
-    store.toggleMaximize(windowId, canvas.getBoundingClientRect())
+    if (!alreadyMaximized) {
+      const canvas = canvasRef.current
+      if (!canvas) return
+      store.toggleMaximize(windowId, canvas.getBoundingClientRect())
+    }
+    consumed.current = true
     store.updateChatMeta(windowId, { shouldMaximize: undefined })
-  }, [windowId, canvasRef])
+  }, [windowId, canvasRef, alreadyMaximized])
   return null
 }
 
@@ -241,7 +248,11 @@ export function ChatWindow({ id, canvasRef }: WindowComponentProps) {
     return (
       <>
         {w.meta.shouldMaximize && (
-          <MaximizeOnMount windowId={w.id} canvasRef={canvasRef} />
+          <MaximizeOnMount
+            windowId={w.id}
+            canvasRef={canvasRef}
+            alreadyMaximized={w.isMaximized}
+          />
         )}
         <ChatWindowProvider
           sessionId={w.meta.sessionId}
