@@ -460,14 +460,14 @@ function CreateStreamDialogBody({
 
               <p className="m-0 text-[13.5px] leading-[1.6] text-pretty text-zinc-600">
                 A Stream is a kind of work Q learns to do for you. It asks
-                questions, you share examples and feedback, and it gets better
+                questions, you share samples and feedback, and it gets better
                 every time you use it.
               </p>
 
               <ol className="m-0 mt-[14px] mb-1 flex list-none flex-col border-t border-zinc-200 p-0">
                 {[
                   "Answer Q's questions",
-                  'Share samples of what you want',
+                  'Samples of your work',
                   'Assign Tasks to your Stream',
                 ].map((step, i) => (
                   <li
