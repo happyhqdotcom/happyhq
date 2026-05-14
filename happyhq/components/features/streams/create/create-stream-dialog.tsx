@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import Image from 'next/image'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 
 import { toastError } from '@/components/common/ui/sonner'
 import { useCurrentUser } from '@/lib/accounts/hooks'
@@ -117,23 +117,33 @@ function CreateStreamDialogBody({
   const [intent, setIntent] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const intentRef = useRef<HTMLTextAreaElement>(null)
+  const pathname = usePathname()
 
   // Live collision check against the in-memory streams list. SWR-cached
   // (warmed by WorkspaceInitializer), so this is zero-cost and immediate —
   // the user finds out before clicking Create rather than via a toast.
+  // Suppressed during creation so mutateStreams() after createStream
+  // doesn't flip the dialog into a "this name already exists" warning
+  // against its own freshly-created Stream while it waits to close.
   const slug = toSlug(name.trim())
-  const hasNameCollision = slug !== '' && streams.some((s) => s.name === slug)
+  const hasNameCollision =
+    !isCreating && slug !== '' && streams.some((s) => s.name === slug)
   // Name has content but produces no slug (e.g. pure emoji or punctuation).
   const isInvalidName = name.trim().length > 0 && slug === ''
 
-  // Hold the post-create onClose so we can clear it if the component
-  // unmounts (user navigated away) before the timer fires.
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // After Create kicks off router.push, hold the dialog open until the
+  // URL has actually flipped to the destination route. Closing earlier
+  // briefly exposes the previous view; waiting for the full transition
+  // to complete (suspense, data) feels laggy. Pathname change is the
+  // sweet spot — the new route segment has mounted, even if its inner
+  // suspense boundaries are still resolving.
+  const pendingPathRef = useRef<string | null>(null)
   useEffect(() => {
-    return () => {
-      if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
+    if (pendingPathRef.current && pathname === pendingPathRef.current) {
+      pendingPathRef.current = null
+      onClose()
     }
-  }, [])
+  }, [pathname, onClose])
 
   // Reset the form on each open. Effect rather than re-mount because the
   // Dialog owns the open/close transition — unmounting on close would skip it.
@@ -230,17 +240,11 @@ function CreateStreamDialogBody({
         })
       }
 
-      // Kick off the route change *before* closing so the destination
-      // stream page can mount under the still-open dialog. Closing first
-      // briefly exposes the previous view (tasks list) before navigation
-      // commits — the small hold makes the transition feel like the modal
-      // closes directly onto the new stream. Timer tracked in a ref so we
-      // can cancel it on unmount.
-      router.push(`/${encodeURIComponent(slug)}`)
-      closeTimerRef.current = setTimeout(() => {
-        closeTimerRef.current = null
-        onClose()
-      }, 200)
+      // Stash the destination so the pathname-watcher effect can close
+      // the dialog the moment the URL has flipped. No arbitrary timer.
+      const target = `/${encodeURIComponent(slug)}`
+      pendingPathRef.current = target
+      router.push(target)
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to create Stream')
       setIsCreating(false)
