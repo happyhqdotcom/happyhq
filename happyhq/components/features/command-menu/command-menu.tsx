@@ -6,7 +6,6 @@
 
 'use client'
 
-import { openCreateStreamDialog } from '@/components/features/streams/create/create-stream-dialog'
 import type { UnfurlResult } from '@/lib/actions/unfurl'
 import { addWebInput } from '@/lib/actions/web-input'
 import { invalidateStream } from '@/lib/swr-helpers'
@@ -14,6 +13,7 @@ import {
   useCommandMenuPage,
   useCommandMenuStore,
 } from '@/stores/commandMenuStore'
+import { openDialog } from '@/stores/uiStore'
 import { Command as CommandPrimitive } from 'cmdk'
 import { Globe, Hash, ListTodo, Plus, Waves } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -217,7 +217,7 @@ function NewGroup() {
         iconColor="blue"
         keywords={['new', 'stream', 'create', 'workspace']}
         onSelect={() => {
-          openCreateStreamDialog()
+          openDialog('createStream')
           close()
         }}
       />

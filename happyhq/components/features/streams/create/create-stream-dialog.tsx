@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
@@ -16,29 +16,8 @@ import {
 import { toSlug } from '@/lib/format'
 import { reportError } from '@/lib/report-error'
 import { useStreamsMutate } from '@/stores/streamsStore'
+import { closeDialog, useUiStore } from '@/stores/uiStore'
 import clsx from 'clsx'
-
-// ── Starters ───────────────────────────────────────────────────────────
-// Casual, pre-canned playbook examples. Clicking a pill fills the prompt with
-// the starter's text — these aren't formal templates (that'll be its own
-// first-class thing), just a quick way to see what teaching Q looks like.
-
-// Shared event for opening this dialog from elsewhere in the app
-// (sidebar +, quick-open, command menu). Single source of truth so callers
-// can't misspell the event name.
-const OPEN_EVENT = 'happyhq:open-create-stream'
-
-/** Fire this from anywhere to pop the Create Stream dialog. */
-export function openCreateStreamDialog() {
-  window.dispatchEvent(new Event(OPEN_EVENT))
-}
-
-/** Subscribe a handler to "open Create Stream dialog" events. Returns an
- *  unsubscribe fn — pass it straight to useEffect's cleanup. */
-export function subscribeOpenCreateStreamDialog(handler: () => void) {
-  window.addEventListener(OPEN_EVENT, handler)
-  return () => window.removeEventListener(OPEN_EVENT, handler)
-}
 
 // Browser-side caps so a runaway paste can't ship a 100kb body to /api/chat.
 // Server still validates; these are courtesy ceilings.
@@ -67,6 +46,11 @@ export function nextStarterState(opts: {
   return { starterId: opts.next.id, intent: opts.next.intent }
 }
 
+// ── Starters ───────────────────────────────────────────────────────────
+// Casual, pre-canned playbook examples. Clicking a pill fills the prompt
+// with the starter's text — these aren't formal templates (that'll be its
+// own first-class thing), just a quick way to see what teaching Q looks
+// like.
 const STARTERS: Starter[] = [
   { id: 'blank', label: 'Blank', intent: '' },
   {
@@ -104,37 +88,19 @@ const STARTERS: Starter[] = [
 /**
  * Singleton dialog. Mounted once in the root layout; every caller
  * (sidebar +, desktop QuickOpen, command menu, ...) triggers it via
- * `openCreateStreamDialog()`. No props — open state is internal.
+ * `openDialog('createStream')` from the uiStore.
  *
- * The shell remounts on each open transition so form state resets cleanly.
+ * The form body is lazy-rendered only when open. Going from null → mounted
+ * IS a fresh mount, so form state resets on every open without a remount
+ * key, and hooks/SWR subscriptions stay dormant while the dialog is closed.
  */
 export function CreateStreamDialog() {
-  const [open, setOpen] = useState(false)
-  useEffect(() => subscribeOpenCreateStreamDialog(() => setOpen(true)), [])
-
-  const [mountId, setMountId] = useState(0)
-  const [prevOpen, setPrevOpen] = useState(open)
-  if (open !== prevOpen) {
-    setPrevOpen(open)
-    if (open) setMountId((id) => id + 1)
-  }
-
-  return (
-    <CreateStreamDialogShell
-      key={mountId}
-      open={open}
-      onClose={() => setOpen(false)}
-    />
-  )
+  const isOpen = useUiStore((s) => s.openDialog === 'createStream')
+  if (!isOpen) return null
+  return <CreateStreamDialogBody onClose={closeDialog} />
 }
 
-function CreateStreamDialogShell({
-  open,
-  onClose,
-}: {
-  open: boolean
-  onClose: () => void
-}) {
+function CreateStreamDialogBody({ onClose }: { onClose: () => void }) {
   const router = useRouter()
   const mutateStreams = useStreamsMutate()
   const { token } = useCurrentUser()
@@ -235,9 +201,9 @@ function CreateStreamDialogShell({
 
   return (
     <Dialog
-      open={open}
+      open
       onClose={handleClose}
-      size="3xl"
+      size="4xl"
       className="overflow-hidden rounded-2xl! p-0!"
     >
       <div className="grid min-h-136 grid-cols-1 sm:grid-cols-[1.4fr_1fr]">
@@ -358,12 +324,6 @@ function CreateStreamDialogShell({
 
         {/* ─ Right column — aesthetic explainer ───────────────────────── */}
         <aside className="relative flex flex-col justify-center border-l border-zinc-200 bg-zinc-50/70 px-[38px] py-11">
-          {/* Decorative dot, top-right */}
-          <span
-            aria-hidden
-            className="absolute top-[22px] right-[22px] block size-1.5 rounded-full bg-zinc-300 opacity-50"
-          />
-
           <div className="flex max-w-[30ch] flex-col gap-4">
             <Image
               src="/brand/q-stars.svg"

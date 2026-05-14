@@ -1,6 +1,5 @@
 'use client'
 
-import { openCreateStreamDialog } from '@/components/features/streams/create/create-stream-dialog'
 import { displayTitle } from '@/lib/format'
 import type { TaskItem } from '@/lib/fs/types'
 import { fetcher } from '@/lib/swr'
@@ -12,6 +11,7 @@ import {
   useRecentsStore,
 } from '@/stores/recentsStore'
 import { useStreams } from '@/stores/streamsStore'
+import { openDialog } from '@/stores/uiStore'
 import { FolderOpen, Hash, ListTodo, Plus, Waves } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
@@ -43,7 +43,7 @@ export function QuickOpen() {
         <ActionButton
           icon={<Hash className="size-[18px]" />}
           label="New Stream"
-          onClick={openCreateStreamDialog}
+          onClick={() => openDialog('createStream')}
         />
         <ActionButton
           icon={

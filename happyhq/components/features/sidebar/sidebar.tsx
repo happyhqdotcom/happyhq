@@ -29,13 +29,13 @@ import {
 } from '@/components/common/ui/tooltip'
 import { AccountFooter } from '@/components/features/sidebar/atoms/account-footer'
 import { ActionButtons } from '@/components/features/sidebar/atoms/action-buttons'
-import { openCreateStreamDialog } from '@/components/features/streams/create/create-stream-dialog'
 import { TaskCreateDialog } from '@/components/features/tasks/create/dialog'
 import { displayTitle } from '@/lib/format'
 import type { StreamEntry, TaskItem } from '@/lib/fs/types'
 import { fetcher } from '@/lib/swr'
 import { taskItemsKey } from '@/lib/swr-keys'
 import { useStreams } from '@/stores/streamsStore'
+import { openDialog } from '@/stores/uiStore'
 import {
   FerrisWheel,
   Hash,
@@ -115,7 +115,7 @@ export function GlobalSidebar({
       <SidebarContent className="mt-2.5">
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
           <SidebarGroupLabel>Streams</SidebarGroupLabel>
-          <SidebarGroupAction onClick={openCreateStreamDialog}>
+          <SidebarGroupAction onClick={() => openDialog('createStream')}>
             <Plus />
           </SidebarGroupAction>
           <SidebarMenu>
