@@ -428,7 +428,7 @@ function FloatingField({
         {label}
       </span>
       {children}
-      {footer !== undefined && (
+      {footer != null && (
         <div className="mt-2 border-t border-zinc-200 pt-2">{footer}</div>
       )}
     </label>
