@@ -26,7 +26,36 @@ export function QuestionOptions({
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [otherActive, setOtherActive] = useState<Record<string, boolean>>({})
   const [otherTexts, setOtherTexts] = useState<Record<string, string>>({})
+  const [multiSelections, setMultiSelections] = useState<
+    Record<string, string[]>
+  >({})
   const [activeTab, setActiveTab] = useState(questions[0].question)
+
+  const writeMultiAnswer = (
+    questionText: string,
+    selections: string[],
+    otherText: string,
+  ) => {
+    const items = [...selections]
+    const trimmedOther = otherText.trim()
+    if (trimmedOther) items.push(trimmedOther)
+    const joined = items.join(', ')
+    setAnswers((prev) => {
+      const next = { ...prev }
+      if (joined) next[questionText] = joined
+      else delete next[questionText]
+      return next
+    })
+  }
+
+  const handleToggleMulti = (questionText: string, label: string) => {
+    const current = multiSelections[questionText] ?? []
+    const next = current.includes(label)
+      ? current.filter((l) => l !== label)
+      : [...current, label]
+    setMultiSelections((prev) => ({ ...prev, [questionText]: next }))
+    writeMultiAnswer(questionText, next, otherTexts[questionText] ?? '')
+  }
 
   const autoResize = (el: HTMLTextAreaElement) => {
     el.style.height = 'auto'
@@ -57,8 +86,16 @@ export function QuestionOptions({
     setOtherActive((prev) => ({ ...prev, [questionText]: true }))
   }
 
-  const handleOtherText = (questionText: string, text: string) => {
+  const handleOtherText = (
+    question: AskUserQuestionInput['questions'][number],
+    text: string,
+  ) => {
+    const questionText = question.question
     setOtherTexts((prev) => ({ ...prev, [questionText]: text }))
+    if (question.multiSelect) {
+      writeMultiAnswer(questionText, multiSelections[questionText] ?? [], text)
+      return
+    }
     if (text.trim()) {
       setAnswers((prev) => ({ ...prev, [questionText]: text.trim() }))
     } else {
@@ -99,39 +136,83 @@ export function QuestionOptions({
       </p>
 
       <div className="space-y-0.5">
-        <RadioGroup
-          value={
-            otherActive[question.question]
-              ? ''
-              : (answers[question.question] ?? '')
-          }
-          onChange={(val: string) => handleSelect(question.question, val)}
-        >
-          {question.options.map((option) => (
-            <Radio
-              key={option.label}
-              value={option.label}
-              className={cn(
-                'group flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-1 text-left transition-colors',
-                'hover:bg-black/5',
-                'data-checked:bg-black/5',
-                'outline-none',
-              )}
-            >
-              <div className="min-w-0">
-                <span className="text-sm font-medium text-zinc-900">
-                  {option.label}
-                </span>
-                {option.description && (
-                  <span className="block text-xs text-zinc-500">
-                    {option.description}
-                  </span>
+        {question.multiSelect ? (
+          <div role="group" aria-label={question.question}>
+            {question.options.map((option) => {
+              const checked = (
+                multiSelections[question.question] ?? []
+              ).includes(option.label)
+              return (
+                <button
+                  key={option.label}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={checked}
+                  onClick={() =>
+                    handleToggleMulti(question.question, option.label)
+                  }
+                  className={cn(
+                    'group flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-1 text-left transition-colors',
+                    'hover:bg-black/5',
+                    checked && 'bg-black/5',
+                    'outline-none',
+                  )}
+                >
+                  <div className="min-w-0">
+                    <span className="text-sm font-medium text-zinc-900">
+                      {option.label}
+                    </span>
+                    {option.description && (
+                      <span className="block text-xs text-zinc-500">
+                        {option.description}
+                      </span>
+                    )}
+                  </div>
+                  <Check
+                    className={cn(
+                      'h-4 w-4 shrink-0 text-zinc-900 transition',
+                      checked ? 'opacity-100' : 'opacity-0',
+                    )}
+                  />
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          <RadioGroup
+            value={
+              otherActive[question.question]
+                ? ''
+                : (answers[question.question] ?? '')
+            }
+            onChange={(val: string) => handleSelect(question.question, val)}
+          >
+            {question.options.map((option) => (
+              <Radio
+                key={option.label}
+                value={option.label}
+                className={cn(
+                  'group flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-1 text-left transition-colors',
+                  'hover:bg-black/5',
+                  'data-checked:bg-black/5',
+                  'outline-none',
                 )}
-              </div>
-              <Check className="h-4 w-4 shrink-0 text-zinc-900 opacity-0 transition group-data-checked:opacity-100" />
-            </Radio>
-          ))}
-        </RadioGroup>
+              >
+                <div className="min-w-0">
+                  <span className="text-sm font-medium text-zinc-900">
+                    {option.label}
+                  </span>
+                  {option.description && (
+                    <span className="block text-xs text-zinc-500">
+                      {option.description}
+                    </span>
+                  )}
+                </div>
+                <Check className="h-4 w-4 shrink-0 text-zinc-900 opacity-0 transition group-data-checked:opacity-100" />
+              </Radio>
+            ))}
+          </RadioGroup>
+        )}
 
         {/* Auto-generated "Other" option — outside RadioGroup since it clears radio selection */}
         <button
@@ -148,7 +229,7 @@ export function QuestionOptions({
               value={otherTexts[question.question] || ''}
               onClick={(e) => e.stopPropagation()}
               onChange={(e) => {
-                handleOtherText(question.question, e.target.value)
+                handleOtherText(question, e.target.value)
                 autoResize(e.target)
               }}
               onKeyDown={(e) => {

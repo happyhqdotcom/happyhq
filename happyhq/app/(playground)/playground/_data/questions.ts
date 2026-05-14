@@ -81,3 +81,20 @@ export const QUESTIONS_WITH_DESCRIPTIONS: AskUserQuestionInput['questions'] = [
     multiSelect: false,
   },
 ]
+
+/**
+ * Multi-select — user can pick any number of options. UI renders checkboxes.
+ */
+export const QUESTIONS_MULTI_SELECT: AskUserQuestionInput['questions'] = [
+  {
+    question: 'Which spices should we include in the filling?',
+    header: 'Spices',
+    options: [
+      { label: 'Cinnamon', description: 'Warm and classic' },
+      { label: 'Nutmeg', description: 'Nutty, slightly sweet' },
+      { label: 'Cardamom', description: 'Floral and aromatic' },
+      { label: 'Allspice', description: 'Peppery, complex' },
+    ],
+    multiSelect: true,
+  },
+]
