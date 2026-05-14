@@ -24,6 +24,10 @@ import clsx from 'clsx'
 const NAME_MAX = 100
 const INTENT_MAX = 5000
 
+// Stable id so the Create button can `aria-describedby` whichever
+// SlugPreview warning is current when it's disabled by a name problem.
+const SLUG_WARNING_ID = 'create-stream-name-warning'
+
 type Starter = {
   id: string
   label: string
@@ -119,6 +123,17 @@ function CreateStreamDialogBody({
   // the user finds out before clicking Create rather than via a toast.
   const slug = toSlug(name.trim())
   const hasNameCollision = slug !== '' && streams.some((s) => s.name === slug)
+  // Name has content but produces no slug (e.g. pure emoji or punctuation).
+  const isInvalidName = name.trim().length > 0 && slug === ''
+
+  // Hold the post-create onClose so we can clear it if the component
+  // unmounts (user navigated away) before the timer fires.
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
+    }
+  }, [])
 
   // Reset the form on each open. Effect rather than re-mount because the
   // Dialog owns the open/close transition — unmounting on close would skip it.
@@ -152,8 +167,10 @@ function CreateStreamDialogBody({
     })
   }
 
-  const canSubmit =
-    name.trim().length > 0 && intent.trim().length > 0 && !hasNameCollision
+  // Gate on slug (not raw name) so a name that strips to "" (pure emoji,
+  // pure punctuation) can't reach the server. SlugPreview surfaces the
+  // reason inline.
+  const canSubmit = slug !== '' && intent.trim().length > 0 && !hasNameCollision
 
   const handleClose = () => {
     if (!isCreating) onClose()
@@ -163,12 +180,6 @@ function CreateStreamDialogBody({
     if (!canSubmit || isCreating) return
     const trimmedName = name.trim()
     const trimmedIntent = intent.trim()
-    if (!slug) {
-      // toSlug strips everything that isn't a letter/number/dash, so a
-      // pure-emoji or pure-punctuation name leaves nothing behind.
-      toastError('Names need at least one letter or number.')
-      return
-    }
     setIsCreating(true)
     try {
       const exists = await checkStreamExists(slug)
@@ -191,30 +202,45 @@ function CreateStreamDialogBody({
 
       // Compose the first chat message. The textarea label primes the user
       // to write a continuation ("write proposals for new clients"), so we
-      // wrap it into a full sentence addressed to Q — keeps the "teach a
-      // new teammate" framing from the create dialog alive in the chat.
-      const firstMessage = `Hey Q! Can you learn how we ${trimmedIntent}?`
+      // prefix with "Hey Q! Can you learn how we " and let the user's text
+      // close the sentence — whatever punctuation (or none) they typed is
+      // what ships.
+      const firstMessage = `Hey Q! Can you learn how we ${trimmedIntent}`
 
       // One-shot handoff to the destination stream page. The dialog can't
       // open the chat window itself because DesktopInitializer's clearAll()
       // on route change would wipe it. Consumer in DesktopInitializer reads
       // and clears `happyhq:stream-create:{slug}` on mount.
-      sessionStorage.setItem(
-        `happyhq:stream-create:${slug}`,
-        JSON.stringify({
-          intent: firstMessage,
-          maximize: true,
-          createdAt: Date.now(),
-        }),
-      )
+      try {
+        sessionStorage.setItem(
+          `happyhq:stream-create:${slug}`,
+          JSON.stringify({
+            intent: firstMessage,
+            maximize: true,
+            createdAt: Date.now(),
+          }),
+        )
+      } catch (err) {
+        // Quota exceeded or Safari private mode. The stream still exists;
+        // user just lands on an empty chat instead of getting the seed
+        // message auto-sent. Report so it surfaces in client.* logs.
+        reportError('client.stream_create.session_storage_failed', {
+          stream: slug,
+          message: err instanceof Error ? err.message : String(err),
+        })
+      }
 
       // Kick off the route change *before* closing so the destination
       // stream page can mount under the still-open dialog. Closing first
       // briefly exposes the previous view (tasks list) before navigation
       // commits — the small hold makes the transition feel like the modal
-      // closes directly onto the new stream.
+      // closes directly onto the new stream. Timer tracked in a ref so we
+      // can cancel it on unmount.
       router.push(`/${encodeURIComponent(slug)}`)
-      setTimeout(onClose, 200)
+      closeTimerRef.current = setTimeout(() => {
+        closeTimerRef.current = null
+        onClose()
+      }, 200)
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to create Stream')
       setIsCreating(false)
@@ -249,8 +275,9 @@ function CreateStreamDialogBody({
               <button
                 type="button"
                 onClick={handleClose}
+                disabled={isCreating}
                 aria-label="Close"
-                className="grid size-6 place-items-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-950"
+                className="grid size-6 place-items-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-950 disabled:opacity-50"
               >
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                   <path
@@ -267,7 +294,13 @@ function CreateStreamDialogBody({
             <FloatingField
               label="Name"
               disabled={isCreating}
-              footer={<SlugPreview slug={slug} collision={hasNameCollision} />}
+              footer={
+                <SlugPreview
+                  slug={slug}
+                  collision={hasNameCollision}
+                  invalid={isInvalidName}
+                />
+              }
             >
               <input
                 autoFocus
@@ -316,9 +349,9 @@ function CreateStreamDialogBody({
               />
             </FloatingField>
 
-            {/* Pills — optional accelerators. Skipped in Tab order
-                (tabIndex={-1}) so keyboard users go Name → Textarea →
-                Cancel/Create without detouring through 6 pills. */}
+            {/* Pills — optional accelerators. Tabbable so keyboard users
+                can reach them, but mousedown preventDefault keeps focus
+                on whichever input they were typing in when clicking. */}
             <div
               role="group"
               aria-label="Starters"
@@ -334,7 +367,6 @@ function CreateStreamDialogBody({
                     <button
                       key={t.id}
                       type="button"
-                      tabIndex={-1}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => pickStarter(t)}
                       disabled={isCreating}
@@ -369,6 +401,11 @@ function CreateStreamDialogBody({
                 type="button"
                 onClick={handleSubmit}
                 disabled={!canSubmit || isCreating}
+                aria-describedby={
+                  hasNameCollision || isInvalidName
+                    ? SLUG_WARNING_ID
+                    : undefined
+                }
                 className={clsx(
                   'group inline-flex items-center gap-2 rounded-full py-[9px] pr-3 pl-4 text-[13px] font-medium tracking-[-0.005em] transition-[background-color,transform] duration-[150ms]',
                   canSubmit && !isCreating
@@ -399,7 +436,10 @@ function CreateStreamDialogBody({
           </div>
 
           {/* ─ Right column — explainer ──────────────────────────────── */}
-          <aside className="relative flex flex-col justify-center border-l border-zinc-200 bg-zinc-50 px-[38px] py-11">
+          <aside
+            aria-label="How Streams work"
+            className="relative flex flex-col justify-center border-l border-zinc-200 bg-zinc-50 px-[38px] py-11"
+          >
             <div className="flex max-w-[32ch] flex-col gap-[14px]">
               <Image
                 src="/brand/q-stars.svg"
@@ -493,16 +533,30 @@ function FloatingField({
 function SlugPreview({
   slug,
   collision,
+  invalid,
 }: {
   slug: string
   collision: boolean
+  invalid: boolean
 }) {
-  // Collision wins — when the typed name conflicts with an existing
-  // Stream, replace the helper/path with a warning so the user finds out
-  // before submitting instead of via a toast on Create.
+  // Invalid > collision > helper. The id lets Create's
+  // `aria-describedby` reference whichever warning is current when the
+  // button is disabled, so screen-reader users hear the reason.
+  if (invalid) {
+    return (
+      <span
+        id={SLUG_WARNING_ID}
+        className="flex h-[14px] items-center overflow-hidden text-[11.5px] whitespace-nowrap text-amber-700"
+        aria-live="polite"
+      >
+        Names need at least one letter or number.
+      </span>
+    )
+  }
   if (collision) {
     return (
       <span
+        id={SLUG_WARNING_ID}
         className="flex h-[14px] items-center overflow-hidden text-[11.5px] whitespace-nowrap text-amber-700"
         aria-live="polite"
       >
