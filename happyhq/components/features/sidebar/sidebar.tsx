@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import useSWR from 'swr'
 
@@ -29,10 +29,7 @@ import {
 } from '@/components/common/ui/tooltip'
 import { AccountFooter } from '@/components/features/sidebar/atoms/account-footer'
 import { ActionButtons } from '@/components/features/sidebar/atoms/action-buttons'
-import {
-  CreateStreamDialog,
-  subscribeOpenCreateStreamDialog,
-} from '@/components/features/streams/create/create-stream-dialog'
+import { openCreateStreamDialog } from '@/components/features/streams/create/create-stream-dialog'
 import { TaskCreateDialog } from '@/components/features/tasks/create/dialog'
 import { displayTitle } from '@/lib/format'
 import type { StreamEntry, TaskItem } from '@/lib/fs/types'
@@ -56,14 +53,6 @@ export function GlobalSidebar({
   const { toggleSidebar } = useSidebar()
   const pathname = usePathname()
   const [createOpen, setCreateOpen] = useState(false)
-  const [streamCreateOpen, setStreamCreateOpen] = useState(false)
-
-  // Listen for "open create stream" events from elsewhere in the app
-  // (command menu, quick-open panel, etc.) so the dialog has a single owner.
-  useEffect(
-    () => subscribeOpenCreateStreamDialog(() => setStreamCreateOpen(true)),
-    [],
-  )
   const storeStreams = useStreams()
   const streams = storeStreams.length > 0 ? storeStreams : initialStreams
   const { data: taskItems = [] } = useSWR<TaskItem[]>(taskItemsKey(), fetcher)
@@ -123,14 +112,10 @@ export function GlobalSidebar({
         open={createOpen}
         onClose={() => setCreateOpen(false)}
       />
-      <CreateStreamDialog
-        open={streamCreateOpen}
-        onClose={() => setStreamCreateOpen(false)}
-      />
       <SidebarContent className="mt-2.5">
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
           <SidebarGroupLabel>Streams</SidebarGroupLabel>
-          <SidebarGroupAction onClick={() => setStreamCreateOpen(true)}>
+          <SidebarGroupAction onClick={openCreateStreamDialog}>
             <Plus />
           </SidebarGroupAction>
           <SidebarMenu>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
@@ -81,21 +81,31 @@ const STARTERS: Starter[] = [
   },
 ]
 
-export function CreateStreamDialog({
-  open,
-  onClose,
-}: {
-  open: boolean
-  onClose: () => void
-}) {
-  // Remount the shell each time the dialog opens so form state resets cleanly.
+/**
+ * Singleton dialog. Mounted once in the root layout; every caller
+ * (sidebar +, desktop QuickOpen, command menu, ...) triggers it via
+ * `openCreateStreamDialog()`. No props — open state is internal.
+ *
+ * The shell remounts on each open transition so form state resets cleanly.
+ */
+export function CreateStreamDialog() {
+  const [open, setOpen] = useState(false)
+  useEffect(() => subscribeOpenCreateStreamDialog(() => setOpen(true)), [])
+
   const [mountId, setMountId] = useState(0)
   const [prevOpen, setPrevOpen] = useState(open)
   if (open !== prevOpen) {
     setPrevOpen(open)
     if (open) setMountId((id) => id + 1)
   }
-  return <CreateStreamDialogShell key={mountId} open={open} onClose={onClose} />
+
+  return (
+    <CreateStreamDialogShell
+      key={mountId}
+      open={open}
+      onClose={() => setOpen(false)}
+    />
+  )
 }
 
 function CreateStreamDialogShell({
@@ -142,7 +152,9 @@ function CreateStreamDialogShell({
     const trimmedIntent = intent.trim()
     const slug = toSlug(trimmedName)
     if (!slug) {
-      toastError('Please enter a valid name')
+      // toSlug strips everything that isn't a letter/number/dash, so a
+      // pure-emoji or pure-punctuation name leaves nothing behind.
+      toastError('Names need at least one letter or number.')
       return
     }
     setIsCreating(true)

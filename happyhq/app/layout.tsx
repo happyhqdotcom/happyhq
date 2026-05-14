@@ -1,5 +1,6 @@
 import { ErrorReporter } from '@/components/common/error-reporter'
 import { Toaster } from '@/components/common/ui/sonner'
+import { CreateStreamDialog } from '@/components/features/streams/create/create-stream-dialog'
 import { GeistMono } from 'geist/font/mono'
 import { GeistSans } from 'geist/font/sans'
 import type { Metadata } from 'next'
@@ -48,6 +49,7 @@ export default function RootLayout({
     >
       <body className="font-sans">
         {children}
+        <CreateStreamDialog />
         <ErrorReporter />
         <Toaster position="top-right" offset={{ top: 54, right: 20 }} />
       </body>
