@@ -18,6 +18,12 @@ import { streamExists } from '@/lib/fs/read.server'
 import { log } from '@/lib/log.server'
 import { encodeEvent, filterMessage } from '@/lib/run/filter.server'
 
+// Pre-encoded keepalive bytes — a bare newline parses as a whitespace-only
+// line (skipped by readNDJSON) so the client can ignore it without a
+// dedicated event type. The byte itself is enough to force Node's HTTP
+// write buffer to flush any pending chunks.
+const KEEPALIVE_BYTES = new TextEncoder().encode('\n')
+
 export async function POST(request: Request) {
   let body: ChatRequest
   try {
@@ -68,6 +74,15 @@ export async function POST(request: Request) {
 
   const abortController = registerSession(sessionId)
 
+  // If the client SSE goes away (tab closed, network drop, browser killed),
+  // cancel the SDK so we don't leak a hung agent process holding canUseTool
+  // open forever. Without this, the SDK keeps spinning until something else
+  // aborts the registered session.
+  request.signal.addEventListener('abort', () => {
+    log('chat.client_disconnect', { sessionId })
+    abortController.abort()
+  })
+
   let streamController: ReadableStreamDefaultController<Uint8Array>
 
   const notifyClient = (event: ChatStreamEvent) => {
@@ -80,6 +95,20 @@ export async function POST(request: Request) {
     async start(controller) {
       streamController = controller
       const stderrBuf = new StderrBuffer()
+
+      // Periodic keepalive to keep the HTTP write buffer flushing while the
+      // SDK is otherwise idle (e.g. waiting in canUseTool for an answer to
+      // AskUserQuestion). Without this, bytes the SDK enqueued just before
+      // blocking can sit in Node's HTTP buffer indefinitely — the client
+      // sees the question never arrive and the chat looks hung. The client's
+      // NDJSON parser yields no event for whitespace-only lines.
+      const keepalive = setInterval(() => {
+        try {
+          controller.enqueue(KEEPALIVE_BYTES)
+        } catch {
+          // Controller closed — interval will be cleared in finally.
+        }
+      }, 1_500)
 
       try {
         if (abortController.signal.aborted) return
@@ -146,6 +175,7 @@ export async function POST(request: Request) {
           }
         }
       } finally {
+        clearInterval(keepalive)
         clearSession(sessionId)
         clearSessionMode(sessionId)
         controller.close()
