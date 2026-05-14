@@ -74,6 +74,15 @@ export async function POST(request: Request) {
 
   const abortController = registerSession(sessionId)
 
+  // If the client SSE goes away (tab closed, network drop, browser killed),
+  // cancel the SDK so we don't leak a hung agent process holding canUseTool
+  // open forever. Without this, the SDK keeps spinning until something else
+  // aborts the registered session.
+  request.signal.addEventListener('abort', () => {
+    log('chat.client_disconnect', { sessionId })
+    abortController.abort()
+  })
+
   let streamController: ReadableStreamDefaultController<Uint8Array>
 
   const notifyClient = (event: ChatStreamEvent) => {
