@@ -13,12 +13,21 @@ import {
 
 export function ActionButtons({ onNewClick }: { onNewClick: () => void }) {
   const pathname = usePathname()
+  const inlineComposerVisible = pathname.startsWith('/tasks')
+
+  function handleNewClick() {
+    if (inlineComposerVisible) {
+      window.dispatchEvent(new CustomEvent('happyhq:focus-quick-add'))
+      return
+    }
+    onNewClick()
+  }
 
   return (
     <SidebarGroup>
       <SidebarMenu>
         <SidebarMenuItem>
-          <SidebarMenuButton tooltip="New task" onClick={onNewClick}>
+          <SidebarMenuButton tooltip="New task" onClick={handleNewClick}>
             <span className="flex size-4 items-center justify-center rounded-full bg-current/10 ring-3 ring-current/10">
               <Plus className="size-4!" />
             </span>
