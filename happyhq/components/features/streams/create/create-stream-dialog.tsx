@@ -196,6 +196,12 @@ function CreateStreamDialogBody({
       }
       mutateStreams()
 
+      // Compose the first chat message. The textarea label primes the user
+      // to write a continuation ("write proposals for new clients"), so we
+      // wrap it into a full sentence addressed to Q — keeps the "teach a
+      // new teammate" framing from the create dialog alive in the chat.
+      const firstMessage = `Hey Q! Can you learn how we ${trimmedIntent}?`
+
       // One-shot handoff to the destination stream page. The dialog can't
       // open the chat window itself because DesktopInitializer's clearAll()
       // on route change would wipe it. Consumer in DesktopInitializer reads
@@ -203,7 +209,7 @@ function CreateStreamDialogBody({
       sessionStorage.setItem(
         `happyhq:stream-create:${slug}`,
         JSON.stringify({
-          intent: trimmedIntent,
+          intent: firstMessage,
           maximize: true,
           createdAt: Date.now(),
         }),
@@ -286,7 +292,7 @@ function CreateStreamDialogBody({
             {/* Prompt — `.vh-field-prompt`. A one-sentence kickoff; Q digs
                 into the real playbook details in the chat after Create. */}
             <FloatingField
-              label="Can you learn how we..."
+              label="Hey Q! Can you learn how we..."
               hero
               disabled={isCreating}
               footer={
@@ -333,6 +339,7 @@ function CreateStreamDialogBody({
                       key={t.id}
                       type="button"
                       tabIndex={-1}
+                      onMouseDown={(e) => e.preventDefault()}
                       onClick={() => pickStarter(t)}
                       disabled={isCreating}
                       className={clsx(
