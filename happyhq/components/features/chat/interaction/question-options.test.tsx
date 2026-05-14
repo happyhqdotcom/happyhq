@@ -129,6 +129,77 @@ describe('QuestionOptions', () => {
     expect(screen.getByText('A file for a future task')).not.toBeNull()
   })
 
+  describe('multi-select questions', () => {
+    const multiSelectQuestion = {
+      question: 'What kinds of docs do you write?',
+      header: 'Doc types',
+      options: [
+        { label: 'Specs', description: 'Design specs' },
+        { label: 'Runbooks', description: 'Ops runbooks' },
+        { label: 'Postmortems', description: 'Incident reviews' },
+      ],
+      multiSelect: true,
+    }
+
+    it('lets the user select more than one option and submits them comma-joined', () => {
+      const onAnswer = vi.fn()
+      render(
+        <QuestionOptions
+          questions={[multiSelectQuestion]}
+          onAnswer={onAnswer}
+        />,
+      )
+
+      fireEvent.click(screen.getByText('Specs'))
+      fireEvent.click(screen.getByText('Postmortems'))
+      fireEvent.click(screen.getByText('Submit answers'))
+
+      expect(onAnswer).toHaveBeenCalledWith({
+        'What kinds of docs do you write?': 'Specs, Postmortems',
+      })
+    })
+
+    it('toggles a selected option off when clicked again', () => {
+      const onAnswer = vi.fn()
+      render(
+        <QuestionOptions
+          questions={[multiSelectQuestion]}
+          onAnswer={onAnswer}
+        />,
+      )
+
+      fireEvent.click(screen.getByText('Specs'))
+      fireEvent.click(screen.getByText('Runbooks'))
+      fireEvent.click(screen.getByText('Specs'))
+      fireEvent.click(screen.getByText('Submit answers'))
+
+      expect(onAnswer).toHaveBeenCalledWith({
+        'What kinds of docs do you write?': 'Runbooks',
+      })
+    })
+
+    it('appends "Other" freeform text to the selection set', () => {
+      const onAnswer = vi.fn()
+      render(
+        <QuestionOptions
+          questions={[multiSelectQuestion]}
+          onAnswer={onAnswer}
+        />,
+      )
+
+      fireEvent.click(screen.getByText('Specs'))
+      fireEvent.click(screen.getByText('Other'))
+      fireEvent.change(screen.getByRole('textbox'), {
+        target: { value: 'API references' },
+      })
+      fireEvent.click(screen.getByText('Submit answers'))
+
+      expect(onAnswer).toHaveBeenCalledWith({
+        'What kinds of docs do you write?': 'Specs, API references',
+      })
+    })
+  })
+
   describe('multi-question auto-advance', () => {
     beforeEach(() => {
       vi.useFakeTimers()

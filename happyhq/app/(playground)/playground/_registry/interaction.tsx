@@ -17,6 +17,7 @@ import {
 } from '../_data/confirmations'
 import {
   QUESTIONS_MULTI,
+  QUESTIONS_MULTI_SELECT,
   QUESTIONS_SINGLE,
   QUESTIONS_WITH_DESCRIPTIONS,
 } from '../_data/questions'
@@ -58,6 +59,7 @@ const questionOptionsRegistration: PlaygroundComponent = {
   variants: {
     'single-question': { name: 'Single Question', data: QUESTIONS_SINGLE },
     'multi-question': { name: 'Multi Question', data: QUESTIONS_MULTI },
+    'multi-select': { name: 'Multi-select', data: QUESTIONS_MULTI_SELECT },
     'with-descriptions': {
       name: 'With Descriptions',
       data: QUESTIONS_WITH_DESCRIPTIONS,
