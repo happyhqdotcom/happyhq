@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 
 import { Dialog } from '@/components/common/catalyst/dialog'
@@ -267,60 +268,14 @@ function CreateStreamDialogShell({
           />
 
           <div className="flex max-w-[30ch] flex-col gap-4">
-            {/* Glyph — outlined card (playbook) + filled dot (active job) */}
-            <svg
-              viewBox="0 0 44 44"
-              fill="none"
-              aria-hidden
-              className="mb-1 size-11 text-zinc-950"
-            >
-              <rect
-                x="6"
-                y="6"
-                width="32"
-                height="32"
-                rx="5"
-                stroke="currentColor"
-                strokeWidth="1.2"
-              />
-              <line
-                x1="12"
-                y1="14"
-                x2="32"
-                y2="14"
-                stroke="currentColor"
-                strokeWidth="1.2"
-                opacity="0.4"
-              />
-              <line
-                x1="12"
-                y1="19"
-                x2="28"
-                y2="19"
-                stroke="currentColor"
-                strokeWidth="1.2"
-                opacity="0.4"
-              />
-              <line
-                x1="12"
-                y1="24"
-                x2="30"
-                y2="24"
-                stroke="currentColor"
-                strokeWidth="1.2"
-                opacity="0.4"
-              />
-              <line
-                x1="12"
-                y1="29"
-                x2="22"
-                y2="29"
-                stroke="currentColor"
-                strokeWidth="1.2"
-                opacity="0.4"
-              />
-              <circle cx="31" cy="31" r="3" fill="currentColor" />
-            </svg>
+            <Image
+              src="/brand/q-stars.svg"
+              alt=""
+              width={48}
+              height={48}
+              priority
+              className="mb-1 size-12 select-none"
+            />
 
             <div className="text-[10.5px] font-medium tracking-[0.14em] text-zinc-400 uppercase">
               What&apos;s a stream
