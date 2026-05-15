@@ -1,6 +1,7 @@
 'use client'
 
 import { ChatSessionContext } from '@/components/features/desktop/providers/chat-session-provider'
+import { createChatSession } from '@/lib/actions/chat'
 import { createChatStore } from '@/stores/chatStore'
 import { useStreamSlug } from '@/stores/desktopStore'
 import { useWindowStore } from '@/stores/windowStore'
@@ -68,6 +69,7 @@ export function ChatWindowProvider({
     const sid = sessionId ?? crypto.randomUUID()
     consumedIntent.current = true
     sessionIdRef.current = sid
+    createChatSession(sid, streamSlug || undefined)
     store.getState().sendMessage({
       message: seed,
       sessionId: sid,
