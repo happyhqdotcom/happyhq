@@ -32,7 +32,7 @@ const rules: InstantRules = {
   },
   taskRuns: {
     allow: {
-      view: "auth.id in data.ref('usagePeriod.user.id')",
+      view: "auth.id in data.ref('user.id') || auth.id in data.ref('usagePeriod.user.id')",
       create: 'false',
       update: 'false',
       delete: 'false',

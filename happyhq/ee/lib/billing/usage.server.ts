@@ -77,9 +77,11 @@ export async function getCurrentUsage(userId: string): Promise<Usage | null> {
 }
 
 /**
- * Creates a task run record linked to the user's current usage period.
- * Returns the task run ID for subsequent updateUsage/finalizeTaskRun calls.
- * Returns null if no current usage period exists (free user or no billing cycle).
+ * Creates a task run record for the user. Always links to the user; links to
+ * the current usage period when one exists. When no usage period covers now
+ * (e.g. a paid user whose renewal webhook dropped), the task run is still
+ * recorded as an orphan — discoverable via the user link, summable later by
+ * reconciliation. Returns the task run ID, or null only on hard failures.
  */
 export async function startTaskRun(
   userId: string,
@@ -87,17 +89,10 @@ export async function startTaskRun(
   task: string,
 ): Promise<string | null> {
   const usage = await getCurrentUsage(userId)
-  if (!usage) {
-    console.warn(
-      `startTaskRun: No current usage period for user ${userId} — task run not recorded`,
-    )
-    return null
-  }
-
   const adminDb = getAdminDb()
   const taskRunId = id()
 
-  await adminDb.transact([
+  const txs = [
     adminDb.tx.taskRuns[taskRunId].update({
       stream,
       task,
@@ -105,9 +100,17 @@ export async function startTaskRun(
       minutes: 0,
       status: 'running',
     }),
-    adminDb.tx.taskRuns[taskRunId].link({ usagePeriod: usage.id }),
-  ])
+    adminDb.tx.taskRuns[taskRunId].link({ user: userId }),
+  ]
+  if (usage) {
+    txs.push(adminDb.tx.taskRuns[taskRunId].link({ usagePeriod: usage.id }))
+  } else {
+    console.warn(
+      `usage_anomaly: startTaskRun for user ${userId} with no covering usage period — task run ${taskRunId} recorded as orphan`,
+    )
+  }
 
+  await adminDb.transact(txs)
   return taskRunId
 }
 

@@ -175,7 +175,8 @@ describe('usage.server', () => {
       expect(taskRunId).toBe('generated-id')
       expect(mockTransact).toHaveBeenCalledWith([
         expect.anything(), // update call
-        expect.anything(), // link call
+        expect.anything(), // user link
+        expect.anything(), // usagePeriod link
       ])
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -185,10 +186,11 @@ describe('usage.server', () => {
           status: 'running',
         }),
       )
+      expect(mockLink).toHaveBeenCalledWith({ user: 'user-1' })
       expect(mockLink).toHaveBeenCalledWith({ usagePeriod: 'usage-1' })
     })
 
-    it('returns null when no current usage period exists for paid user', async () => {
+    it('records an orphan task run when no covering usage period exists for a paid user', async () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
       try {
         mockQuery.mockResolvedValueOnce({
@@ -196,12 +198,24 @@ describe('usage.server', () => {
           // Active subscription — paid user whose invoice.paid hasn't fired yet
           subscriptions: [{ status: 'active', tier: 'pro' }],
         })
+        mockTransact.mockResolvedValue(undefined)
 
         const { startTaskRun } = await import('./usage.server')
         const result = await startTaskRun('user-1', 'my-stream', 'my-task')
 
-        expect(result).toBeNull()
-        expect(mockTransact).not.toHaveBeenCalled()
+        // Orphan run is still recorded, linked to the user but not a usage period
+        expect(result).toBe('generated-id')
+        expect(mockTransact).toHaveBeenCalledWith([
+          expect.anything(), // update call
+          expect.anything(), // user link
+        ])
+        expect(mockLink).toHaveBeenCalledWith({ user: 'user-1' })
+        expect(mockLink).not.toHaveBeenCalledWith(
+          expect.objectContaining({ usagePeriod: expect.anything() }),
+        )
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('usage_anomaly'),
+        )
       } finally {
         warnSpy.mockRestore()
       }
