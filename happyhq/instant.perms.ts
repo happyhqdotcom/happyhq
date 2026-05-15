@@ -10,7 +10,7 @@ const rules: InstantRules = {
     allow: {
       view: 'auth.id == data.id',
       update: 'auth.id == data.id',
-      create: 'false',
+      create: 'auth.id == data.id',
       delete: 'false',
     },
   },
