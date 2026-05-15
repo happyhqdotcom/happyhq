@@ -60,6 +60,10 @@ const schema = i.schema({
       forward: { on: 'taskRuns', has: 'one', label: 'usagePeriod' },
       reverse: { on: 'usage', has: 'many', label: 'taskRuns' },
     },
+    userTaskRuns: {
+      forward: { on: 'taskRuns', has: 'one', label: 'user' },
+      reverse: { on: '$users', has: 'many', label: 'taskRuns' },
+    },
     userAvatar: {
       forward: { on: '$users', has: 'one', label: 'avatar' },
       reverse: { on: '$files', has: 'one', label: 'user' },
