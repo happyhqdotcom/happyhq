@@ -42,14 +42,15 @@ The primary product flow spans multiple specs. This is the data handoff sequence
 
 ## UI
 
-| Spec                      | Purpose                                                                  |
-| ------------------------- | ------------------------------------------------------------------------ |
-| [Home](home.md)           | Home page — greeting and composer                                        |
-| [App Shell](app-shell.md) | Routing, navigation, transitions, and entity primitives                  |
-| [Sidebar](sidebar.md)     | Global sidebar — stream list, top-level actions, collapse to icon rail   |
-| [Desktop](desktop.md)     | The single unified view — icons, windows, files open on desktop          |
-| [Island](island.md)       | Contextual bottom-center control surface — chat, activity, plan approval |
-| [Chat](chat.md)           | Chat as a surface — floating and sidebar, stream and task contexts       |
+| Spec                                    | Purpose                                                                    |
+| --------------------------------------- | -------------------------------------------------------------------------- |
+| [Home](home.md)                         | Home page — greeting and composer                                          |
+| [App Shell](app-shell.md)               | Routing, navigation, transitions, and entity primitives                    |
+| [Sidebar](sidebar.md)                   | Global sidebar — stream list, top-level actions, collapse to icon rail     |
+| [Desktop](desktop.md)                   | The single unified view — icons, windows, files open on desktop            |
+| [Island](island.md)                     | Contextual bottom-center control surface — chat, activity, plan approval   |
+| [Chat](chat.md)                         | Chat as a surface — floating and sidebar, stream and task contexts         |
+| [Chat Attachments](chat-attachments.md) | User-uploaded files on chat messages — shape, upload, pill, inline preview |
 
 ## Infrastructure
 

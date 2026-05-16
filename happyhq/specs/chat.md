@@ -108,22 +108,14 @@ The store is created once per Desktop mount by `ChatSessionProvider` and shared 
 
 A `useChatActions()` hook wires chat store actions to desktop context — it reads `streamSlug` from `desktopStore`, connects to `navigateToTask`, `mutateStreamContent`, etc. Components call `useChatActions()` for send, stop, newChat, switchChat, deleteChat, and other operations that need cross-store coordination.
 
-### File Upload — Deferred Staging Pattern
+### Attachments
 
-Files are **staged locally** on drop, not uploaded immediately. The Composer holds client-side `StagedFile[]` objects (containing the `File` reference, display name, and status). Actual upload to the server happens at send-time — when the user sends a message, staged files are uploaded first, then the message is sent with the file annotation.
+User-uploaded files attached to a message — their data shape, upload lifecycle, pill rendering, and inline preview — are covered by [Chat Attachments](chat-attachments.md). At the chat-surface level:
 
-This deferred pattern has two benefits:
+- The Composer holds client-side `StagedFile[]` in `chatStore.draftFiles` for persistence across floating/sidebar toggle. Staged files render as `FileCard` components with hover-reveal remove buttons.
+- Sent messages carry `ChatMessage.attachments: ChatAttachment[]`; user messages render one `FilePill` per attachment. Clicking a pill opens a fullscreen-ish preview overlay.
 
-- **Home screen uploads**: Files can be staged before any chat session exists (the session is created at send-time via `ensureSession()`)
-- **No orphaned uploads**: Files that are dropped but never sent are never uploaded to the server
-
-`StagedFile` objects are stored in `chatStore.draftFiles` for persistence across floating/sidebar toggle (see Draft Persistence above). The Composer renders staged files as `FileCard` components with hover-reveal remove buttons.
-
-### File Upload Annotation
-
-When the user drops files into chat, the store composes a text annotation `[Files uploaded: file1.pdf, file2.csv]` appended to the API message so the agent knows which files to read from `uploads/` via filesystem tools. The UI stores filenames separately on `ChatMessage.files` and renders them as visual pills — never as raw text.
-
-When loading historical sessions from SDK JSONL, `parse-history.server.ts` reverses this: `extractFilesFromContent()` strips the `[Files uploaded: ...]` marker and restores the structured `files` array, so reloaded conversations display files the same way as live ones.
+See [Chat Attachments](chat-attachments.md) for the full data shape, the `[Files uploaded: …]` agent marker, history round-trip, and the preview overlay.
 
 ## Message Rendering
 
@@ -211,6 +203,7 @@ Not tested:
 
 ## Cross-References
 
+- [Chat Attachments](chat-attachments.md) — Upload lifecycle, ChatAttachment shape, pill rendering, inline preview overlay
 - [Chat Modes](chat-modes.md) — General vs learning mode, transitions, composer toggle, system prompt injection
 - [Island](island.md) — The floating mode where chat appears
 - [Desktop](desktop.md) — The canvas where chat renders
